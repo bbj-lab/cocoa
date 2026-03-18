@@ -64,6 +64,41 @@ class Tokenizer:
             how="diagonal",
         )
 
+    def add_clocks(self, df: pl.LazyFrame) -> pl.LazyFrame:
+        # add clock codes if configured
+        if self.cfg.insert_clocks:
+            clck = list(self.cfg.clocks)
+            return pl.concat(
+                [
+                    df,
+                    df.group_by("subject_id")
+                    .agg(
+                        start=pl.col("time").min().dt.truncate("1h"),
+                        end=pl.col("time").max().dt.truncate("1h"),
+                    )
+                    .with_columns(
+                        pl.datetime_ranges(
+                            pl.col("start"),
+                            pl.col("end"),
+                            interval="1h",
+                            closed="right",
+                        ).alias("time")
+                    )
+                    .explode("time", keep_nulls=False)
+                    .filter(pl.col("time").is_not_null())
+                    .with_columns(HH=pl.col("time").dt.strftime("%H"))
+                    .filter(pl.col("HH").is_in(clck))
+                    .select(
+                        "subject_id",
+                        "time",
+                        pl.concat_str(pl.lit("CLCK//"), pl.col("HH")).alias("code"),
+                    ),
+                ],
+                how="diagonal",
+            )
+        else:
+            return df
+
     def get_bins(self, df: pl.LazyFrame) -> pl.LazyFrame:
         if self.bins is None and self.is_training:
             self.bins = (
@@ -107,9 +142,36 @@ class Tokenizer:
             .drop([f"break_{i}" for i in range(1, self.cfg.n_bins)])
         )
 
+    def insert_time_spacers(self, df: pl.LazyFrame) -> pl.LazyFrame:
+        if self.cfg.insert_spacers:
+            spcrs = dict(self.cfg.spacers)
+            return df.with_columns(
+                tdiff_mins=(
+                    pl.col("time") - pl.col("time").shift(1).over("subject_id")
+                ).dt.total_minutes()
+            ).with_columns(
+                t_spacer=pl.when(
+                    (pl.col("tdiff_mins") < min(spcrs.values()))
+                    | pl.col("tdiff_mins").is_null()
+                )
+                .then(None)
+                .otherwise(
+                    pl.concat_str(
+                        pl.lit("TIME//"),
+                        pl.col("tdiff_mins")
+                        .cut(breaks=list(spcrs.values())[1:], labels=list(spcrs.keys()))
+                        .cast(pl.String),
+                    )
+                )
+                .cast(pl.String)
+            )
+        else:
+            return df.with_columns(t_spacer=pl.lit(None))
+
     def get_pretokenized(self, df: pl.LazyFrame) -> pl.LazyFrame:
         return df.with_columns(
             pl.concat_list(
+                pl.col("t_spacer"),
                 pl.concat_str(
                     pl.col("code"),
                     pl.col("binned_value"),
@@ -118,10 +180,10 @@ class Tokenizer:
                     ignore_nulls=True,
                 )
                 if self.cfg.fused
-                else pl.concat_list(
-                    "code", "binned_value", "text_value"
-                ).list.drop_nulls()
-            ).alias("to_tokenize")
+                else pl.concat_list("t_spacer", "code", "binned_value", "text_value"),
+            )
+            .list.drop_nulls()
+            .alias("to_tokenize")
         )
 
     def get_lookup(self, df: pl.LazyFrame) -> dict:
@@ -166,7 +228,9 @@ class Tokenizer:
     def get_all(self) -> pl.LazyFrame:
         df = self.get_data()  # load data
         df = self.add_ends(df)  # add BOS/EOS tokens
+        df = self.add_clocks(df)  # add clock tokens if configured
         df = self.bin_data(df)  # create bins from training data and bin numeric values
+        df = self.insert_time_spacers(df)  # insert time spacer codes when configured
         df = self.tokenize_data(df)  # create lookup table and run tokenization
         df = self.aggregate_timelines_from_tokens(df)  # collect tokens into timelines
         return df
@@ -184,7 +248,7 @@ class Tokenizer:
         self.save(to_folder / "tokenizer.yaml")
 
     def __contains__(self, word: Hashable) -> bool:
-        return word in self.lookup.keys()
+        return word in lk.keys() if (lk := self.lookup) is not None else False
 
     def __str__(self):
         return "{sp} of {sz} words {md}".format(
@@ -197,7 +261,7 @@ class Tokenizer:
         return str(self) + ", created {dttm}".format(dttm=self.created_dttm)
 
     def __len__(self) -> int:
-        return len(self.lookup.keys())
+        return len(lk.keys()) if (lk := self.lookup) is not None else 0
 
     def to_yaml(self) -> str:
         bins = self.bins.collect().to_dicts() if self.bins is not None else None
@@ -216,7 +280,6 @@ class Tokenizer:
         data = OmegaConf.create(yaml_str)
         cfg = OmegaConf.to_container(data.cfg)
         tkzr = cls(is_training=data.is_training, **cfg)
-        # `data.lookup` may be an OmegaConf mapping; convert to plain dict
         tkzr.lookup = (
             dict(OmegaConf.to_container(data.lookup))
             if data.lookup is not None

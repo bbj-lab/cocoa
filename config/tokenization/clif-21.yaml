@@ -2,6 +2,8 @@
 ---
 n_bins: !!int 10
 fused: !!bool true
+insert_spacers: !!bool true
+insert_clocks: !!bool true
 
 collated_inputs:
   - ./processed/meds.parquet
@@ -9,6 +11,8 @@ collated_inputs:
 subject_splits: ./processed/subject_splits.parquet
 
 ordering:
+  - TIME
+  - CLCK
   - BOS
   - AGE
   - SEX
@@ -30,3 +34,26 @@ ordering:
   - SOFA
   - DSCG
   - EOS
+
+spacers:
+  5m-15m: 5
+  15m-1h: 15
+  1h-2h: 60
+  2h-6h: 120
+  6h-12h: 360
+  12h-1d: 720
+  1d-3d: 1440
+  3d-1w: 4320
+  1w-2w: 10080
+  2w-1mt: 20160
+  1mt-3mt: 43200
+  3mt-6mt: 131490
+  6mt+: 262980
+
+clocks:
+  - !!str 00
+  - !!str 04
+  - !!str 08
+  - !!str 12
+  - !!str 16
+  - !!str 20

@@ -76,6 +76,11 @@ def _make_tokenizer(tmp_path: pathlib.Path, *, fused: bool = True, n_bins: int =
             "collated_inputs": [str(meds_path)],
             "subject_splits": str(splits_path),
             "ordering": ["BOS", "SEX", "LAB", "EOS"],
+            # Defaults for clock and spacer tests
+            "insert_clocks": False,
+            "clocks": ["01", "02", "03", "04"],
+            "insert_spacers": False,
+            "spacers": {"short": 60, "medium": 120, "long": 240},
         }
     )
     tkzr = object.__new__(Tokenizer)
@@ -147,6 +152,7 @@ def test_fused_tokenization_one_token_per_event(tokenizer):
     df = tokenizer.add_ends(df)
     df = tokenizer.bin_data(df)
     df = df.join(tokenizer.subject_splits, on="subject_id", validate="m:1")
+    df = tokenizer.insert_time_spacers(df)
     result = tokenizer.tokenize_data(df.filter(pl.col("split") == "train")).collect()
     # each row should have a list of exactly 1 token
     assert all(len(t) == 1 for t in result["tokens"].to_list())
@@ -159,6 +165,7 @@ def test_unfused_tokenization_multiple_tokens(unfused_tokenizer):
     df = tkzr.add_ends(df)
     df = tkzr.bin_data(df)
     df = df.join(tkzr.subject_splits, on="subject_id", validate="m:1")
+    df = tkzr.insert_time_spacers(df)
     result = tkzr.tokenize_data(df.filter(pl.col("split") == "train")).collect()
     lab_rows = result.filter(pl.col("code").str.starts_with("LAB"))
     sex_rows = result.filter(pl.col("code").str.starts_with("SEX"))
@@ -235,6 +242,72 @@ def test_save_all_writes_files(tokenizer):
 
 
 def test_save_and_load_yaml(tokenizer):
+    def test_add_clocks_inserts_clock_tokens(tmp_path):
+        """Clock tokens are inserted when insert_clocks is enabled."""
+        cfg = OmegaConf.create(
+            {
+                "data_home": str(tmp_path),
+                "processed_data_home": str(tmp_path / "out"),
+                "n_bins": 4,
+                "fused": True,
+                "collated_inputs": [str(_make_collated_data(tmp_path)[0])],
+                "subject_splits": str(_make_collated_data(tmp_path)[1]),
+                "ordering": ["BOS", "SEX", "LAB", "EOS"],
+                "insert_clocks": True,
+                "clocks": ["01", "02", "03", "04"],
+            }
+        )
+        tkzr = object.__new__(Tokenizer)
+        tkzr.cfg = cfg
+        tkzr.data_home = tmp_path
+        tkzr.lookup = None
+        tkzr.bins = None
+        tkzr.subject_splits = None
+        tkzr.is_training = True
+        tkzr.created_dttm = datetime.datetime.now().isoformat()
+        df = tkzr.get_data()
+        df = tkzr.add_ends(df)
+        df = tkzr.add_clocks(df)
+        result = df.collect()
+        # Check for CLCK tokens
+        clock_rows = result.filter(pl.col("code").str.starts_with("CLCK"))
+        assert len(clock_rows) > 0
+        assert all(clock_rows["code"].str.starts_with("CLCK//"))
+
+    def test_insert_time_spacers_inserts_spacer_tokens(tmp_path):
+        """Time spacing tokens are inserted when insert_spacers is enabled."""
+        cfg = OmegaConf.create(
+            {
+                "data_home": str(tmp_path),
+                "processed_data_home": str(tmp_path / "out"),
+                "n_bins": 4,
+                "fused": True,
+                "collated_inputs": [str(_make_collated_data(tmp_path)[0])],
+                "subject_splits": str(_make_collated_data(tmp_path)[1]),
+                "ordering": ["BOS", "SEX", "LAB", "EOS"],
+                "insert_spacers": True,
+                "spacers": {"short": 60, "medium": 120, "long": 240},
+            }
+        )
+        tkzr = object.__new__(Tokenizer)
+        tkzr.cfg = cfg
+        tkzr.data_home = tmp_path
+        tkzr.lookup = None
+        tkzr.bins = None
+        tkzr.subject_splits = None
+        tkzr.is_training = True
+        tkzr.created_dttm = datetime.datetime.now().isoformat()
+        df = tkzr.get_data()
+        df = tkzr.add_ends(df)
+        df = tkzr.bin_data(df)
+        df = tkzr.insert_time_spacers(df)
+        result = df.collect()
+        # Check for TIME spacer tokens
+        assert "t_spacer" in result.columns
+        spacer_rows = result.filter(pl.col("t_spacer").is_not_null())
+        assert len(spacer_rows) > 0
+        assert all(spacer_rows["t_spacer"].str.starts_with("TIME//"))
+
     """save/load round-trip via YAML preserves the tokenizer."""
     tokenizer.get_all().collect()
     with tempfile.TemporaryDirectory() as tmp_dir:

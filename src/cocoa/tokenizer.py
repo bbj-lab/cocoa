@@ -219,7 +219,7 @@ class Tokenizer:
             .sort("time", "priority")
             .explode("to_tokenize")
             .join(self.get_lookup(pt), on="to_tokenize", validate="m:1", how="left")
-            .with_columns(pl.col("token").fill_null(0))  # UNK
+            .with_columns(pl.col("token").fill_null(0))  # UNK is 0
             .group_by("subject_id", maintain_order=True)
             .agg(pl.col("token").alias("tokens"), pl.col("time").alias("times"))
         )

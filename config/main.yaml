@@ -1,6 +1,6 @@
 %YAML 1.2
 ---
-data_home: ~/Downloads/development-sample-21/raw-mimic/dev
+data_home: /gpfs/data/bbj-lab/users/burkh4rt/data-raw/mimic-2.1.0
 # /mnt/bbj-lab/users/burkh4rt/data-raw/mimic-2.1.0
 # /gpfs/data/bbj-lab/users/burkh4rt/data-raw/mimic-2.1.0
 # ~/Downloads/development-sample-21/raw-mimic/dev

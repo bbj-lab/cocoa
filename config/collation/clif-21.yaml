@@ -18,7 +18,7 @@ reference:
     - table: clif_patient
       key: patient_id
       validation: "m:1"
-      with_col_expr: pl.lit("AGE").alias("AGE")
+      with_col_expr: pl.lit("age").alias("AGE")
 
 entries:
   - table: REFERENCE
@@ -37,6 +37,7 @@ entries:
     time: admission_dttm
 
   - table: REFERENCE
+    prefix: AGE
     code: AGE
     numeric_value: age_at_admission
     time: admission_dttm

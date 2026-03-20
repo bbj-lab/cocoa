@@ -36,6 +36,11 @@ class Logger(logging.Logger):
         self.addHandler(ch)
         self.propagate = False
 
+        self.split_order = pl.col("split").replace(
+            {v: i for i, v in enumerate(["train", "tuning", "held_out"])}
+        )
+        self.code_type = pl.col("code").str.split("//").list[0]
+
     def summarize_meds_like(self, df: pl.LazyFrame, df_splits: pl.DataFrame):
         self.info("total rows: {}".format(df.select(pl.len()).collect().item()))
         self.info(
@@ -45,21 +50,12 @@ class Logger(logging.Logger):
         )
         self.info(
             "by category: {}".format(
-                df.select(
-                    pl.col("code")
-                    .str.split("//")
-                    .list[0]
-                    .value_counts(normalize=True, sort=True)
-                )
+                df.select(self.code_type.value_counts(normalize=True, sort=True))
                 .unnest("code")
                 .collect()
             )
         )
-        self.info(
-            "example rows: {}".format(
-                df.unique(pl.col("code").str.split("//").list[0]).head(10).collect()
-            )
-        )
+        self.info("example rows: {}".format(df.unique().head(10).collect()))
         sbj_id = (
             df.group_by("subject_id")
             .agg(pl.len())
@@ -75,15 +71,11 @@ class Logger(logging.Logger):
             )
         )
         self.info(
-            "split info: {}".format(
+            "subjects by split: {}".format(
                 df_splits.group_by("split")
                 .agg(pl.len().alias("count"))
                 .with_columns(rate=(pl.col("count") / pl.sum("count")).round(4))
-                .sort(
-                    pl.col("split").replace(
-                        {v: i for i, v in enumerate(["train", "tuning", "held_out"])}
-                    )
-                )
+                .sort(self.split_order)
             )
         )
         self.info(
@@ -91,11 +83,7 @@ class Logger(logging.Logger):
                 df.join(df_splits.lazy(), on="subject_id")
                 .group_by("split")
                 .agg(pl.len().alias("count"))
-                .sort(
-                    pl.col("split").replace(
-                        {v: i for i, v in enumerate(["train", "tuning", "held_out"])}
-                    )
-                )
+                .sort(self.split_order)
                 .collect()
             )
         )
@@ -119,11 +107,10 @@ class Logger(logging.Logger):
             )
         )
 
-        df_by_split = df.join(df_splits.lazy(), on="subject_id", validate="m:1")
-
         self.info(
             "split-level info: {}".format(
-                df_by_split.group_by("split")
+                df.join(df_splits.lazy(), on="subject_id", validate="m:1")
+                .group_by("split")
                 .agg(
                     pl.col("tokens").list.len().mean().alias("avg_len"),
                     pl.col("tokens").list.len().median().alias("median_len"),
@@ -133,39 +120,37 @@ class Logger(logging.Logger):
                     .mean()
                     .alias("avg_duration"),
                 )
-                .sort(
-                    pl.col("split").replace(
-                        {v: i for i, v in enumerate(["train", "tuning", "held_out"])}
-                    )
-                )
+                .sort(self.split_order)
                 .collect()
             )
         )
 
-        sbj_id = (
+        sbj_ids = (
             df.with_columns(pl.col("tokens").list.len().alias("len"))
             .sort((pl.col("len") - pl.lit(25)).abs(), descending=False)
             .collect()
-            .head(1)
+            .head(3)
             .select("subject_id")
-            .item()
+            .to_series()
+            .to_list()
         )
 
-        self.info(
-            "example timeline ({}): {}".format(
-                sbj_id,
-                df.filter(pl.col("subject_id") == sbj_id)
-                .explode("tokens", "times")
-                .join(
-                    lookup,
-                    left_on="tokens",
-                    right_on="token",
-                    how="left",
-                    validate="m:1",
+        for sbj_id in sbj_ids:
+            self.info(
+                "example timeline ({}): {}".format(
+                    sbj_id,
+                    df.filter(pl.col("subject_id") == sbj_id)
+                    .explode("tokens", "times")
+                    .join(
+                        lookup,
+                        left_on="tokens",
+                        right_on="token",
+                        how="left",
+                        validate="m:1",
+                    )
+                    .collect(),
                 )
-                .collect(),
             )
-        )
 
 
 if __name__ == "__main__":

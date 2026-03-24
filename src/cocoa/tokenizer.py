@@ -274,10 +274,10 @@ class Tokenizer:
     def to_yaml(self) -> str:
         return OmegaConf.to_yaml(
             {
-                "lookup": self.lookup.collect().to_dicts()
+                "lookup": dict(self.lookup.collect().rows())
                 if self.lookup is not None
                 else None,
-                "bins": self.bins.collect().to_dicts()
+                "bins": {k: v for k, *v in self.bins.collect().rows()}
                 if self.bins is not None
                 else None,
                 "is_training": self.is_training,
@@ -293,9 +293,17 @@ class Tokenizer:
         tkzr = cls(is_training=data.is_training, **cfg)
         tkzr.created_dttm = data.created_dttm
         if data.bins is not None:
-            tkzr.bins = pl.DataFrame(OmegaConf.to_container(data.bins)).lazy()
+            tkzr.bins = pl.DataFrame(
+                [[k, *v] for k, v in dict(data.bins).items()],
+                schema=["code", *[f"break_{i}" for i in range(1, cfg["n_bins"])]],
+                orient="row",
+            ).lazy()
         if data.lookup is not None:
-            tkzr.lookup = pl.DataFrame(OmegaConf.to_container(data.lookup)).lazy()
+            tkzr.lookup = pl.DataFrame(
+                list(dict(data.lookup).items()),
+                schema=["to_tokenize", "token"],
+                orient="row",
+            ).lazy()
         if done_training:
             tkzr.is_training = False
         return tkzr

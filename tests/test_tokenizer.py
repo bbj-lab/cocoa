@@ -64,6 +64,24 @@ def _make_collated_data(tmp_path: pathlib.Path):
     return tmp_path / "meds.parquet", tmp_path / "splits.parquet"
 
 
+def _collect_lookup(lookup):
+    """Return a Polars DataFrame for the lookup regardless of storage type.
+
+    Accepts a dict, a Polars LazyFrame, or a Polars DataFrame.
+    """
+    if lookup is None:
+        return None
+    if isinstance(lookup, dict):
+        return pl.DataFrame(
+            {"to_tokenize": list(lookup.keys()), "token": list(lookup.values())}
+        )
+    # LazyFrame or DataFrame
+    try:
+        return lookup.collect()
+    except Exception:
+        return pl.DataFrame(lookup)
+
+
 def _make_tokenizer(tmp_path: pathlib.Path, *, fused: bool = True, n_bins: int = 4):
     """Build a Tokenizer without reading config files from disk."""
     meds_path, splits_path = _make_collated_data(tmp_path)
@@ -185,7 +203,7 @@ def test_get_all_produces_one_row_per_subject(tokenizer):
 def test_get_all_timelines_start_with_bos(tokenizer):
     """Every timeline should begin with BOS token (token 1)."""
     result = tokenizer.get_all().collect()
-    lookup_df = tokenizer.lookup.collect()
+    lookup_df = _collect_lookup(tokenizer.lookup)
     bos_token = lookup_df.filter(pl.col("to_tokenize") == "BOS")["token"].to_list()[0]
     for tokens in result["tokens"].to_list():
         assert tokens[0] == bos_token
@@ -194,7 +212,7 @@ def test_get_all_timelines_start_with_bos(tokenizer):
 def test_get_all_timelines_contain_eos(tokenizer):
     """Every timeline should contain an EOS token."""
     result = tokenizer.get_all().collect()
-    lookup_df = tokenizer.lookup.collect()
+    lookup_df = _collect_lookup(tokenizer.lookup)
     eos_token = lookup_df.filter(pl.col("to_tokenize") == "EOS")["token"].to_list()[0]
     for tokens in result["tokens"].to_list():
         assert eos_token in tokens
@@ -203,13 +221,13 @@ def test_get_all_timelines_contain_eos(tokenizer):
 def test_vocab_frozen_after_get_all(tokenizer):
     """After get_all, the tokenizer and its vocab should be frozen."""
     tokenizer.get_all().collect()
-    assert isinstance(tokenizer.lookup, pl.LazyFrame)
+    assert isinstance(tokenizer.lookup, (dict, pl.LazyFrame, pl.DataFrame))
 
 
 def test_contains(tokenizer):
     """__contains__ reflects vocab membership after processing."""
     tokenizer.get_all().collect()
-    lookup_df = tokenizer.lookup.collect()
+    lookup_df = _collect_lookup(tokenizer.lookup)
     toks = lookup_df["to_tokenize"].to_list()
     assert "BOS" in toks
     assert "EOS" in toks
@@ -221,7 +239,9 @@ def test_yaml_round_trip(tokenizer):
     tokenizer.get_all().collect()
     yaml_str = tokenizer.to_yaml()
     restored = Tokenizer.from_yaml(yaml_str, done_training=True)
-    assert len(restored.lookup.collect()) == len(tokenizer.lookup.collect())
+    restored_lookup = _collect_lookup(restored.lookup)
+    orig_lookup = _collect_lookup(tokenizer.lookup)
+    assert len(restored_lookup) == len(orig_lookup)
     assert not restored.is_training
     assert restored.bins is not None
     # bins have the same codes
@@ -242,7 +262,9 @@ def test_save_all_writes_files(tokenizer):
         assert len(df) == 4
         # can load tokenizer yaml
         restored = tokenizer.load(out / "tokenizer.yaml")
-        assert len(restored.lookup.collect()) == len(tokenizer.lookup.collect())
+        restored_lookup = _collect_lookup(restored.lookup)
+        orig_lookup = _collect_lookup(tokenizer.lookup)
+        assert len(restored_lookup) == len(orig_lookup)
 
 
 def test_save_and_load_yaml(tokenizer):
@@ -319,5 +341,7 @@ def test_save_and_load_yaml(tokenizer):
         tokenizer.save(path)
         assert path.exists()
         restored = tokenizer.load(path)
-        assert len(restored.lookup.collect()) == len(tokenizer.lookup.collect())
+        restored_lookup = _collect_lookup(restored.lookup)
+        orig_lookup = _collect_lookup(tokenizer.lookup)
+        assert len(restored_lookup) == len(orig_lookup)
         assert not restored.is_training

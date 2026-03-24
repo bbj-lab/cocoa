@@ -4,6 +4,18 @@
 > into a single denormalized dataframe and create tokenized timelines from the
 > results.
 
+<img src="img/cocoa-bean.png" alt="cocoa bean" width="400" style="display: block;
+margin: 0 auto; -webkit-mask-image: radial-gradient(
+    ellipse at center,
+    rgba(0,0,0,1) 50%,
+    rgba(0,0,0,0) 100%
+  );
+  mask-image: radial-gradient(
+    ellipse at center,
+    rgba(0,0,0,1) 50%,
+    rgba(0,0,0,0) 100%
+  );"/>
+
 ## Installation
 
 You can use [uv](https://docs.astral.sh/uv/pip/) to create an environment for

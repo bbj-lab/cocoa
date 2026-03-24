@@ -25,7 +25,8 @@
 
 
 [tool.ruff]
-    line-length = 88
+    extend-exclude = [ "*.md" ]
+    line-length    = 88
 
     [tool.ruff.format]
         docstring-code-format     = true

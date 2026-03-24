@@ -16,9 +16,7 @@ from rich.table import Table
 from cocoa.collator import Collator
 from cocoa.tokenizer import Tokenizer
 
-app = typer.Typer(
-    name="cocoa", help="Configurable collation and tokenization", add_completion=False
-)
+app = typer.Typer(name="cocoa", help="Configurable collation and tokenization")
 console = Console()
 
 

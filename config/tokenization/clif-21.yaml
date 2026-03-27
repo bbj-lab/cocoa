@@ -11,9 +11,9 @@ collated_inputs:
 subject_splits: ./processed/subject_splits.parquet
 
 ordering:
-  - TIME
-  - CLCK
   - BOS
+  - TIME # the timestamp for a time spacing token is at the next event
+  - CLCK
   - AGE
   - SEX
   - RACE

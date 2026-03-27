@@ -89,7 +89,7 @@ class Logger(logging.Logger):
         )
 
     def summarize_tokens_times(
-        self, df: pl.LazyFrame, df_splits: pl.DataFrame, lookup: pl.LazyFrame
+        self, df: pl.LazyFrame, df_splits: pl.DataFrame, lookup: pl.DataFrame
     ):
         self.info("total rows: {}".format(df.select(pl.len()).collect().item()))
         self.info(
@@ -142,7 +142,7 @@ class Logger(logging.Logger):
                     df.filter(pl.col("subject_id") == sbj_id)
                     .explode("tokens", "times")
                     .join(
-                        lookup,
+                        lookup.lazy(),
                         left_on="tokens",
                         right_on="token",
                         how="left",

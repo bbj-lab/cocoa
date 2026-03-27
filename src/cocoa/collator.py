@@ -167,7 +167,7 @@ class Collator:
             )
             .cast(pl.String)
             .alias("text_value"),
-        )
+        ).drop_nulls(subset=["subject_id", "time", "code"])
 
     def get_all(self) -> pl.LazyFrame:
         """get all tokens for all events as configured"""
@@ -207,7 +207,9 @@ class Collator:
             .resolve()
         )
         to_folder.mkdir(parents=True, exist_ok=True)
-        (df_all := self.get_all()).sink_parquet(to_folder / "meds.parquet")
+        (df_all := self.get_all()).sink_parquet(
+            to_folder / "meds.parquet", engine="streaming"
+        )
         (df_splits := self.get_subject_splits(df_all)).write_parquet(
             to_folder / "subject_splits.parquet"
         )

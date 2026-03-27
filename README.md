@@ -29,19 +29,16 @@ uv sync
 uv run cocoa --help
 ```
 
-## Overview
+## (1) Collation
 
-Cocoa does two things: **(1) collation** and **(2) tokenization**.
-
-### (1) Collation
-
-The collator pulls from raw data tables (parquet or CSV) and combines them into a
+The collator pulls from raw data tables (parquet or csv) and combines them into a
 single denormalized dataframe in a
 [MEDS](https://github.com/Medical-Event-Data-Standard/meds)-like format. Each row
-in the output represents an event with a `subject_id`, `time`, `code`, and
-optional `numeric_value` / `text_value` columns.
+in the output represents an event with a `subject_id`, `time`, `code` (all
+mandatory), and optional `numeric_value` / `text_value` columns.
 
-Collation is driven by a YAML config that specifies:
+Collation is driven by a YAML config (like
+[this](./config/collation/clif-21.yaml)) that specifies:
 
 - A **reference table** with a primary key (`subject_id`), start/end times, and
   optional augmentation joins (e.g. joining a patient demographics table).
@@ -53,86 +50,14 @@ Collation is driven by a YAML config that specifies:
   These take the form of polars expressions that are evaluated and applied to the
   dataframe during loading. _Mild checks are performed when evaluating these
   expressions, but in general, the yaml config is just as powerful as the python.
-  Check yaml files prior to use._
+  Check all yaml files prior to use._
 - **Subject splits** (`train_frac` / `tuning_frac`) that partition subjects
   chronologically into train, tuning, and held-out sets.
-
-### (2) Tokenization
-
-The tokenizer consumes the collated parquet output and converts events into
-integer token sequences suitable for sequence models. It:
-
-1. Adds `BOS` / `EOS` sentinel tokens to each subject's timeline.
-2. Computes quantile-based bins for numeric values (from training data only).
-3. Maps codes (and optionally their binned values) to integer tokens via a
-   vocabulary that grows during training and is frozen for tuning/held-out data.
-4. Aggregates per-subject token sequences in a configurable sort order.
-
-Tokenization is driven by its own YAML config that specifies:
-
-- `n_bins` — number of quantile bins for numeric values.
-- `fused` — whether to fuse the code, binned value, and text value into a single
-  token (`true`) or keep them as separate tokens (`false`).
-- `collated_inputs` — paths to the collated parquet files to tokenize.
-- `ordering` — the priority order of code prefixes when sorting events within the
-  same timestamp.
-
-The tokenizer produces two main outputs:
-
-- **`tokens_times.parquet`** — one row per subject with three columns:
-  - `subject_id`
-  - `tokens` — the integer token sequence for the subject's timeline.
-  - `times` — a parallel list of timestamps, one per token, indicating when each
-    event occurred.
-- **`tokenizer.yaml`** — a plain yaml file that contains information about the
-  configuration, learned vocabulary, and bins
-
-For example, a subject with two events might look like:
-
-| subject_id | tokens           | times                                                        |
-| ---------- | ---------------- | ------------------------------------------------------------ |
-| "100"      | [1, 5, 8, 12, 2] | [2025-01-01, 2025-01-01, 2025-01-02, 2025-01-03, 2025-01-03] |
-
-Here 1 is the BOS token, 2 is EOS, and the tokens in between correspond to the
-subject's clinical events in chronological order (with ties broken by the
-configured `ordering`). In fused mode each event is a single token; in unfused
-mode an event with a numeric value becomes two tokens (code + quantile bin).
-
-## Configuration
-
-All configuration lives under `config/`. The entrypoint is `config/main.yaml`,
-which points to the collation and tokenization configs and sets shared paths:
-
-```yaml
-data_home: ~/path/to/raw/data
-processed_data_home: ~/path/to/output
-
-collation_config: ./config/collation/clif-21.yaml
-tokenization_config: ./config/tokenization/clif-21.yaml
-```
-
-To use a different dataset or schema, create new YAML files under
-`config/collation/` and `config/tokenization/` and update the paths in
-`config/main.yaml`.
-
-Both the `Collator` and `Tokenizer` classes also accept `**kwargs` that are
-merged on top of the YAML config via OmegaConf, so any config value can be
-overridden programmatically:
-
-```python
-from cocoa.collator import Collator
-from cocoa.tokenizer import Tokenizer
-
-collator = Collator(data_home="~/other/data")
-tokenizer = Tokenizer(n_bins=20, fused=False)
-```
-
-### Configuring the collator
 
 A collation config has three top-level sections: identifiers, subject splits, and
 the reference + entries that define which events to extract.
 
-#### Identifiers and splits
+### Identifiers and splits
 
 ```yaml
 subject_id: hospitalization_id # the atomic unit of interest
@@ -149,7 +74,7 @@ hospitalization). `group_id` is an optional higher-level grouping column.
 Subjects are sorted chronologically and split into train / tuning / held-out sets
 according to the specified fractions.
 
-#### Reference table
+### Reference table
 
 The reference table is the primary static table to which everything else is
 joined:
@@ -167,7 +92,7 @@ reference:
       with_col_expr: pl.lit("AGE").alias("AGE")
 ```
 
-- `table` — the name of the parquet (or CSV) file in `data_home` (without the
+- `table` — the name of the parquet (or csv) file in `data_home` (without the
   extension).
 - `start_time` / `end_time` — columns that define the subject's time window; used
   to filter events from other tables when `reference_key` is set (see below).
@@ -175,7 +100,7 @@ reference:
   frame. Each needs a `key` to join on and a `validation` mode (e.g. `"m:1"`).
   You can also add computed columns via `with_col_expr`.
 
-#### Entries
+### Entries
 
 The `entries` list defines the events to extract. Every entry produces rows with
 the columns `subject_id`, `time`, `code`, `numeric_value`, and `text_value`. The
@@ -266,9 +191,152 @@ Using `reference_key` to restrict events to a subject's time window:
   reference_key: patient_id
 ```
 
+## (2) Tokenization
+
+The tokenizer consumes the collated parquet output and converts events into
+integer token sequences suitable for sequence models. It:
+
+1. Adds `BOS` / `EOS` (beginning/end-of-sequence) tokens to each subject's
+   timeline.
+2. Optionally inserts configurable clock tokens to mark the passage of time.
+3. Optionally inserts configurable time spacing tokens between events.
+4. Computes quantile-based bins for numeric values (from training data only).
+5. Maps codes (and optionally their binned values) to integer tokens via a
+   vocabulary that is formed during training and is frozen for tuning/held-out
+   data.
+6. Aggregates per-subject token sequences according to time, and then
+   configurable sort order.
+
+Tokenization is driven by its own YAML config (like
+[this](./config/collation/clif-21.yaml)) that specifies:
+
+- `n_bins` — number of quantile bins for numeric values.
+- `fused` — whether to fuse the code, binned value, and text value into a single
+  token (`true`) or keep them as separate tokens (`false`).
+- `insert_spacers` — whether to insert time spacing tokens between events.
+- `insert_clocks` — whether to insert clock tokens at specified times.
+- `collated_inputs` — paths to the collated parquet files to tokenize.
+- `subject_splits` — path to the subject splits parquet file.
+- `ordering` — the priority order of code prefixes when sorting events within the
+  same timestamp.
+- `spacers` — mapping of time intervals (e.g., `5m-15m`, `1h-2h`) to their lower
+  bounds in minutes, used for time spacing tokens.
+- `clocks` — list of hour strings (e.g., `00`, `04`, ...) at which to insert
+  clock tokens.
+
+## Outputs
+
+The tokenizer produces two main outputs:
+
+### Tokenized timelines
+
+`tokens_times.parquet` gives one row per subject with three columns:
+
+- `subject_id`
+- `tokens` — the integer token sequence for the subject's timeline.
+- `times` — a parallel list of timestamps, one per token, indicating when each
+  event occurred.
+
+The table will look something like this:
+
+```
+┌────────────────────┬─────────────────┬─────────────────────────────────┐
+│ subject_id         ┆ tokens          ┆ times                           │
+│ ---                ┆ ---             ┆ ---                             │
+│ str                ┆ list[u32]       ┆ list[datetime[μs]]              │
+╞════════════════════╪═════════════════╪═════════════════════════════════╡
+│ 20002103           ┆ [20, 350, … 21] ┆ [2116-05-08 02:45:00, 2116-05-… │
+│ 20008372           ┆ [20, 350, … 21] ┆ [2110-10-30 13:03:00, 2110-10-… │
+│ …                  ┆ …               ┆ …                               │
+│ 29994865           ┆ [20, 364, … 21] ┆ [2111-01-28 21:49:00, 2111-01-… │
+└────────────────────┴─────────────────┴─────────────────────────────────┘
+```
+
+In this example, token 20 corresponds to the beginning-of-sequence token (`BOS`),
+token 21 to the end-of-sequence token (`EOS`), and the tokens in between
+correspond to the subject's clinical events in chronological order (with ties
+broken by the configured `ordering`). In fused mode each event is a single token;
+in unfused mode an event with a numeric value becomes two tokens (code + quantile
+bin).
+
+### A record of the tokenizer object
+
+`tokenizer.yaml` is a plain yaml file that contains information about the
+configuration, learned vocabulary, and bins. This file is sufficient to
+reconstitute the tokenizer object. Currently, there's an entry for the lookup
+that maps strings to tokens:
+
+```yaml
+lookup:
+  UNK: 0
+  ADMN//direct: 1
+  ADMN//ed: 2
+  ADMN//elective: 3
+  AGE//age_Q0: 4
+  ...
+```
+
+and an entry for bin cutpoints:
+
+```yaml
+bins:
+  VTL//heart_rate:
+    - 65.0
+    - 70.0
+    - 75.0
+    - 80.0
+    - 84.0
+    - 89.0
+    - 94.0
+    - 100.0
+    - 108.0
+  LAB-RES//platelet_count:
+    - 62.0
+    - 114.0
+    - 147.0
+    - 175.0
+    - 203.0
+    - 233.0
+    - 267.0
+    - 314.0
+    - 390.0
+  ...
+```
+
+The lists following each key correspond to the cutpoints for the associated
+category.
+
+Both of these things are placed in `processed_data_home` as configured.
+
 ## Usage
 
-Cocoa provides a CLI with the following commands:
+All configuration lives under `config/`. The entrypoint is `config/main.yaml`,
+which points to the collation and tokenization configs and sets shared paths:
+
+```yaml
+data_home: ~/path/to/raw/data
+processed_data_home: ~/path/to/output
+
+collation_config: ./config/collation/clif-21.yaml
+tokenization_config: ./config/tokenization/clif-21.yaml
+```
+
+To use a different dataset or schema, create new YAML files under
+`config/collation/` and `config/tokenization/` and update the paths in
+`config/main.yaml`, or pass your options directly to these objects. Both the
+`Collator` and `Tokenizer` classes also accept `**kwargs` that are merged on top
+of the YAML config via OmegaConf, so any config value can be overridden
+programmatically:
+
+```python
+from cocoa.collator import Collator
+from cocoa.tokenizer import Tokenizer
+
+collator = Collator(data_home="~/other/data")
+tokenizer = Tokenizer(n_bins=20, fused=False)
+```
+
+We provide a CLI with the following commands:
 
 ```sh
 # collate raw data into a denormalized parquet file

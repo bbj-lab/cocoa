@@ -87,7 +87,7 @@ class Tokenizer:
                         )
                     )
                     .explode("time", keep_nulls=False)
-                    .filter(pl.col("time").is_not_null())
+                    .drop_nulls(subset=["time"])
                     .with_columns(HH=pl.col("time").dt.strftime("%H"))
                     .select(
                         "subject_id",
@@ -108,7 +108,8 @@ class Tokenizer:
                     on="subject_id",
                     validate="m:1",
                 )
-                .filter(pl.col("numeric_value").is_not_null())
+                .drop_nulls(subset=["numeric_value"])
+                .drop_nans(subset=["numeric_value"])
                 .group_by("code")
                 .agg(
                     [
@@ -118,12 +119,12 @@ class Tokenizer:
                         for i in range(1, self.cfg.n_bins)
                     ]
                 )
-            ).cache()
+            ).collect()
         return self.bins
 
     def bin_data(self, df: pl.LazyFrame) -> pl.LazyFrame:
         return (
-            df.join(self.get_bins(df), on="code", how="left")
+            df.join(self.get_bins(df).lazy(), on="code", how="left")
             .with_columns(
                 pl.when(pl.col("numeric_value").is_not_null())
                 .then(
@@ -204,7 +205,7 @@ class Tokenizer:
             unk_row = pl.LazyFrame(
                 {"to_tokenize": ["UNK"], "token": pl.Series([0], dtype=pl.UInt32)}
             )
-            self.lookup = pl.concat([unk_row, lookup]).cache()
+            self.lookup = pl.concat([unk_row, lookup]).collect()
         return self.lookup
 
     def get_priority(self) -> pl.LazyFrame:
@@ -212,17 +213,20 @@ class Tokenizer:
             pl.Series("code_type", self.cfg.ordering)
             .to_frame()
             .with_row_index("priority")
-            .lazy()
         )
 
     def tokenize_data(self, pt: pl.LazyFrame) -> pl.LazyFrame:
         return (
             pt.with_columns(code_type=pl.col("code").str.split("//").list[0])
-            .join(self.get_priority(), on="code_type", how="left", validate="m:1")
+            .join(
+                self.get_priority().lazy(), on="code_type", how="left", validate="m:1"
+            )
             .with_columns(pl.col("priority").fill_null(len(self.cfg.ordering)))
             .sort("time", "priority")
             .explode("to_tokenize")
-            .join(self.get_lookup(pt), on="to_tokenize", validate="m:1", how="left")
+            .join(
+                self.get_lookup(pt).lazy(), on="to_tokenize", validate="m:1", how="left"
+            )
             .with_columns(pl.col("token").fill_null(0))  # UNK is 0
             .group_by("subject_id", maintain_order=True)
             .agg(pl.col("token").alias("tokens"), pl.col("time").alias("times"))
@@ -255,12 +259,16 @@ class Tokenizer:
         df.sink_parquet(to_folder / "tokens_times.parquet", engine="streaming")
         self.save(to_folder / "tokenizer.yaml")
 
+    def __call__(self, word: str) -> int:
+        try:
+            return (
+                self.lookup.filter(pl.col("to_tokenize") == word).select("token").item()
+            )
+        except ValueError or AttributeError:
+            return 0  # UNK
+
     def __contains__(self, word: str) -> bool:
-        return (
-            word in lk.select("to_tokenize").collect().to_series().to_list()
-            if (lk := self.lookup) is not None
-            else False
-        )
+        return self.__call__(word) != 0
 
     def __str__(self):
         return "{sp} of {sz} words {md}".format(
@@ -273,15 +281,13 @@ class Tokenizer:
         return str(self) + ", created {dttm}".format(dttm=self.created_dttm)
 
     def __len__(self) -> int:
-        return len(lk.collect()) if (lk := self.lookup) is not None else 0
+        return len(self.lookup) if self.lookup is not None else 0
 
     def to_yaml(self) -> str:
         return OmegaConf.to_yaml(
             {
-                "lookup": dict(self.lookup.collect().rows())
-                if self.lookup is not None
-                else None,
-                "bins": {k: v for k, *v in self.bins.collect().rows()}
+                "lookup": dict(self.lookup.rows()) if self.lookup is not None else None,
+                "bins": {k: v for k, *v in self.bins.rows()}
                 if self.bins is not None
                 else None,
                 "is_training": self.is_training,
@@ -301,13 +307,13 @@ class Tokenizer:
                 [[k, *v] for k, v in dict(data.bins).items()],
                 schema=["code", *[f"break_{i}" for i in range(1, cfg["n_bins"])]],
                 orient="row",
-            ).lazy()
+            )
         if data.lookup is not None:
             tkzr.lookup = pl.DataFrame(
                 list(dict(data.lookup).items()),
                 schema=["to_tokenize", "token"],
                 orient="row",
-            ).lazy()
+            )
         if done_training:
             tkzr.is_training = False
         return tkzr
@@ -326,9 +332,13 @@ class Tokenizer:
 
 
 if __name__ == "__main__":
-    t0 = time.perf_counter()
     tkzr = Tokenizer()
     tkzr.save_all(verbose=True)
-    t1 = time.perf_counter()
-    Logger().info("Tokenization completed in {:.2f}s.".format(t1 - t0))
+
+    tkzr_cp = Tokenizer.from_yaml(tkzr.to_yaml())
+    assert tkzr.lookup.equals(tkzr_cp.lookup)
+    assert tkzr.bins.equals(tkzr_cp.bins)
+    assert tkzr("EOS") != 0
+    assert "#$%^&*()" not in tkzr
+
     # breakpoint()

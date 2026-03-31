@@ -42,6 +42,7 @@ class Logger(logging.Logger):
         self.code_type = pl.col("code").str.split("//").list[0]
 
     def summarize_meds_like(self, df: pl.LazyFrame, df_splits: pl.DataFrame):
+        df = df.collect(engine="streaming").lazy()
         self.info("total rows: {}".format(df.select(pl.len()).collect().item()))
         self.info(
             "unique subjects: {}".format(
@@ -91,6 +92,7 @@ class Logger(logging.Logger):
     def summarize_tokens_times(
         self, df: pl.LazyFrame, df_splits: pl.DataFrame, lookup: pl.DataFrame
     ):
+        df = df.collect(engine="streaming").lazy()
         self.info("total rows: {}".format(df.select(pl.len()).collect().item()))
         self.info(
             "timeline length stats: {}".format(

@@ -29,7 +29,11 @@ def collate(
     verbose: Annotated[
         bool,
         typer.Option(
-            "--verbose", "-v", help="Verbose logging for collate", is_flag=True
+            "--verbose",
+            "-v",
+            help="Verbose logging for collate; this may cause "
+            "memory issues with large datasets",
+            is_flag=True,
         ),
     ] = False,
 ):
@@ -58,7 +62,11 @@ def tokenize(
     verbose: Annotated[
         bool,
         typer.Option(
-            "--verbose", "-v", help="Verbose logging for tokenize", is_flag=True
+            "--verbose",
+            "-v",
+            help="Verbose logging for collate; this may cause "
+            "memory issues with large datasets",
+            is_flag=True,
         ),
     ] = False,
 ):

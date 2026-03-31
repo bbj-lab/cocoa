@@ -91,6 +91,7 @@ class Logger(logging.Logger):
     def summarize_tokens_times(
         self, df: pl.LazyFrame, df_splits: pl.DataFrame, lookup: pl.DataFrame
     ):
+        df = df.collect().lazy()
         self.info("total rows: {}".format(df.select(pl.len()).collect().item()))
         self.info(
             "timeline length stats: {}".format(

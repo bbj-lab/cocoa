@@ -64,7 +64,7 @@ class Tokenizer:
 
     def add_clocks(self, df: pl.LazyFrame) -> pl.LazyFrame:
         # add clock codes if configured
-        if self.cfg.insert_clocks:
+        if self.cfg.get("insert_clocks", False):
             return pl.concat(
                 [
                     df,
@@ -144,7 +144,7 @@ class Tokenizer:
         )
 
     def insert_time_spacers(self, df: pl.LazyFrame) -> pl.LazyFrame:
-        if self.cfg.insert_spacers:
+        if self.cfg.get("insert_spacers", False):
             spcrs = dict(self.cfg.spacers)
             return df.with_columns(
                 tdiff_mins=(
@@ -180,7 +180,7 @@ class Tokenizer:
                     separator="_",
                     ignore_nulls=True,
                 )
-                if self.cfg.fused
+                if self.cfg.get("fused", False)
                 else pl.concat_list("t_spacer", "code", "binned_value", "text_value"),
             )
             .list.drop_nulls()
@@ -228,7 +228,15 @@ class Tokenizer:
             )
             .with_columns(pl.col("token").fill_null(0))  # UNK is 0
             .group_by("subject_id", maintain_order=True)
-            .agg(pl.col("token").alias("tokens"), pl.col("time").alias("times"))
+            .agg(
+                pl.col("token").alias("tokens"),
+                pl.col("time").alias("times"),
+                *(
+                    [pl.col("numeric_value").alias("numeric_values")]
+                    if self.cfg.get("include_numeric_values", False)
+                    else []
+                ),
+            )
         )
 
     def get_all(self, verbose: bool = False) -> pl.LazyFrame:

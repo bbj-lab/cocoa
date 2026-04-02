@@ -170,7 +170,9 @@ class Collator:
 
     def get_all(self) -> pl.LazyFrame:
         """get all tokens for all events as configured"""
-        return pl.concat((self.get_entry(**entry) for entry in self.cfg.entries))
+        return pl.concat(
+            (self.get_entry(**entry) for entry in self.cfg.get("entries", []))
+        )
 
     def get_subject_splits(self, df_all: pl.LazyFrame) -> pl.DataFrame:
         """get the subject splits as configured"""

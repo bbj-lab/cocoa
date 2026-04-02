@@ -361,7 +361,8 @@ collator = Collator(data_home="~/other/data")
 tokenizer = Tokenizer(n_bins=20, fused=False)
 ```
 
-We provide a CLI with the following commands:
+We provide a CLI with the following commands. Depending on whether or not your
+environment is active, you may need to prepend (`uv run`):
 
 ```sh
 # collate raw data into a denormalized parquet file

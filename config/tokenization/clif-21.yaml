@@ -4,6 +4,7 @@ n_bins: !!int 10
 fused: !!bool true
 insert_spacers: !!bool false
 insert_clocks: !!bool false
+include_numeric_values: !!bool true
 
 collated_inputs:
   - ./processed/meds.parquet

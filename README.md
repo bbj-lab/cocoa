@@ -328,7 +328,32 @@ corresponding split assignment:
 └────────────┴──────────┘
 ```
 
-Both of these things are placed in `processed_data_home` as configured.
+### A parquet dataframe in the meds format
+
+`meds.parquet` gives a table of the collated events that were passed to the
+tokenizer -- this is created in the `collate` step:
+
+```
+┌────────────┬─────────────────────┬──────────────────────────────┬───────────────┬────────────┐
+│ subject_id ┆ time                ┆ code                         ┆ numeric_value ┆ text_value │
+│ ---        ┆ ---                 ┆ ---                          ┆ ---           ┆ ---        │
+│ str        ┆ datetime[μs]        ┆ str                          ┆ f32           ┆ str        │
+╞════════════╪═════════════════════╪══════════════════════════════╪═══════════════╪════════════╡
+│ 24591817   ┆ 2111-09-26 18:15:00 ┆ MED-CTS//sodium_chloride     ┆ 0.0           ┆ null       │
+│ 21343412   ┆ 2112-01-11 06:31:00 ┆ LAB-RES//albumin             ┆ 3.3           ┆ null       │
+│ 24894995   ┆ 2113-01-14 14:25:00 ┆ LAB-ORD//creatinine          ┆ null          ┆ null       │
+│ 20947416   ┆ 2110-12-12 18:41:00 ┆ LAB-RES//hemoglobin          ┆ 8.4           ┆ null       │
+│ 25082363   ┆ 2110-06-17 17:00:00 ┆ VTL//respiratory_rate        ┆ 30.0          ┆ null       │
+│ …          ┆ …                   ┆ …                            ┆ …             ┆ …          │
+│ 22074503   ┆ 2110-07-13 03:53:00 ┆ LAB-ORD//chloride            ┆ null          ┆ null       │
+│ 24524153   ┆ 2110-10-08 03:20:00 ┆ LAB-RES//glucose_serum       ┆ 179.0         ┆ null       │
+│ 28104308   ┆ 2112-03-22 14:31:00 ┆ LAB-RES//sodium              ┆ 137.0         ┆ null       │
+│ 23859742   ┆ 2110-08-21 21:35:00 ┆ LAB-RES//ptt                 ┆ 26.299999     ┆ null       │
+│ 25805890   ┆ 2110-10-03 11:00:00 ┆ LAB-ORD//eosinophils_percent ┆ null          ┆ null       │
+└────────────┴─────────────────────┴──────────────────────────────┴───────────────┴────────────┘
+```
+
+All of these things are placed in `processed_data_home` as configured.
 
 <!-- prettier-ignore-start -->
 > [!TIP]

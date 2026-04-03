@@ -174,23 +174,25 @@ class Collator:
             (self.get_entry(**entry) for entry in self.cfg.get("entries", []))
         )
 
-    def get_subject_splits(self, df_all: pl.LazyFrame) -> pl.DataFrame:
+    def get_subject_splits(self) -> pl.DataFrame:
         """get the subject splits as configured"""
-        sbj = (
-            df_all.group_by("subject_id")
-            .agg(pl.col("time").min().alias("first_time"))
+        partition = (
+            self.get_reference_frame()
+            .group_by(self.cfg.get("group_id", self.cfg["subject_id"]))
+            .agg(pl.col(self.cfg.reference.start_time).min().alias("first_time"))
             .sort("first_time")
             .with_row_index()
         ).collect()
-        return sbj.with_columns(
+        partition = partition.with_columns(
             split=pl.when(
-                pl.col("index") < int(len(sbj) * self.cfg.subject_splits.train_frac)
+                pl.col("index")
+                < int(len(partition) * self.cfg.subject_splits.train_frac)
             )
             .then(pl.lit("train"))
             .when(
                 pl.col("index")
                 < int(
-                    len(sbj)
+                    len(partition)
                     * (
                         self.cfg.subject_splits.train_frac
                         + self.cfg.subject_splits.tuning_frac
@@ -199,7 +201,14 @@ class Collator:
             )
             .then(pl.lit("tuning"))
             .otherwise(pl.lit("held_out"))
-        ).select("subject_id", "split")
+        )
+        return (
+            partition
+            if "group_id" not in self.cfg
+            else self.get_reference_frame()
+            .collect()
+            .join(partition, on=self.cfg["group_id"])
+        ).select(pl.col(self.cfg["subject_id"]).alias("subject_id"), "split")
 
     def save_all(self, path: pathlib.Path = None, verbose: bool = False):
         to_folder = (
@@ -211,7 +220,7 @@ class Collator:
         (df_all := self.get_all()).sink_parquet(
             to_folder / "meds.parquet", engine="streaming"
         )
-        (df_splits := self.get_subject_splits(df_all)).write_parquet(
+        (df_splits := self.get_subject_splits()).write_parquet(
             to_folder / "subject_splits.parquet"
         )
 
@@ -221,6 +230,7 @@ class Collator:
 
 
 if __name__ == "__main__":
-    cltr = Collator()
-    cltr.save_all(verbose=True)
+    self = Collator()
+    self.save_all(verbose=True)
+    print(self.get_subject_splits())
     # breakpoint()

@@ -156,5 +156,5 @@ class Logger(logging.Logger):
 
 
 if __name__ == "__main__":
-    logger = Logger()
-    logger.info("Testing...")
+    self = Logger()
+    self.info("Testing...")

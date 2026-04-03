@@ -25,6 +25,9 @@ You can use [uv](https://docs.astral.sh/uv/pip/) to create an environment for
 running this code (with Python >= 3.12) as follows:
 
 ```sh
+# install uv, with, e.g. `pip install uv`
+git clone git@github.com:bbj-lab/cocoa.git
+cd cocoa
 uv sync
 uv run cocoa --help
 ```

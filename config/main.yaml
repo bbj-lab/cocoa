@@ -1,10 +1,6 @@
-%YAML 1.2
----
-data_home: /mnt/bbj-lab/users/burkh4rt/data-raw/mimic-2.1.0
-# /mnt/bbj-lab/users/burkh4rt/data-raw/mimic-2.1.0
-# /gpfs/data/bbj-lab/users/burkh4rt/data-raw/mimic-2.1.0
-# ~/Downloads/development-sample-21/raw-mimic/dev
-processed_data_home: ./processed
+# Use absolute path to existing CLIF data
+data_home: /home/code/clif-multimodal-fm-protoecg/data
+processed_data_home: /home/kajch/multi-modal-protoecg-gem/cocoa/data/processed
 
-collation_config: ./config/collation/clif-21.yaml
-tokenization_config: ./config/tokenization/clif-21.yaml
+collation_config: /home/kajch/multi-modal-protoecg-gem/cocoa/config/collation/clif-v2.1.yaml
+tokenization_config: /home/kajch/multi-modal-protoecg-gem/cocoa/config/tokenization/clif-21.yaml

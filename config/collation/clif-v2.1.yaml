@@ -1,0 +1,348 @@
+
+# This file defines how to extract events from CLIF tables and produce a denormalized MEDS-like parquet.
+
+
+# ============================================================================
+# Identifiers and Grouping
+# ============================================================================
+subject_id: hospitalization_id  # Each hospitalization is a subject
+group_id: patient_id            # Multiple hospitalizations per patient
+
+# ============================================================================
+# Subject Splits (chronological by admission_dttm)
+# ============================================================================
+subject_splits:
+  train_frac: 0.7
+  tuning_frac: 0.1
+  #max_subjects: 100  # Test with 100 subjects only
+
+# ============================================================================
+# Reference Table (primary table with time windows)
+# ============================================================================
+reference:
+  table: clif_hospitalization
+  start_time: admission_dttm
+  end_time: discharge_dttm
+  with_col_expr: >-
+          pl.when(pl.col("age_at_admission") < 30).then(pl.lit("18-29"))
+          .when(pl.col("age_at_admission") < 40).then(pl.lit("30-39"))
+          .when(pl.col("age_at_admission") < 50).then(pl.lit("40-49"))
+          .when(pl.col("age_at_admission") < 60).then(pl.lit("50-59"))
+          .when(pl.col("age_at_admission") < 70).then(pl.lit("60-69"))
+          .when(pl.col("age_at_admission") < 80).then(pl.lit("70-79"))
+          .otherwise(pl.lit("80+"))
+          .alias("age_bucket")
+          
+  # Join patient demographics onto hospitalization
+  augmentation_tables:
+    - table: clif_patient
+      key: patient_id
+      validation: "m:1"
+      
+
+
+# ============================================================================
+# Entries (event extraction rules)
+# ============================================================================
+entries:
+  # --------------------------------------------------------------------------
+  # DEMOGRAPHICS (from reference frame at admission)
+  # --------------------------------------------------------------------------
+  - table: REFERENCE
+    prefix: DEMO
+    code: age_bucket
+    time: admission_dttm
+    
+  - table: REFERENCE
+    prefix: DEMO
+    code: sex_category
+    time: admission_dttm
+    
+  - table: REFERENCE
+    prefix: DEMO
+    code: race_category
+    time: admission_dttm
+    
+  - table: REFERENCE
+    prefix: ADMN
+    code: admission_type_category
+    time: admission_dttm
+  # --------------------------------------------------------------------------
+  # ADT (Admission/Discharge/Transfer events)
+  # --------------------------------------------------------------------------
+  - table: clif_adt
+    prefix: ADT
+    code: location_category
+    time: in_dttm
+    reference_key: hospitalization_id
+
+  # --------------------------------------------------------------------------
+  # VITAL SIGNS
+  # --------------------------------------------------------------------------
+  - table: clif_vitals
+    prefix: VTL
+    code: vital_category
+    numeric_value: vital_value
+    time: recorded_dttm
+    reference_key: hospitalization_id
+
+  # --------------------------------------------------------------------------
+  # LABS - Order Event
+  # --------------------------------------------------------------------------
+  - table: clif_labs
+    prefix: LAB-ORD
+    code: lab_category
+    time: lab_order_dttm
+    reference_key: hospitalization_id
+    filter_expr: pl.col("lab_order_dttm").is_not_null()
+
+  # --------------------------------------------------------------------------
+  # LABS - Result Event (with numeric value)
+  # --------------------------------------------------------------------------
+  - table: clif_labs
+    prefix: LAB-RES
+    code: lab_category
+    numeric_value: lab_value_numeric
+    time: lab_result_dttm
+    reference_key: hospitalization_id
+    filter_expr: 
+      - pl.col("lab_result_dttm").is_not_null()
+      - pl.col("lab_value_numeric").is_not_null()
+
+  # --------------------------------------------------------------------------
+  # MEDICATIONS - Continuous (start/rate change)
+  # --------------------------------------------------------------------------
+  # - table: clif_medication_admin_continuous
+  #   prefix: MED-CONT
+  #   code: med_category
+  #   numeric_value: med_dose
+  #   time: admin_dttm
+  #   reference_key: hospitalization_id
+  #   filter_expr:
+  #     - pl.col("mar_action_category").is_in(["start", "rate_change", "restart"])
+  #     - pl.col("med_dose") > 0
+
+  # --------------------------------------------------------------------------
+  # MEDICATIONS - Continuous Stop
+  # --------------------------------------------------------------------------
+  # - table: clif_medication_admin_continuous
+  #   prefix: MED-CONT-STOP
+  #   code: med_category
+  #   time: admin_dttm
+  #   reference_key: hospitalization_id
+  #   filter_expr:
+  #     - pl.col("mar_action_category").is_in(["stop", "paused", "held"]) | (pl.col("med_dose") == 0)
+
+  # --------------------------------------------------------------------------
+  # MEDICATIONS - Intermittent (bolus)
+  # --------------------------------------------------------------------------
+  # - table: clif_medication_admin_intermittent
+  #   prefix: MED-INT
+  #   code: med_category
+  #   numeric_value: med_dose
+  #   time: admin_dttm
+  #   reference_key: hospitalization_id
+  #   filter_expr:
+  #     - pl.col("mar_action_category") == "given"
+  #     - pl.col("med_dose").is_not_null()
+
+  # --------------------------------------------------------------------------
+  # RESPIRATORY SUPPORT - Device
+  # --------------------------------------------------------------------------
+  # - table: clif_respiratory_support
+  #   prefix: RESP-DEV
+  #   code: device_category
+  #   time: recorded_dttm
+  #   reference_key: hospitalization_id
+
+  # --------------------------------------------------------------------------
+  # RESPIRATORY SUPPORT - Parameters (FiO2)
+  # --------------------------------------------------------------------------
+  # - table: clif_respiratory_support
+  #   prefix: RESP-PARAM
+  #   with_col_expr: pl.lit("fio2").alias("param_code")
+  #   code: param_code
+  #   numeric_value: fio2_set
+  #   time: recorded_dttm
+  #   reference_key: hospitalization_id
+  #   filter_expr: pl.col("fio2_set").is_not_null()
+
+  # --------------------------------------------------------------------------
+  # RESPIRATORY SUPPORT - Parameters (PEEP)
+  # --------------------------------------------------------------------------
+  #- table: clif_respiratory_support
+  #  prefix: RESP-PARAM
+  #  with_col_expr: pl.lit("peep").alias("param_code")
+  #  code: param_code
+    # numeric_value: peep_set
+    # time: recorded_dttm
+    # reference_key: hospitalization_id
+    # filter_expr: pl.col("peep_set").is_not_null()
+
+  # --------------------------------------------------------------------------
+  # RESPIRATORY SUPPORT - Parameters (Tidal Volume)
+  # --------------------------------------------------------------------------
+  #- table: clif_respiratory_support
+  #  prefix: RESP-PARAM
+  #  with_col_expr: pl.lit("tidal_volume").alias("param_code")
+  #  code: param_code
+  #  numeric_value: tidal_volume_set
+  #  time: recorded_dttm
+  #  reference_key: hospitalization_id
+  #  filter_expr: pl.col("tidal_volume_set").is_not_null()
+
+  # --------------------------------------------------------------------------
+  # RESPIRATORY SUPPORT - Parameters (Respiratory Rate)
+  # --------------------------------------------------------------------------
+  - table: clif_respiratory_support
+    prefix: RESP-PARAM
+    with_col_expr: pl.lit("resp_rate").alias("param_code")
+    code: param_code
+    numeric_value: resp_rate_set
+    time: recorded_dttm
+    reference_key: hospitalization_id
+    filter_expr: pl.col("resp_rate_set").is_not_null()
+
+  # --------------------------------------------------------------------------
+  # PATIENT ASSESSMENTS - Numeric (GCS, RASS, etc.)
+  # --------------------------------------------------------------------------
+  #- table: clif_patient_assessments
+  #  prefix: ASSESS
+  #  code: assessment_category
+  #  numeric_value: numerical_value
+  #  time: recorded_dttm
+  #  reference_key: hospitalization_id
+  #  filter_expr: pl.col("numerical_value").is_not_null()
+
+  # --------------------------------------------------------------------------
+  # PATIENT ASSESSMENTS - Categorical
+  # --------------------------------------------------------------------------
+  #- table: clif_patient_assessments
+  #  prefix: ASSESS
+  #  code: assessment_category
+  #  text_value: categorical_value
+  #  time: recorded_dttm
+  #  reference_key: hospitalization_id
+  #  filter_expr: pl.col("categorical_value").is_not_null()
+
+  # --------------------------------------------------------------------------
+  # CODE STATUS
+  # --------------------------------------------------------------------------
+  #- table: clif_code_status
+  # prefix: CODE
+  #  code: code_status_category
+  #  time: start_dttm
+  #  reference_key: patient_id  # Note: code_status is patient-level
+    # COCOA will filter to hospitalization time window via reference_key
+
+  # --------------------------------------------------------------------------
+  # POSITION
+  # --------------------------------------------------------------------------
+  #- table: clif_position
+  #  prefix: POSN
+  #  code: position_category
+  #  time: recorded_dttm
+  #  reference_key: hospitalization_id
+
+  # --------------------------------------------------------------------------
+  # CRRT - Mode
+  # --------------------------------------------------------------------------
+  #- table: clif_crrt_therapy
+  #  prefix: CRRT
+  #  code: crrt_mode_category
+  #  time: recorded_dttm
+  #  reference_key: hospitalization_id
+
+  # --------------------------------------------------------------------------
+  # CRRT - Parameters (Blood Flow)
+  # --------------------------------------------------------------------------
+  #- table: clif_crrt_therapy
+  #  prefix: CRRT-PARAM
+  #  with_col_expr: pl.lit("blood_flow").alias("param_code")
+  #  code: param_code
+  #  numeric_value: blood_flow_rate
+  #  time: recorded_dttm
+  #  reference_key: hospitalization_id
+  #  filter_expr: pl.col("blood_flow_rate").is_not_null()
+
+  # --------------------------------------------------------------------------
+  # CRRT - Parameters (Ultrafiltration)
+  # --------------------------------------------------------------------------
+  #- table: clif_crrt_therapy
+  #  prefix: CRRT-PARAM
+  #  with_col_expr: pl.lit("uf_out").alias("param_code")
+  #  code: param_code
+  #  numeric_value: ultrafiltration_out
+  #  time: recorded_dttm
+  #  reference_key: hospitalization_id
+  #  filter_expr: pl.col("ultrafiltration_out").is_not_null()
+
+  # --------------------------------------------------------------------------
+  # ECMO/MCS - Device
+  # --------------------------------------------------------------------------
+  #- table: clif_ecmo_mcs
+  #  prefix: ECMO
+  #  code: device_category
+  #  time: recorded_dttm
+  #  reference_key: hospitalization_id
+
+  # --------------------------------------------------------------------------
+  # ECMO/MCS - Parameters (Flow)
+  # --------------------------------------------------------------------------
+  #- table: clif_ecmo_mcs
+  #  prefix: ECMO-PARAM
+  #  with_col_expr: pl.lit("flow").alias("param_code")
+  ##  code: param_code
+   # numeric_value: flow
+   # time: recorded_dttm
+   # reference_key: hospitalization_id
+   # filter_expr: pl.col("flow").is_not_null()
+
+  # --------------------------------------------------------------------------
+  # PROCEDURES
+  # --------------------------------------------------------------------------
+  #- table: clif_patient_procedures
+  #  prefix: PROC
+  #  code: procedure_code
+  #  time: procedure_billed_dttm
+  #  reference_key: hospitalization_id
+
+  # --------------------------------------------------------------------------
+  # DISCHARGE - General Event
+  # --------------------------------------------------------------------------
+  #- table: REFERENCE
+  #  prefix: DSCG
+  #  with_col_expr: pl.lit("GENERAL").alias("discharge_event")
+  #  code: discharge_event
+  #  time: discharge_dttm
+
+  # --------------------------------------------------------------------------
+  # DISCHARGE - Disposition
+  # --------------------------------------------------------------------------
+  #- table: REFERENCE
+  #  prefix: DSCG
+  #  code: discharge_category
+  #  time: discharge_dttm
+
+  # --------------------------------------------------------------------------
+  # BILLING CODES - Retrospective (all diagnoses, 1 min after discharge)
+  # --------------------------------------------------------------------------
+  #- table: clif_hospital_diagnosis
+  #  prefix: ICD-BILL
+  #  code: diagnosis_code
+  #  time: discharge_dttm_plus_1min
+  #  reference_key: hospitalization_id
+  #  with_col_expr:
+  #    - pl.col("discharge_dttm") + pl.duration(minutes=1).alias("discharge_dttm_plus_1min")
+    # Note: This requires adding discharge_dttm to the diagnosis table via a join
+    # You may need to preprocess this or handle it differently
+
+  # --------------------------------------------------------------------------
+  # DRG CODES (if available in CLIF)
+  # --------------------------------------------------------------------------
+  # - table: clif_hospitalization
+  #   prefix: DRG
+  #   code: drg_code
+  #   time: discharge_dttm_plus_1min
+  #   with_col_expr:
+  #     - pl.col("discharge_dttm") + pl.duration(minutes=1).alias("discharge_dttm_plus_1min")

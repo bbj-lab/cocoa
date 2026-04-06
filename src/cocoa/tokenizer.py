@@ -19,6 +19,7 @@ class Tokenizer:
         main_cfg = OmegaConf.load(
             pathlib.Path("./config/main.yaml").expanduser().resolve()
         )
+        print(main_cfg.tokenization_config)
         tokenization_cfg = OmegaConf.load(
             pathlib.Path(main_cfg.tokenization_config).expanduser().resolve()
         )
@@ -34,7 +35,9 @@ class Tokenizer:
             .isoformat()
         )
 
+
     def get_data(self) -> pl.LazyFrame:
+        print(self.cfg.subject_splits)
         self.subject_splits = pl.scan_parquet(
             pathlib.Path(self.cfg.subject_splits).expanduser().resolve()
         )

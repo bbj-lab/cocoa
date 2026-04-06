@@ -7,9 +7,9 @@ insert_clocks: !!bool false
 include_numeric_values: !!bool true
 
 collated_inputs:
-  - ./processed/meds.parquet
+  - /home/kajch/multi-modal-protoecg-gem/data/processed/meds.parquet
 
-subject_splits: ./processed/subject_splits.parquet
+subject_splits: /home/kajch/multi-modal-protoecg-gem/data/processed/subject_splits.parquet
 
 ordering:
   - BOS

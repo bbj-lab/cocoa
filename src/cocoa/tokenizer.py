@@ -15,6 +15,11 @@ from cocoa.reporter import Logger
 
 
 class Tokenizer:
+    """
+    converts collated data to tokenized timelines,
+    learning bins and lookup table on training data
+    """
+
     def __init__(self, is_training: bool = True, **kwargs):
         main_cfg = OmegaConf.load(
             pathlib.Path("./config/main.yaml").expanduser().resolve()
@@ -48,7 +53,7 @@ class Tokenizer:
 
     @staticmethod
     def add_ends(df: pl.LazyFrame) -> pl.LazyFrame:
-        # add BOS / EOS codes at appropriate places
+        """add BOS / EOS codes at appropriate places"""
         return pl.concat(
             [
                 df,
@@ -63,7 +68,7 @@ class Tokenizer:
         )
 
     def add_clocks(self, df: pl.LazyFrame) -> pl.LazyFrame:
-        # add clock codes if configured
+        """add clock codes if configured"""
         if self.cfg.get("insert_clocks", False):
             return pl.concat(
                 [
@@ -99,8 +104,10 @@ class Tokenizer:
         else:
             return df
 
-    def get_bins(self, df: pl.LazyFrame) -> pl.LazyFrame:
-        if self.bins is None and self.is_training:
+    def get_bins(self, df: pl.LazyFrame) -> pl.DataFrame:
+        """calculate bins for numeric values on training data"""
+        if self.bins is None:
+            assert self.is_training, "Bins must be learned during training"
             self.bins = (
                 df.join(  # restrict to training data
                     self.subject_splits.filter(pl.col("split") == "train"),
@@ -122,6 +129,7 @@ class Tokenizer:
         return self.bins
 
     def bin_data(self, df: pl.LazyFrame) -> pl.LazyFrame:
+        """discretize numeric values with learned cut points"""
         return (
             df.join(self.get_bins(df).lazy(), on="code", how="left")
             .with_columns(
@@ -144,6 +152,10 @@ class Tokenizer:
         )
 
     def insert_time_spacers(self, df: pl.LazyFrame) -> pl.LazyFrame:
+        """
+        add time spacing tokens if configured;
+        this should be done after clock tokens are inserted
+        """
         if self.cfg.get("insert_spacers", False):
             spcrs = dict(self.cfg.spacers)
             return df.with_columns(
@@ -170,6 +182,7 @@ class Tokenizer:
             return df.with_columns(t_spacer=pl.lit(None))
 
     def get_pretokenized(self, df: pl.LazyFrame) -> pl.LazyFrame:
+        """prepare codes for tokenization, depending on whether fusion is configured"""
         return df.with_columns(
             pl.concat_list(
                 pl.col("t_spacer"),
@@ -187,8 +200,10 @@ class Tokenizer:
             .alias("to_tokenize")
         )
 
-    def get_lookup(self, pt: pl.LazyFrame) -> pl.LazyFrame:
-        if self.lookup is None and self.is_training:
+    def get_lookup(self, pt: pl.LazyFrame) -> pl.DataFrame:
+        """create mapping from vocabulary to integer tokens on training data"""
+        if self.lookup is None:
+            assert self.is_training, "Lookup table must be learned during training"
             lookup = (
                 pt.join(  # restrict to training data
                     self.subject_splits.filter(pl.col("split") == "train"),
@@ -207,7 +222,8 @@ class Tokenizer:
             self.lookup = pl.concat([unk_row, lookup]).collect()
         return self.lookup
 
-    def get_priority(self) -> pl.LazyFrame:
+    def get_priority(self) -> pl.DataFrame:
+        """fetch ordering for sorting cotemporaneous codes"""
         return (
             pl.Series("code_type", self.cfg.ordering)
             .to_frame()
@@ -215,6 +231,7 @@ class Tokenizer:
         )
 
     def tokenize_data(self, pt: pl.LazyFrame) -> pl.LazyFrame:
+        """apply lookup table to pretokenized data"""
         return (
             pt.with_columns(code_type=pl.col("code").str.split("//").list[0])
             .join(
@@ -240,6 +257,7 @@ class Tokenizer:
         )
 
     def get_all(self, verbose: bool = False) -> pl.LazyFrame:
+        """run all steps to convert collated data to tokenized timelines"""
         df = self.get_data()  # load data
         df = self.add_ends(df)  # add BOS/EOS tokens
         df = self.add_clocks(df)  # add clock tokens if configured
@@ -255,8 +273,11 @@ class Tokenizer:
         return df
 
     def save_all(self, path: pathlib.Path = None, verbose: bool = False):
+        """
+        get tokenized timelines and save them to disc,
+        along with artifacts created during tokenization
+        """
         df = self.get_all(verbose)
-
         to_folder = (
             pathlib.Path(path if path is not None else self.cfg.processed_data_home)
             .expanduser()
@@ -267,6 +288,7 @@ class Tokenizer:
         self.save(to_folder / "tokenizer.yaml")
 
     def __call__(self, word: str) -> int:
+        """apply tokenizer to a single word"""
         try:
             return (
                 self.lookup.filter(pl.col("to_tokenize") == word).select("token").item()
@@ -275,6 +297,7 @@ class Tokenizer:
             return 0  # UNK
 
     def __contains__(self, word: str) -> bool:
+        """is word in the tokenizer's vocabulary?"""
         return self.__call__(word) != 0
 
     def __str__(self):
@@ -288,9 +311,11 @@ class Tokenizer:
         return str(self) + ", created {dttm}".format(dttm=self.created_dttm)
 
     def __len__(self) -> int:
+        """number of tokens in vocabulary"""
         return len(self.lookup) if self.lookup is not None else 0
 
     def to_yaml(self) -> str:
+        """yaml representation of tokenizer; sufficient for reconstruction"""
         return OmegaConf.to_yaml(
             {
                 "lookup": dict(self.lookup.rows()) if self.lookup is not None else None,
@@ -305,6 +330,10 @@ class Tokenizer:
 
     @classmethod
     def from_yaml(cls, yaml_str: str, done_training=True) -> "Tokenizer":
+        """
+        construct tokenizer from yaml representation
+        places tokenizer into inference mode by default
+        """
         data = OmegaConf.create(yaml_str)
         cfg = OmegaConf.to_container(data.cfg)
         tkzr = cls(is_training=data.is_training, **cfg)
@@ -326,12 +355,14 @@ class Tokenizer:
         return tkzr
 
     def save(self, path: pathlib.Path):
+        """write yaml representation of tokenizer to disc"""
         to_file = pathlib.Path(path).expanduser().resolve()
         to_file.parent.mkdir(parents=True, exist_ok=True)
         with open(to_file, "w") as f:
             f.write(self.to_yaml())
 
     def load(self, path: pathlib.Path, done_training=True):
+        """retrieve tokenizer from saved yaml representation"""
         from_file = pathlib.Path(path).expanduser().resolve()
         with open(from_file, "r") as f:
             yaml_str = f.read()

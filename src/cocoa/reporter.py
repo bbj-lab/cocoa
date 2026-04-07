@@ -20,6 +20,8 @@ pl.Config.set_tbl_width_chars(500)
 
 
 class Logger(logging.Logger):
+    """provides simple logging functionality and summary statistics"""
+
     def __init__(self, name: str = __package__):
         super().__init__(name=name)
         self.setLevel(logging.INFO)

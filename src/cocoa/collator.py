@@ -6,6 +6,7 @@ collects and collates different dataframes into a denormalized format
 
 import pathlib
 
+import numpy as np
 import polars as pl
 from omegaconf import OmegaConf
 
@@ -23,9 +24,15 @@ class Collator:
         self.cfg = OmegaConf.merge(main_cfg, collation_cfg, kwargs)
         self.data_home = pathlib.Path(self.cfg.data_home).expanduser().resolve()
         self.reference_frame = None
+        self.splits: tuple = ("train", "tuning", "held_out")
 
     @staticmethod
     def slightly_safer_eval(expr):
+        """
+        performs eval on polars expressions;
+        prevents some forms of accidental usage
+        but is not secure against malicious input
+        """
         return eval(
             expr,
             {"__builtins__": {"str": str, "int": int, "float": float, "bool": bool}},
@@ -43,7 +50,8 @@ class Collator:
         subject_id_str: str = None,
         **kwargs,
     ) -> pl.LazyFrame:
-        """lazy-load the table `table`.parquet and perform some standard ETL
+        """
+        lazy-load the table `table`.parquet and perform some standard ETL
         tasks in the following order if specified:
         1. fix subject_id to `subject_id_str`
         2. perform a filter operation
@@ -183,24 +191,25 @@ class Collator:
             .sort("first_time")
             .with_row_index()
         ).collect()
-        partition = partition.with_columns(
-            split=pl.when(
-                pl.col("index")
-                < int(len(partition) * self.cfg.subject_splits.train_frac)
-            )
-            .then(pl.lit("train"))
-            .when(
-                pl.col("index")
-                < int(
-                    len(partition)
-                    * (
-                        self.cfg.subject_splits.train_frac
-                        + self.cfg.subject_splits.tuning_frac
-                    )
+        split_idx = (
+            (
+                len(partition)
+                * np.cumsum(
+                    [
+                        self.cfg.subject_splits.train_frac,
+                        self.cfg.subject_splits.tuning_frac,
+                    ]
                 )
             )
-            .then(pl.lit("tuning"))
-            .otherwise(pl.lit("held_out"))
+            .astype(int)
+            .tolist()
+        )
+        partition = partition.with_columns(
+            split=pl.when(pl.col("index") < split_idx[0])
+            .then(pl.lit(self.splits[0]))
+            .when(pl.col("index") < split_idx[1])
+            .then(pl.lit(self.splits[1]))
+            .otherwise(pl.lit(self.splits[2]))
         )
         return (
             partition
@@ -211,6 +220,7 @@ class Collator:
         ).select(pl.col(self.cfg["subject_id"]).alias("subject_id"), "split")
 
     def save_all(self, path: pathlib.Path = None, verbose: bool = False):
+        """save collated data and subject splits to disc, optionally w/ summary stats"""
         to_folder = (
             pathlib.Path(path if path is not None else self.cfg.processed_data_home)
             .expanduser()

@@ -33,15 +33,17 @@ class Winnower:
         )
         self.tkzr_cfg = OmegaConf.load(self.processed_data_home / "tokenizer.yaml")
 
-    def prepare_winnowed_frame(self) -> pl.LazyFrame:
+    def load_frame(self) -> pl.LazyFrame:
         """
-        loads held-out data, splits at time threshold, and prepares labels
+        loads held_out timelines, and performs some preliminary calculations;
+        these are lazily evaluated, so only completed if used
         """
         return (
             pl.scan_parquet(self.processed_data_home / "tokens_times.parquet")
             .join(
                 pl.scan_parquet(self.processed_data_home / "subject_splits.parquet"),
                 on="subject_id",
+                validate="1:1",
             )
             .filter(pl.col("split") == "held_out")
             .drop("split")
@@ -50,28 +52,62 @@ class Winnower:
                     (pl.element() - pl.element().first()).dt.total_seconds()
                 )
             )
-            .with_columns(
-                s_total_duration=pl.col("s_elapsed").list.last(),
-                n_past=pl.col("s_elapsed")
-                .list.eval(pl.element() < self.cfg.horizon_s)
-                .list.sum(),
+            .with_columns(s_total_duration=pl.col("s_elapsed").list.last())
+        )
+
+    def run_thresholding(self, df: pl.LazyFrame) -> pl.LazyFrame:
+        """
+        evaluates configurable criteria for establishing a cut-point "last_valid";
+        drops timelines that do not reach that point
+        """
+
+        if "horizon_s" in self.cfg or "duration_s" in self.cfg.get("threshold", {}):
+            # run duration-based thresholding
+            horizon_s = self.cfg.get("horizon_s", self.cfg.threshold.duration_s)
+            return df.filter(pl.col("s_total_duration") > horizon_s).with_columns(
+                last_valid=pl.col("s_elapsed")
+                .list.eval(pl.element() < horizon_s)
+                .list.sum()
             )
-            .filter(pl.col("s_total_duration") > self.cfg.horizon_s)
-            .with_columns(
-                tokens_past=pl.col("tokens").list.head("n_past"),
-                tokens_future=pl.col("tokens").list.tail(
-                    pl.col("tokens").list.len() - pl.col("n_past")
-                ),
+        elif "first_occurance" in self.cfg.get("threshold", {}):
+            # run first-occurance-based thresholding
+            toi = self.tkzr_cfg.lookup[self.cfg.threshold.first_occurance]
+            return df.filter(pl.col("tokens").list.contains(toi)).with_columns(
+                last_valid=pl.col("tokens")
+                .list.eval(pl.element() == toi)
+                .list.arg_max()
+                + pl.lit(1)
+                # place the triggering token into the past; it is known
             )
-            .with_columns(
-                **{
-                    f"{t}_{tense}": pl.col(f"tokens_{tense}").list.contains(
-                        self.tkzr_cfg.lookup[t]
-                    )
-                    for t in self.cfg.outcome_tokens
-                    for tense in ("past", "future")
-                }
-            )
+        else:
+            raise NotImplementedError("Please check the thresholding configuration.")
+
+    def add_outcome_flags(self, df: pl.LazyFrame) -> pl.LazyFrame:
+        """
+        adds boolean flags for each outcome token and tense,
+        e.g. DSCG//expired_past, DSCG//expired_future
+        """
+        return df.with_columns(
+            tokens_past=pl.col("tokens").list.head("last_valid"),
+            tokens_future=pl.col("tokens").list.tail(
+                pl.col("tokens").list.len() - pl.col("last_valid")
+            ),
+        ).with_columns(
+            **{
+                f"{t}_{tense}": pl.col(f"tokens_{tense}").list.contains(
+                    self.tkzr_cfg.lookup[t]
+                )
+                for t in self.cfg.outcome_tokens
+                for tense in ("past", "future")
+            }
+        )
+
+    def prepare_winnowed_frame(self) -> pl.LazyFrame:
+        """
+        loads held-out data, splits at time threshold, and prepares labels
+        """
+        return (
+            self.load_frame().pipe(self.run_thresholding).pipe(self.add_outcome_flags)
         )
 
     def save_all(self, path: pathlib.Path = None, verbose: bool = False):

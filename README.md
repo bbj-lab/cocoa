@@ -370,8 +370,9 @@ The winnower prepares held-out timelines for evaluation by filtering and flaggin
 subjects based on outcome criteria. It:
 
 1. Loads held-out data from the tokenized timelines and associated timestamps.
-2. Splits each subject's timeline at a configurable time horizon, separating
-   events into "past" (before the horizon) and "future" (after the horizon).
+2. Splits each subject's timeline at a configurable time horizon or at the first
+   occurance of a specified token, separating events into "past" (before the
+   horizon) and "future" (after the horizon).
 3. Checks for the presence of outcome tokens in both the past and future periods.
 4. Filters out subjects whose timelines don't exceed the horizon duration,
    ensuring subjects have sufficient observation time.
@@ -383,9 +384,9 @@ Winnowing is driven by a YAML config (like
 - `outcome_tokens` — list of event codes to track as outcomes (e.g.,
   `XFR-IN//icu`, `DSCG//expired`). The winnower creates binary flags for each
   outcome indicating whether that token appears in the past or future period.
-- `horizon_s` — the time horizon in seconds that divides the timeline. Events
-  before this threshold are considered "past" observations, and events after are
-  "future" outcomes. Subjects with insufficient duration are excluded.
+- `threshold` — defines how the threshold is set. Currently, `duration_s` and
+  `first_occurance` are supported for duration-based (in seconds) and first token
+  occurance-based thresholding, respectively.
 
 **Example configuration:**
 
@@ -395,7 +396,10 @@ outcome_tokens:
   - RESP//imv
   - DSCG//expired
   - DSCG//hospice
-horizon_s: !!int 86400 # 24 hours
+threshold:
+  # choose one and only one of the following
+  # duration_s: !!int 86400 # 24h
+  first_occurance: XFR-IN//icu
 ```
 
 The output is saved as `held_out_for_inference.parquet` with columns for each

@@ -5,4 +5,7 @@ outcome_tokens:
   - RESP//imv
   - DSCG//expired
   - DSCG//hospice
-horizon_s: !!int 86400 # 24h
+threshold:
+  # choose one and only one of the following
+  # duration_s: !!int 86400 # 24h
+  first_occurance: XFR-IN//icu

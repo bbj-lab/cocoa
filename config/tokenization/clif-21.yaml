@@ -37,7 +37,7 @@ ordering:
   - EOS
 
 spacers:
-  5m-15m: 5
+  5m-15m: 5 # produces token TIME//5m-15m
   15m-1h: 15
   1h-2h: 60
   2h-6h: 120
@@ -52,7 +52,7 @@ spacers:
   6mt+: 262980
 
 clocks:
-  - !!str 00
+  - !!str 00 # produces token CLCK//00
   - !!str 04
   - !!str 08
   - !!str 12

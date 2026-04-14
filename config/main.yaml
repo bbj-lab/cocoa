@@ -1,6 +1,6 @@
 %YAML 1.2
 ---
-data_home: ./raw_data
+raw_data_home: ./raw_data
 processed_data_home: ./processed
 
 collation_config: ./config/collation/clif-21.yaml

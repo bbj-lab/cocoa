@@ -27,8 +27,14 @@ class Tokenizer:
         tokenization_cfg = OmegaConf.load(
             pathlib.Path(main_cfg.tokenization_config).expanduser().resolve()
         )
-        self.cfg = OmegaConf.merge(main_cfg, tokenization_cfg, kwargs)
-        self.data_home = pathlib.Path(self.cfg.data_home).expanduser().resolve()
+        self.cfg = OmegaConf.merge(
+            main_cfg,
+            tokenization_cfg,
+            {k: v for k, v in kwargs.items() if v is not None},
+        )
+        self._processed_data_home = (
+            pathlib.Path(self.cfg.processed_data_home).expanduser().resolve()
+        )
         self.bins = None
         self.subject_splits = None
         self.lookup = None
@@ -38,6 +44,15 @@ class Tokenizer:
             .replace(microsecond=0)
             .isoformat()
         )
+
+    @property
+    def processed_data_home(self):
+        return self._processed_data_home
+
+    @processed_data_home.setter
+    def processed_data_home(self, value):
+        if value is not None:
+            self._processed_data_home = pathlib.Path(value).expanduser().resolve()
 
     def get_data(self) -> pl.LazyFrame:
         self.subject_splits = pl.scan_parquet(
@@ -272,20 +287,16 @@ class Tokenizer:
 
         return df
 
-    def save_all(self, path: pathlib.Path = None, verbose: bool = False):
+    def save_all(self, verbose: bool = False):
         """
         get tokenized timelines and save them to disc,
         along with artifacts created during tokenization
         """
         df = self.get_all(verbose)
-        to_folder = (
-            pathlib.Path(path if path is not None else self.cfg.processed_data_home)
-            .expanduser()
-            .resolve()
+        df.sink_parquet(
+            self.processed_data_home / "tokens_times.parquet", engine="streaming"
         )
-        to_folder.mkdir(parents=True, exist_ok=True)
-        df.sink_parquet(to_folder / "tokens_times.parquet", engine="streaming")
-        self.save(to_folder / "tokenizer.yaml")
+        self.save(self.processed_data_home / "tokenizer.yaml")
 
     def __call__(self, word: str) -> int:
         """apply tokenizer to a single word"""
@@ -379,4 +390,4 @@ if __name__ == "__main__":
     assert self("EOS") != 0
     assert "#$%^&*()" not in self
 
-    # breakpoint()
+    breakpoint()

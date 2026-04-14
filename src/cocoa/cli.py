@@ -23,9 +23,19 @@ console = Console()
 
 @app.command()
 def collate(
-    output: Annotated[
-        Optional[pathlib.Path],
-        typer.Option("--output", "-o", help="Output directory for collated data"),
+    raw_data_home: Annotated[
+        Optional[str],
+        typer.Option(
+            "--raw-data-home", "-r", help="Raw data directory (overrides config)"
+        ),
+    ] = None,
+    processed_data_home: Annotated[
+        Optional[str],
+        typer.Option(
+            "--processed-data-home",
+            "-p",
+            help="Processed data directory (overrides config)",
+        ),
     ] = None,
     verbose: Annotated[
         bool,
@@ -46,19 +56,33 @@ def collate(
     """
     with console.status("[bold green]Collating data..."):
         t0 = time.perf_counter()
-        collator = Collator()
-        collator.save_all(path=output, verbose=verbose)
+        collator = Collator(
+            raw_data_home=raw_data_home, processed_data_home=processed_data_home
+        )
+        collator.save_all(verbose=verbose)
         t1 = time.perf_counter()
         print(f"\n[green]✓[/green] Collation completed in {t1 - t0:.2f}s.")
-    out_path = output or collator.cfg.processed_data_home
+    out_path = collator.processed_data_home
     print(f"  Output: [cyan]{out_path}/meds.parquet[/cyan]")
 
 
 @app.command()
 def tokenize(
-    output: Annotated[
-        Optional[pathlib.Path],
-        typer.Option("--output", "-o", help="Output directory for tokenized data"),
+    processed_data_home: Annotated[
+        Optional[str],
+        typer.Option(
+            "--processed-data-home",
+            "-p",
+            help="Processed data directory (overrides config)",
+        ),
+    ] = None,
+    tokenizer_home: Annotated[
+        Optional[str],
+        typer.Option(
+            "--tokenizer-home",
+            "-t",
+            help="Use pretrained tokenizer from this directory (overrides config)",
+        ),
     ] = None,
     verbose: Annotated[
         bool,
@@ -79,20 +103,29 @@ def tokenize(
     """
     with console.status("[bold green]Tokenizing data..."):
         t0 = time.perf_counter()
-        tokenizer = Tokenizer()
-        tokenizer.save_all(path=output, verbose=verbose)
+        if tokenizer_home is not None:
+            print(f"Using pretrained tokenizer from [cyan]{tokenizer_home}[/cyan]...")
+            tokenizer = Tokenizer().load(tokenizer_home)
+            tokenizer.processed_data_home = str(processed_data_home)
+        else:
+            tokenizer = Tokenizer(processed_data_home=processed_data_home)
+        tokenizer.save_all(verbose=verbose)
         t1 = time.perf_counter()
         print(f"\n[green]✓[/green] Tokenization completed in {t1 - t0:.2f}s.")
-    out_path = output or tokenizer.cfg.processed_data_home
+    out_path = tokenizer.processed_data_home
     print(f"  Output: [cyan]{out_path}/tokens_times.parquet[/cyan]")
     print(f"  Vocabulary size: [cyan]{len(tokenizer)}[/cyan] tokens")
 
 
 @app.command()
 def winnow(
-    output: Annotated[
+    processed_data_home: Annotated[
         Optional[pathlib.Path],
-        typer.Option("--output", "-o", help="Output directory for winnowed data"),
+        typer.Option(
+            "--processed-data-home",
+            "-p",
+            help="Processed data directory (overrides config)",
+        ),
     ] = None,
     verbose: Annotated[
         bool,
@@ -112,19 +145,29 @@ def winnow(
     """
     with console.status("[bold green]Winnowing data..."):
         t0 = time.perf_counter()
-        winnower = Winnower()
-        winnower.save_all(path=output, verbose=verbose)
+        winnower = Winnower(processed_data_home=processed_data_home)
+        winnower.save_all(verbose=verbose)
         t1 = time.perf_counter()
         print(f"\n[green]✓[/green] Winnowing completed in {t1 - t0:.2f}s.")
-    out_path = output or winnower.cfg.processed_data_home
+    out_path = winnower.cfg.processed_data_home
     print(f"  Output: [cyan]{out_path}/held_out_for_inference.parquet[/cyan]")
 
 
 @app.command()
 def pipeline(
-    output: Annotated[
+    raw_data_home: Annotated[
         Optional[pathlib.Path],
-        typer.Option("--output", "-o", help="Output directory for all outputs"),
+        typer.Option(
+            "--raw-data-home", "-r", help="Raw data directory (overrides config)"
+        ),
+    ] = None,
+    processed_data_home: Annotated[
+        Optional[pathlib.Path],
+        typer.Option(
+            "--processed-data-home",
+            "-p",
+            help="Processed data directory (overrides config)",
+        ),
     ] = None,
     verbose: Annotated[
         bool,
@@ -138,8 +181,13 @@ def pipeline(
     """
     print("[bold]Running full pipeline[/bold]\n")
     t0 = time.perf_counter()
-    collate(output=output, verbose=verbose)
-    tokenize(output=output, verbose=verbose)
+    collate(
+        raw_data_home=raw_data_home,
+        processed_data_home=processed_data_home,
+        verbose=verbose,
+    )
+    tokenize(processed_data_home=processed_data_home, verbose=verbose)
+    winnow(processed_data_home=processed_data_home, verbose=verbose)
     t1 = time.perf_counter()
     print(f"\n[bold green]Pipeline completed in {t1 - t0:.2f}s.[/bold green]")
 
@@ -157,7 +205,7 @@ def info():
     table.add_column("Setting", style="cyan")
     table.add_column("Value", style="green")
 
-    table.add_row("Data Home", str(main_cfg.data_home))
+    table.add_row("Raw data Home", str(main_cfg.raw_data_home))
     table.add_row("Processed Data Home", str(main_cfg.processed_data_home))
     table.add_row("Collation Config", str(main_cfg.collation_config))
     table.add_row("Tokenization Config", str(main_cfg.tokenization_config))
@@ -170,5 +218,5 @@ def main():
 
 
 if __name__ == "__main__":
-    # pipeline()
-    main()
+    pipeline()
+    # main()

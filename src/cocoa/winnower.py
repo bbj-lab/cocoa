@@ -27,7 +27,9 @@ class Winnower:
         winnowing_cfg = OmegaConf.load(
             pathlib.Path(main_cfg.winnowing_config).expanduser().resolve()
         )
-        self.cfg = OmegaConf.merge(main_cfg, winnowing_cfg, kwargs)
+        self.cfg = OmegaConf.merge(
+            main_cfg, winnowing_cfg, {k: v for k, v in kwargs.items() if v is not None}
+        )
         self.processed_data_home = (
             pathlib.Path(self.cfg.processed_data_home).expanduser().resolve()
         )
@@ -103,26 +105,17 @@ class Winnower:
         )
 
     def prepare_winnowed_frame(self) -> pl.LazyFrame:
-        """
-        loads held-out data, splits at time threshold, and prepares labels
-        """
+        """loads held-out data, splits at time threshold, and prepares labels"""
         return (
             self.load_frame().pipe(self.run_thresholding).pipe(self.add_outcome_flags)
         )
 
-    def save_all(self, path: pathlib.Path = None, verbose: bool = False):
-        """
-        grabs winnowed frame, prints summary stats if requested, and saves it
-        """
+    def save_all(self, verbose: bool = False):
+        """grabs winnowed frame, prints summary stats if requested, and saves it"""
         df = self.prepare_winnowed_frame()
-        to_folder = (
-            pathlib.Path(path if path is not None else self.cfg.processed_data_home)
-            .expanduser()
-            .resolve()
-        )
-        to_folder.mkdir(parents=True, exist_ok=True)
         df.sink_parquet(
-            to_folder / "held_out_for_inference.parquet", engine="streaming"
+            self.processed_data_home / "held_out_for_inference.parquet",
+            engine="streaming",
         )
         if verbose:
             logger = Logger()

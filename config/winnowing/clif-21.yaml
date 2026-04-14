@@ -7,5 +7,5 @@ outcome_tokens:
   - DSCG//hospice
 threshold:
   # choose one and only one of the following
-  # duration_s: !!int 86400 # 24h
-  first_occurrence: XFR-IN//icu
+  duration_s: !!int 86400 # 24h
+  # first_occurrence: XFR-IN//icu

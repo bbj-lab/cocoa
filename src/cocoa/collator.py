@@ -21,8 +21,18 @@ class Collator:
         collation_cfg = OmegaConf.load(
             pathlib.Path(main_cfg.collation_config).expanduser().resolve()
         )
-        self.cfg = OmegaConf.merge(main_cfg, collation_cfg, kwargs)
-        self.data_home = pathlib.Path(self.cfg.data_home).expanduser().resolve()
+        self.cfg = OmegaConf.merge(
+            main_cfg, collation_cfg, {k: v for k, v in kwargs.items() if v is not None}
+        )
+        self.raw_data_home = (
+            pathlib.Path(self.cfg.get("raw_data_home", self.cfg.get("data_home")))
+            .expanduser()
+            .resolve()
+        )
+        self.processed_data_home = (
+            pathlib.Path(self.cfg.processed_data_home).expanduser().resolve()
+        )
+        self.processed_data_home.mkdir(parents=True, exist_ok=True)
         self.reference_frame = None
         self.splits: tuple = ("train", "tuning", "held_out")
 
@@ -58,13 +68,13 @@ class Collator:
         3. add columns
         4. perform an aggregation by `key` or self.cfg["subfject_id"]
         """
-        if (f := self.data_home / f"{table}.parquet").exists():
+        if (f := self.raw_data_home / f"{table}.parquet").exists():
             df = pl.scan_parquet(f)
-        elif (f := self.data_home / f"{table}.csv").exists():
+        elif (f := self.raw_data_home / f"{table}.csv").exists():
             df = pl.scan_csv(f)
         else:
             raise FileNotFoundError(
-                f"No parquet or csv file found for table '{table}' in {self.data_home}"
+                f"No parquet or csv file found for table '{table}' in {self.raw_data_home}"
             )
         if subject_id_str is not None:
             df = df.with_columns(pl.col(subject_id_str).alias(self.cfg["subject_id"]))
@@ -221,17 +231,11 @@ class Collator:
 
     def save_all(self, path: pathlib.Path = None, verbose: bool = False):
         """save collated data and subject splits to disc, optionally w/ summary stats"""
-        to_folder = (
-            pathlib.Path(path if path is not None else self.cfg.processed_data_home)
-            .expanduser()
-            .resolve()
-        )
-        to_folder.mkdir(parents=True, exist_ok=True)
         (df_all := self.get_all()).sink_parquet(
-            to_folder / "meds.parquet", engine="streaming"
+            self.processed_data_home / "meds.parquet", engine="streaming"
         )
         (df_splits := self.get_subject_splits()).write_parquet(
-            to_folder / "subject_splits.parquet"
+            self.processed_data_home / "subject_splits.parquet"
         )
 
         if verbose:

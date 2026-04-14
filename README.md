@@ -412,7 +412,7 @@ All configuration lives under `config/`. The entrypoint is `config/main.yaml`,
 which points to the collation and tokenization configs and sets shared paths:
 
 ```yaml
-data_home: ~/path/to/raw/data # or use `ln -s xxx raw_data`
+raw_data_home: ~/path/to/raw/data # or use `ln -s xxx raw_data`
 processed_data_home: ~/path/to/output
 
 collation_config: ./config/collation/clif-21.yaml
@@ -431,29 +431,34 @@ programmatically:
 from cocoa.collator import Collator
 from cocoa.tokenizer import Tokenizer
 
-collator = Collator(data_home="~/other/data")
+collator = Collator(raw_data_home="~/other/data")
 tokenizer = Tokenizer(n_bins=20, fused=False)
 ```
 
 We provide a CLI with the following commands. Depending on whether or not your
-environment is active, you may need to prepend (`uv run`):
+environment is active, you may need to prepend `uv run`:
 
 ```sh
 # collate raw data into a denormalized parquet file
-cocoa collate [--output OUTPUT_DIR] [--verbose]
+cocoa collate [--raw-data-home INPUT_DIR] [--processed-data-home OUTPUT_DIR] [--verbose]
 
 # tokenize collated data into integer sequences
-cocoa tokenize [--output OUTPUT_DIR] [--verbose]
-
-# run both steps in sequence
-cocoa pipeline [--output OUTPUT_DIR] [--verbose]
+cocoa tokenize [--processed-data-home WORKING_DIR] [--tokenizer-home PRETRAINED_TOKENIZER] [--verbose]
 
 # prepare held_out data for generative inference
-cocoa winnow [--output OUTPUT_DIR] [--verbose]
+cocoa winnow [--processed-data-home WORKING_DIR] [--verbose]
+
+# run all steps in a sequence
+cocoa pipeline [--raw-data-home INPUT_DIR] [--processed-data-home OUTPUT_DIR] [--verbose]
 
 # display current configuration
 cocoa info
 ```
+
+<!-- prettier-ignore-start -->
+> [!TIP]
+> For common use cases, check out the [recipes](./recipes/README.md) section!
+<!-- prettier-ignore-end -->
 
 <!--
 

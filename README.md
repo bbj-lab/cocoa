@@ -431,7 +431,7 @@ programmatically:
 from cocoa.collator import Collator
 from cocoa.tokenizer import Tokenizer
 
-collator = Collator(data_home="~/other/data")
+collator = Collator(raw_data_home="~/other/data")
 tokenizer = Tokenizer(n_bins=20, fused=False)
 ```
 
@@ -454,6 +454,11 @@ cocoa pipeline [--raw-data-home INPUT_DIR] [--processed-data-home OUTPUT_DIR] [-
 # display current configuration
 cocoa info
 ```
+
+<!-- prettier-ignore-start -->
+> [!TIP]
+> For common use cases, check out the [recipes](./recipes/README.md) section!
+<!-- prettier-ignore-end -->
 
 <!--
 

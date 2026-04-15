@@ -62,7 +62,14 @@ class Winnower:
         evaluates configurable criteria for establishing a cut-point "last_valid";
         drops timelines that do not reach that point
         """
-
+        if "end_horizon_s" in self.cf or "end_duration_s" in self.cfg.get("threshold", {}):
+            # if we only want to consider outcomes before some final time
+            end_horizon_s = self.cfg.get("end_horizon_s", self.cfg.threshold.end_duration_s)
+            df.with_columns(
+                final_valid = pl.col("s_elapsed")
+                .list.eval(pl.element() < end_horizon_s)
+                .list.sum()
+            )
         if "horizon_s" in self.cfg or "duration_s" in self.cfg.get("threshold", {}):
             # run duration-based thresholding
             horizon_s = self.cfg.get("horizon_s", self.cfg.threshold.duration_s)
@@ -89,11 +96,15 @@ class Winnower:
         adds boolean flags for each outcome token and tense,
         e.g. DSCG//expired_past, DSCG//expired_future
         """
+        if "final_valid" in df.columns:
+            head_size = pl.col("final_valid") - pl.col("last_valid")
+        else:
+            head_size = pl.col("tokens").list.len() - pl.col("last_valid")
         return df.with_columns(
             tokens_past=pl.col("tokens").list.head("last_valid"),
             tokens_future=pl.col("tokens").list.tail(
                 pl.col("tokens").list.len() - pl.col("last_valid")
-            ),
+            ).head(head_size),
         ).with_columns(
             **{
                 f"{t}_{tense}": pl.col(f"tokens_{tense}").list.contains(

@@ -20,12 +20,25 @@ class Winnower:
     e.g. those whose timelines ends prior to the outcome horizon
     """
 
-    def __init__(self, **kwargs):
+    def __init__(
+        self,
+        main_cfg: pathlib.Path | str = None,
+        winnowing_cfg: pathlib.Path | str = None,
+        **kwargs,
+    ):
         main_cfg = OmegaConf.load(
-            pathlib.Path("./config/main.yaml").expanduser().resolve()
+            pathlib.Path(main_cfg if main_cfg is not None else "./config/main.yaml")
+            .expanduser()
+            .resolve()
         )
         winnowing_cfg = OmegaConf.load(
-            pathlib.Path(main_cfg.winnowing_config).expanduser().resolve()
+            pathlib.Path(
+                winnowing_cfg
+                if winnowing_cfg is not None
+                else main_cfg.winnowing_config
+            )
+            .expanduser()
+            .resolve()
         )
         self.cfg = OmegaConf.merge(
             main_cfg, winnowing_cfg, {k: v for k, v in kwargs.items() if v is not None}

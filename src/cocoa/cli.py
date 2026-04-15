@@ -23,6 +23,20 @@ console = Console()
 
 @app.command()
 def collate(
+    main_config: Annotated[
+        Optional[pathlib.Path],
+        typer.Option(
+            "--main-config", "-m", help="Main configuration file (overrides default)"
+        ),
+    ] = None,
+    collation_config: Annotated[
+        Optional[pathlib.Path],
+        typer.Option(
+            "--collation-config",
+            "-c",
+            help="Collation configuration file (overrides config)",
+        ),
+    ] = None,
     raw_data_home: Annotated[
         Optional[str],
         typer.Option(
@@ -57,7 +71,10 @@ def collate(
     with console.status("[bold green]Collating data..."):
         t0 = time.perf_counter()
         collator = Collator(
-            raw_data_home=raw_data_home, processed_data_home=processed_data_home
+            main_cfg=main_config,
+            collation_cfg=collation_config,
+            raw_data_home=raw_data_home,
+            processed_data_home=processed_data_home,
         )
         collator.save_all(verbose=verbose)
         t1 = time.perf_counter()
@@ -68,6 +85,20 @@ def collate(
 
 @app.command()
 def tokenize(
+    main_config: Annotated[
+        Optional[pathlib.Path],
+        typer.Option(
+            "--main-config", "-m", help="Main configuration file (overrides default)"
+        ),
+    ] = None,
+    tokenization_config: Annotated[
+        Optional[pathlib.Path],
+        typer.Option(
+            "--tokenization-config",
+            "-c",
+            help="Tokenization configuration file (overrides config)",
+        ),
+    ] = None,
     processed_data_home: Annotated[
         Optional[str],
         typer.Option(
@@ -81,7 +112,7 @@ def tokenize(
         typer.Option(
             "--tokenizer-home",
             "-t",
-            help="Use pretrained tokenizer from this directory (overrides config)",
+            help="Use a pretrained tokenizer at this path (overrides config)",
         ),
     ] = None,
     verbose: Annotated[
@@ -108,19 +139,39 @@ def tokenize(
             tokenizer = Tokenizer().load(tokenizer_home)
             tokenizer.processed_data_home = str(processed_data_home)
         else:
-            tokenizer = Tokenizer(processed_data_home=processed_data_home)
+            tokenizer = Tokenizer(
+                main_cfg=main_config,
+                tokenization_cfg=tokenization_config,
+                processed_data_home=processed_data_home,
+            )
         tokenizer.save_all(verbose=verbose)
         t1 = time.perf_counter()
         print(f"\n[green]✓[/green] Tokenization completed in {t1 - t0:.2f}s.")
     out_path = tokenizer.processed_data_home
     print(f"  Output: [cyan]{out_path}/tokens_times.parquet[/cyan]")
+    print(f"  Output: [cyan]{out_path}/subject_splits.parquet[/cyan]")
+    print(f"  Output: [cyan]{out_path}/tokens_vocab.json[/cyan]")
     print(f"  Vocabulary size: [cyan]{len(tokenizer)}[/cyan] tokens")
 
 
 @app.command()
 def winnow(
-    processed_data_home: Annotated[
+    main_config: Annotated[
         Optional[pathlib.Path],
+        typer.Option(
+            "--main-config", "-m", help="Main configuration file (overrides default)"
+        ),
+    ] = None,
+    winnowing_config: Annotated[
+        Optional[pathlib.Path],
+        typer.Option(
+            "--winnowing-config",
+            "-c",
+            help="Winnowing configuration file (overrides config)",
+        ),
+    ] = None,
+    processed_data_home: Annotated[
+        Optional[str],
         typer.Option(
             "--processed-data-home",
             "-p",
@@ -145,24 +196,53 @@ def winnow(
     """
     with console.status("[bold green]Winnowing data..."):
         t0 = time.perf_counter()
-        winnower = Winnower(processed_data_home=processed_data_home)
+        winnower = Winnower(
+            main_cfg=main_config,
+            winnowing_cfg=winnowing_config,
+            processed_data_home=processed_data_home,
+        )
         winnower.save_all(verbose=verbose)
         t1 = time.perf_counter()
         print(f"\n[green]✓[/green] Winnowing completed in {t1 - t0:.2f}s.")
-    out_path = winnower.cfg.processed_data_home
+    out_path = winnower.processed_data_home
     print(f"  Output: [cyan]{out_path}/held_out_for_inference.parquet[/cyan]")
 
 
 @app.command()
 def pipeline(
-    raw_data_home: Annotated[
+    main_config: Annotated[
         Optional[pathlib.Path],
+        typer.Option(
+            "--main-config", "-m", help="Main configuration file (overrides default)"
+        ),
+    ] = None,
+    collation_config: Annotated[
+        Optional[pathlib.Path],
+        typer.Option(
+            "--collation-config", help="Collation configuration file (overrides config)"
+        ),
+    ] = None,
+    tokenization_config: Annotated[
+        Optional[pathlib.Path],
+        typer.Option(
+            "--tokenization-config",
+            help="Tokenization configuration file (overrides config)",
+        ),
+    ] = None,
+    winnowing_config: Annotated[
+        Optional[pathlib.Path],
+        typer.Option(
+            "--winnowing-config", help="Winnowing configuration file (overrides config)"
+        ),
+    ] = None,
+    raw_data_home: Annotated[
+        Optional[str],
         typer.Option(
             "--raw-data-home", "-r", help="Raw data directory (overrides config)"
         ),
     ] = None,
     processed_data_home: Annotated[
-        Optional[pathlib.Path],
+        Optional[str],
         typer.Option(
             "--processed-data-home",
             "-p",
@@ -177,17 +257,29 @@ def pipeline(
     ] = False,
 ):
     """
-    Run the full pipeline: collate and tokenize.
+    Run the full pipeline: collate, tokenize, & winnow.
     """
     print("[bold]Running full pipeline[/bold]\n")
     t0 = time.perf_counter()
     collate(
+        main_config=main_config,
+        collation_config=collation_config,
         raw_data_home=raw_data_home,
         processed_data_home=processed_data_home,
         verbose=verbose,
     )
-    tokenize(processed_data_home=processed_data_home, verbose=verbose)
-    winnow(processed_data_home=processed_data_home, verbose=verbose)
+    tokenize(
+        main_config=main_config,
+        tokenization_config=tokenization_config,
+        processed_data_home=processed_data_home,
+        verbose=verbose,
+    )
+    winnow(
+        main_config=main_config,
+        winnowing_config=winnowing_config,
+        processed_data_home=processed_data_home,
+        verbose=verbose,
+    )
     t1 = time.perf_counter()
     print(f"\n[bold green]Pipeline completed in {t1 - t0:.2f}s.[/bold green]")
 
@@ -218,5 +310,5 @@ def main():
 
 
 if __name__ == "__main__":
-    pipeline()
-    # main()
+    # pipeline()
+    main()

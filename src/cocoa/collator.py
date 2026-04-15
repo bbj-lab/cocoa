@@ -14,12 +14,25 @@ from cocoa.reporter import Logger
 
 
 class Collator:
-    def __init__(self, **kwargs):
+    def __init__(
+        self,
+        main_cfg: pathlib.Path | str = None,
+        collation_cfg: pathlib.Path | str = None,
+        **kwargs,
+    ):
         main_cfg = OmegaConf.load(
-            pathlib.Path("./config/main.yaml").expanduser().resolve()
+            pathlib.Path(main_cfg if main_cfg is not None else "./config/main.yaml")
+            .expanduser()
+            .resolve()
         )
         collation_cfg = OmegaConf.load(
-            pathlib.Path(main_cfg.collation_config).expanduser().resolve()
+            pathlib.Path(
+                collation_cfg
+                if collation_cfg is not None
+                else main_cfg.collation_config
+            )
+            .expanduser()
+            .resolve()
         )
         self.cfg = OmegaConf.merge(
             main_cfg, collation_cfg, {k: v for k, v in kwargs.items() if v is not None}
@@ -245,6 +258,6 @@ class Collator:
 
 if __name__ == "__main__":
     self = Collator()
-    self.save_all(verbose=True)
-    print(self.get_subject_splits())
+    # self.save_all(verbose=True)
+    # print(self.get_subject_splits())
     # breakpoint()

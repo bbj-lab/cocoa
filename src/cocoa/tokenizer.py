@@ -20,12 +20,26 @@ class Tokenizer:
     learning bins and lookup table on training data
     """
 
-    def __init__(self, is_training: bool = True, **kwargs):
+    def __init__(
+        self,
+        main_cfg: pathlib.Path | str = None,
+        tokenization_cfg: pathlib.Path | str = None,
+        is_training: bool = True,
+        **kwargs,
+    ):
         main_cfg = OmegaConf.load(
-            pathlib.Path("./config/main.yaml").expanduser().resolve()
+            pathlib.Path(main_cfg if main_cfg is not None else "./config/main.yaml")
+            .expanduser()
+            .resolve()
         )
         tokenization_cfg = OmegaConf.load(
-            pathlib.Path(main_cfg.tokenization_config).expanduser().resolve()
+            pathlib.Path(
+                tokenization_cfg
+                if tokenization_cfg is not None
+                else main_cfg.tokenization_config
+            )
+            .expanduser()
+            .resolve()
         )
         self.cfg = OmegaConf.merge(
             main_cfg,

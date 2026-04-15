@@ -2,8 +2,6 @@
 ---
 n_bins: !!int 10
 fused: !!bool true
-insert_spacers: !!bool false
-insert_clocks: !!bool false
 include_numeric_values: !!bool false
 
 collated_inputs:
@@ -36,6 +34,7 @@ ordering:
   - DSCG
   - EOS
 
+insert_spacers: !!bool false
 spacers:
   5m-15m: 5 # produces token TIME//5m-15m
   15m-1h: 15
@@ -51,6 +50,7 @@ spacers:
   3mt-6mt: 131490
   6mt+: 262980
 
+insert_clocks: !!bool false
 clocks:
   - !!str 00 # produces token CLCK//00
   - !!str 04

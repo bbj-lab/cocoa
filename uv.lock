@@ -34,7 +34,7 @@ wheels = [
 
 [[package]]
 name = "cocoa"
-version = "26.1.0"
+version = "26.2.0"
 source = { editable = "." }
 dependencies = [
     { name = "numpy" },

@@ -21,15 +21,14 @@ a single denormalized dataframe and create tokenized timelines from the results.
 
 ## Installation
 
-You can use [uv](https://docs.astral.sh/uv/pip/) to create an environment for
-running this code (with Python >= 3.12) as follows:
+You can download and install this package as follows:
 
 ```sh
-# install uv, with, e.g. `pip install uv`
 git clone git@github.com:bbj-lab/cocoa.git
 cd cocoa
-uv sync
-uv run cocoa --help
+python -m venv .venv
+. .venv/bin/activate
+pip install -e .
 ```
 
 ## (1) Collation

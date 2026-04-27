@@ -81,6 +81,7 @@ def collate(
         print(f"\n[green]✓[/green] Collation completed in {t1 - t0:.2f}s.")
     out_path = collator.processed_data_home
     print(f"  Output: [cyan]{out_path}/meds.parquet[/cyan]")
+    print(f"  Output: [cyan]{out_path}/subject_splits.parquet[/cyan]")
 
 
 @app.command()
@@ -137,7 +138,10 @@ def tokenize(
         if tokenizer_home is not None:
             print(f"Using pretrained tokenizer from [cyan]{tokenizer_home}[/cyan]...")
             tokenizer = Tokenizer().load(tokenizer_home)
-            tokenizer.processed_data_home = str(processed_data_home)
+            if processed_data_home is not None:
+                tokenizer.processed_data_home = (
+                    pathlib.Path(processed_data_home).expanduser().resolve()
+                )
         else:
             tokenizer = Tokenizer(
                 main_cfg=main_config,
@@ -149,7 +153,6 @@ def tokenize(
         print(f"\n[green]✓[/green] Tokenization completed in {t1 - t0:.2f}s.")
     out_path = tokenizer.processed_data_home
     print(f"  Output: [cyan]{out_path}/tokens_times.parquet[/cyan]")
-    print(f"  Output: [cyan]{out_path}/subject_splits.parquet[/cyan]")
     print(f"  Output: [cyan]{out_path}/tokens_vocab.json[/cyan]")
     print(f"  Vocabulary size: [cyan]{len(tokenizer)}[/cyan] tokens")
 

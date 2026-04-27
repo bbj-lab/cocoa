@@ -92,7 +92,7 @@ class Collator:
             df = pl.scan_csv(f)
         else:
             raise FileNotFoundError(
-                f"No parquet or csv file found for table '{table}' in {self.raw_data_home}"
+                f"No parquet / csv file found for {table=} in {self.raw_data_home}"
             )
         if subject_id_str is not None:
             df = df.with_columns(pl.col(subject_id_str).alias(self.cfg["subject_id"]))

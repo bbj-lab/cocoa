@@ -19,7 +19,7 @@
     name = "cocoa"
     readme = { file = "README.md", content-type = "text/markdown" }
     requires-python = ">=3.11"
-    version = "26.2.0"
+    version = "26.3.0"
 
     [project.scripts]
         cocoa = "cocoa.cli:main"

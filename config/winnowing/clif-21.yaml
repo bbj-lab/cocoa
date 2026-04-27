@@ -5,6 +5,19 @@ outcome_tokens:
   - RESP//imv
   - DSCG//expired
   - DSCG//hospice
+  - LAB-RES//sodium_Q0
+  - LAB-RES//sodium_Q9
+  - LAB-RES//potassium_Q0
+  - LAB-RES//potassium_Q9
+  - LAB-RES//hemoglobin_Q0
+  - LAB-RES//glucose_serum_Q0
+  - VTL//heart_rate_Q9
+  - SOFA//resp-4
+  - SOFA//renal-4
+  - SOFA//liver-4
+  - SOFA//cv-4
+  - ASMT//cam_total_positive
+
 threshold:
   # choose one and only one of the following
   # duration_s: !!int 86400 # 24h

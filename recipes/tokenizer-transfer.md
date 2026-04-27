@@ -27,11 +27,11 @@ raw_ucmc="${hm}/data-raw/ucmc-2.1.0"
 1. Run collation on each dataset separately with the same config:
 
    ```sh
-   uv run cocoa collate \
+   cocoa collate \
        --raw-data-home ${raw_mimic} \
        --processed-data-home ./processed/mimic
 
-   uv run cocoa collate \
+   cocoa collate \
        --raw-data-home ${raw_ucmc} \
        --processed-data-home ./processed/ucmc
    ```
@@ -39,7 +39,7 @@ raw_ucmc="${hm}/data-raw/ucmc-2.1.0"
 2. Learn a tokenizer on the first dataset:
 
    ```sh
-   uv run cocoa tokenize \
+   cocoa tokenize \
      --processed-data-home ./processed/mimic
    ```
 
@@ -47,17 +47,17 @@ raw_ucmc="${hm}/data-raw/ucmc-2.1.0"
    previously learned tokenizer (with fixed vocabulary and binning cutpoints):
 
    ```sh
-   uv run cocoa tokenize \
-   --tokenizer-home ./processed/mimic/tokenizer.yaml \
+   cocoa tokenize \
+   --tokenizer-home ./processed/tokenizer-lsolo.yaml \
    --processed-data-home ./processed/ucmc
    ```
 
 4. Proceed as usual:
 
    ```sh
-   uv run cocoa winnow \
+   cocoa winnow \
    --processed-data-home ./processed/mimic
 
-   uv run cocoa winnow \
+   cocoa winnow \
    --processed-data-home ./processed/ucmc
    ```

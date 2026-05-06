@@ -220,3 +220,76 @@ entries:
     prefix: DSCG
     code: discharge_category
     time: discharge_dttm
+
+    # ECG predicted class
+  - table: clif_ecg_prototypes
+    reference_key: hospitalization_id
+    code: ecg_class_code
+    time: ecg_time
+    numeric_value: ecg_class_score
+    filter_expr:
+      - pl.col("ecg_class_code").is_not_null()
+      - pl.col("ecg_time").is_not_null()
+
+  # ECG 1D prototype identity
+  - table: clif_ecg_prototypes
+    reference_key: hospitalization_id
+    code: ecg_1d_prototype_code
+    time: ecg_time
+    filter_expr:
+      - pl.col("ecg_1d_prototype_code").is_not_null()
+      - pl.col("ecg_time").is_not_null()
+
+  # ECG 1D similarity score
+  - table: clif_ecg_prototypes
+    reference_key: hospitalization_id
+    prefix: ECG
+    with_col_expr: pl.lit("Similarity//1D").alias("ecg_1d_similarity_code")
+    code: ecg_1d_similarity_code
+    time: ecg_time
+    numeric_value: ecg_1d_similarity
+    filter_expr:
+      - pl.col("ecg_1d_similarity").is_not_null()
+      - pl.col("ecg_time").is_not_null()
+
+  # ECG 2D morphology prototype identity
+  - table: clif_ecg_prototypes
+    reference_key: hospitalization_id
+    code: ecg_2d_morphology_prototype_code
+    time: ecg_time
+    filter_expr:
+      - pl.col("ecg_2d_morphology_prototype_code").is_not_null()
+      - pl.col("ecg_time").is_not_null()
+
+  # ECG 2D morphology similarity score
+  - table: clif_ecg_prototypes
+    reference_key: hospitalization_id
+    prefix: ECG
+    with_col_expr: pl.lit("Similarity//2D_Morphology").alias("ecg_2d_morphology_similarity_code")
+    code: ecg_2d_morphology_similarity_code
+    time: ecg_time
+    numeric_value: ecg_2d_morphology_similarity
+    filter_expr:
+      - pl.col("ecg_2d_morphology_similarity").is_not_null()
+      - pl.col("ecg_time").is_not_null()
+
+  # ECG 2D global prototype identity
+  - table: clif_ecg_prototypes
+    reference_key: hospitalization_id
+    code: ecg_2d_global_prototype_code
+    time: ecg_time
+    filter_expr:
+      - pl.col("ecg_2d_global_prototype_code").is_not_null()
+      - pl.col("ecg_time").is_not_null()
+
+  # ECG 2D global similarity score
+  - table: clif_ecg_prototypes
+    reference_key: hospitalization_id
+    prefix: ECG
+    with_col_expr: pl.lit("Similarity//2D_Global").alias("ecg_2d_global_similarity_code")
+    code: ecg_2d_global_similarity_code
+    time: ecg_time
+    numeric_value: ecg_2d_global_similarity
+    filter_expr:
+      - pl.col("ecg_2d_global_similarity").is_not_null()
+      - pl.col("ecg_time").is_not_null()

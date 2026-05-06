@@ -20,3 +20,7 @@ print(df_pressor_escalation_events.head())  # Views the first few rows in the te
 df_hosp_mortality_events = pl.read_parquet("data/processed/hospital_mortality_events.parquet")
 print("\df_hosp_mortality_events.parquet — first 5 rows:")
 print(df_hosp_mortality_events.head())  # Views the first few rows in the terminal
+
+df_ecg_prototypes = pl.read_parquet("data/processed/clif_ecg_prototypes.parquet")
+print("\nclif_ecg_prototypes.parquet — first 5 rows:")
+print(df_ecg_prototypes.head())  # Views the first few rows in the terminal

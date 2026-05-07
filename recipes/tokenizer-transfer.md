@@ -4,7 +4,7 @@ In this example, we'll train a tokenizer on mimic and apply it to ucmc.
 
 <details>
 
-<summary>Localize filenames by cluster.</summary>
+<summary>0. Localize filenames by cluster.</summary>
 
 ```sh
 case "$(uname -n)" in
@@ -29,11 +29,13 @@ raw_ucmc="${hm}/data-raw/ucmc-2.1.0"
    ```sh
    cocoa collate \
        --raw-data-home ${raw_mimic} \
-       --processed-data-home ./processed/mimic
+       --processed-data-home ./processed/mimic \
+       --verbose
 
    cocoa collate \
        --raw-data-home ${raw_ucmc} \
-       --processed-data-home ./processed/ucmc
+       --processed-data-home ./processed/ucmc \
+       --verbose
    ```
 
 2. Learn a tokenizer on the first dataset:
@@ -48,15 +50,17 @@ raw_ucmc="${hm}/data-raw/ucmc-2.1.0"
 
    ```sh
    cocoa tokenize \
-   --tokenizer-home ./processed/tokenizer-lsolo.yaml \
-   --processed-data-home ./processed/ucmc
+     --tokenizer-home ./processed/tokenizer.yaml \
+     --processed-data-home ./processed/ucmc \
+     --verbose
    ```
 
 4. Proceed as usual:
 
    ```sh
    cocoa winnow \
-   --processed-data-home ./processed/mimic
+     --processed-data-home ./processed/mimic \
+     --verbose
 
    cocoa winnow \
    --processed-data-home ./processed/ucmc

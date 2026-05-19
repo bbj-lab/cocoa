@@ -142,7 +142,9 @@ def tokenize(
         t0 = time.perf_counter()
         if tokenizer_home is not None:
             print(f"Using pretrained tokenizer from [cyan]{tokenizer_home}[/cyan]...")
-            tokenizer = Tokenizer().load(tokenizer_home)
+            tokenizer = Tokenizer(
+                main_cfg=main_config, tokenization_cfg=tokenization_config
+            ).load(tokenizer_home)
             if processed_data_home is not None:
                 tokenizer.processed_data_home = (
                     pathlib.Path(processed_data_home).expanduser().resolve()

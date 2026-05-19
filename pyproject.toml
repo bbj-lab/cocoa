@@ -21,9 +21,12 @@
     [project.urls]
         Repository = "https://github.com/bbj-lab/cocoa"
 
+[build-system]
+    build-backend = "setuptools.build_meta"
+    requires      = [ "setuptools" ]
+
 [dependency-groups]
     dev = [ "pip", "ruff" ]
-
 
 [tool.ruff]
     extend-exclude = [ "*.md" ]
@@ -44,6 +47,11 @@
             known-first-party       = [ "cocoa", "cotorra", "coreopsis" ]
             split-on-trailing-comma = false
 
-[build-system]
-    build-backend = "setuptools.build_meta"
-    requires      = [ "setuptools" ]
+[tool.setuptools]
+    include-package-data = true
+
+    [tool.setuptools.packages.find]
+        where = [ "src" ]
+
+    [tool.setuptools.package-data]
+        "cocoa.config" = [ "*.yaml" ]

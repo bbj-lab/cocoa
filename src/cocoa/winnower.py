@@ -11,46 +11,32 @@ import numpy as np
 import polars as pl
 from omegaconf import OmegaConf
 
-from cocoa.logger import Logger
+from cocoa.configurable import Configurable
 
 
-class Winnower:
+class Winnower(Configurable):
     """
     filters held-out timelines for evaluation;
     assigns flags to disqualify certain subjects from evaluation,
     e.g. those whose timelines ends prior to the outcome horizon
     """
 
+    default_file = "winnowing.yaml"
+
     def __init__(
         self,
-        main_cfg: pathlib.Path | str = None,
         winnowing_cfg: pathlib.Path | str = None,
+        processed_data_home: pathlib.Path | str = None,
+        is_training: bool = True,
         **kwargs,
     ):
-        main_cfg = OmegaConf.load(
-            pathlib.Path(main_cfg if main_cfg is not None else "./config/main.yaml")
-            .expanduser()
-            .resolve()
-        )
-        winnowing_cfg = OmegaConf.load(
-            pathlib.Path(
-                winnowing_cfg
-                if winnowing_cfg is not None
-                else main_cfg.winnowing_config
-            )
-            .expanduser()
-            .resolve()
-        )
-        self.cfg = OmegaConf.merge(
-            main_cfg, winnowing_cfg, {k: v for k, v in kwargs.items() if v is not None}
-        )
+        super().__init__(winnowing_cfg, **kwargs)
         self.processed_data_home = (
-            pathlib.Path(self.cfg.processed_data_home).expanduser().resolve()
+            pathlib.Path(processed_data_home).expanduser().resolve()
         )
         self.tkzr_cfg = OmegaConf.load(self.processed_data_home / "tokenizer.yaml")
         self.rng = np.random.default_rng(seed=42)
 
-        self.logger = Logger()
         self.logger.info("Winnower initialized...")
         self.logger.info(f"{self.processed_data_home=}")
 
@@ -190,6 +176,6 @@ class Winnower:
 
 
 if __name__ == "__main__":
-    self = Winnower()
+    self = Winnower(processed_data_home="./processed/mimic/")
     self.save_all(verbose=True)
-    breakpoint()
+    # breakpoint()

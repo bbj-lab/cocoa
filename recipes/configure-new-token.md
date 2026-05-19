@@ -33,7 +33,9 @@ want to include these tokens if the medication was actually administered
 `pl.col("mar_action_category") == "given"` and the conversion during
 preprocessing completed successfully (`pl.col("_convert_status") == "success"`).
 
-1. Insert an entry `config/collation/xxx.yaml` into the `entries` list:
+1. Add an entry to your collation config YAML (a copy of the packaged default
+   at [`src/cocoa/config/collation.yaml`](../src/cocoa/config/collation.yaml),
+   passed to the CLI via `--collation-config`) in the `entries` list:
 
    ```yaml
    entries:

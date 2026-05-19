@@ -11,46 +11,29 @@ import zoneinfo
 import polars as pl
 from omegaconf import OmegaConf
 
-from cocoa.logger import Logger
+from cocoa.configurable import Configurable
 
 
-class Tokenizer:
+class Tokenizer(Configurable):
     """
     converts collated data to tokenized timelines,
     learning bins and lookup table on training data
     """
 
+    default_file = "tokenization.yaml"
+
     def __init__(
         self,
-        main_cfg: pathlib.Path | str = None,
         tokenization_cfg: pathlib.Path | str = None,
+        processed_data_home: pathlib.Path | str = None,
         is_training: bool = True,
         **kwargs,
     ):
-        self.main_cfg = main_cfg
-        self.tokenization_cfg = tokenization_cfg
-        self.cfg = OmegaConf.merge(
-            OmegaConf.load(
-                pathlib.Path(
-                    self.main_cfg if self.main_cfg is not None else "./config/main.yaml"
-                )
-                .expanduser()
-                .resolve()
-            ),
-            OmegaConf.load(
-                pathlib.Path(
-                    self.tokenization_cfg
-                    if self.tokenization_cfg is not None
-                    else main_cfg.tokenization_config
-                )
-                .expanduser()
-                .resolve()
-            ),
-            {k: v for k, v in kwargs.items() if v is not None},
-        )
+        super().__init__(tokenization_cfg, **kwargs)
         self.processed_data_home = (
-            pathlib.Path(self.cfg.processed_data_home).expanduser().resolve()
+            pathlib.Path(processed_data_home).expanduser().resolve()
         )
+
         self.bins = None
         self.subject_splits = None
         self.lookup = None
@@ -60,8 +43,6 @@ class Tokenizer:
             .replace(microsecond=0)
             .isoformat()
         )
-
-        self.logger = Logger()
 
     def get_data(self) -> pl.LazyFrame:
         self.logger.info(f"Loading collated data with {self.processed_data_home=}")
@@ -350,8 +331,8 @@ class Tokenizer:
         data = OmegaConf.create(yaml_str)
         cfg = OmegaConf.to_container(data.cfg)
         tkzr = self.__class__(
-            main_cfg=self.main_cfg,
-            tokenization_cfg=self.tokenization_cfg,
+            self.config_file,
+            processed_data_home=self.processed_data_home,
             is_training=data.is_training,
             **OmegaConf.merge(self.cfg, cfg),
         )
@@ -388,10 +369,12 @@ class Tokenizer:
 
 
 if __name__ == "__main__":
-    self = Tokenizer()
+    self = Tokenizer(processed_data_home="./processed/mimic/")
     self.save_all(verbose=True)
 
-    tkzr_cp = Tokenizer.from_yaml(self.to_yaml())
+    tkzr_cp = Tokenizer(processed_data_home="./processed/mimic/").from_yaml(
+        self.to_yaml()
+    )
     assert self.lookup.equals(tkzr_cp.lookup)
     assert self.bins.equals(tkzr_cp.bins)
     assert self("EOS") != 0

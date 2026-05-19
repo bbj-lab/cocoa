@@ -39,8 +39,9 @@ single denormalized dataframe in a
 in the output represents an event with a `subject_id`, `time`, `code` (all
 mandatory), and optional `numeric_value` / `text_value` columns.
 
-Collation is driven by a YAML config (like
-[this](./config/collation/clif-21.yaml)) that specifies:
+Collation is driven by a YAML config (the package ships a default; see
+[`./src/cocoa/config/collation.yaml`](./src/cocoa/config/collation.yaml)) that
+specifies:
 
 - A **reference table** with a primary key (`subject_id`), start/end times, and
   optional augmentation joins (e.g. joining a patient demographics table).
@@ -209,16 +210,17 @@ integer token sequences suitable for sequence models. It:
 6. Aggregates per-subject token sequences according to time, and then
    configurable sort order.
 
-Tokenization is driven by its own YAML config (like
-[this](./config/collation/clif-21.yaml)) that specifies:
+Tokenization is driven by its own YAML config (the package ships a default; see
+[`./src/cocoa/config/tokenization.yaml`](./src/cocoa/config/tokenization.yaml))
+that specifies:
 
 - `n_bins` — number of quantile bins for numeric values.
 - `fused` — whether to fuse the code, binned value, and text value into a single
   token (`true`) or keep them as separate tokens (`false`).
+- `include_numeric_values` — whether to include raw numeric values alongside
+  tokens in the output (`false` by default).
 - `insert_spacers` — whether to insert time spacing tokens between events.
 - `insert_clocks` — whether to insert clock tokens at specified times.
-- `collated_inputs` — paths to the collated parquet files to tokenize.
-- `subject_splits` — path to the subject splits parquet file.
 - `ordering` — the priority order of code prefixes when sorting events within the
   same timestamp.
 - `spacers` — mapping of time intervals (e.g., `5m-15m`, `1h-2h`) to their lower
@@ -363,7 +365,7 @@ All of these things are placed in `processed_data_home` as configured.
 > trainer: [🦜 cotorra](https://github.com/bbj-lab/cotorra)
 <!-- prettier-ignore-end -->
 
-## (3 -- optional) Winnowing
+## 3 Winnowing
 
 The winnower prepares held-out timelines for evaluation by filtering and flagging
 subjects based on outcome criteria. It:
@@ -377,8 +379,9 @@ subjects based on outcome criteria. It:
    ensuring subjects have sufficient observation time.
 5. Outputs a winnowed dataset suitable for inference and evaluation tasks.
 
-Winnowing is driven by a YAML config (like
-[this](./config/winnowing/clif-21.yaml)) that specifies:
+Winnowing is driven by a YAML config (the package ships a default; see
+[`./src/cocoa/config/winnowing.yaml`](./src/cocoa/config/winnowing.yaml)) that
+specifies:
 
 - `outcome_tokens` — list of event codes to track as outcomes (e.g.,
   `XFR-IN//icu`, `DSCG//expired`). The winnower creates binary flags for each
@@ -415,31 +418,29 @@ that outcome occurred in the respective time periods.
 
 ## Usage
 
-All configuration lives under `config/`. The entrypoint is `config/main.yaml`,
-which points to the collation and tokenization configs and sets shared paths:
+Collation requires `raw_data_home` (the directory containing your raw parquet or
+csv tables) and each command requires `processed_data_home` (where outputs will
+be written). Default configuration for collation, tokenization, and winnowing
+ships with the package; you can override any of them by passing a YAML file with
+`--collation-config`, `--tokenization-config`, or `--winnowing-config`.
 
-```yaml
-raw_data_home: ~/path/to/raw/data # or use `ln -s xxx raw_data`
-processed_data_home: ~/path/to/output
-
-collation_config: ./config/collation/clif-21.yaml
-tokenization_config: ./config/tokenization/clif-21.yaml
-winnowing_config: ./config/winnowing/clif-21.yaml # optional, for winnowing
-```
-
-To use a different dataset or schema, create new YAML files under
-`config/collation/` and `config/tokenization/` and update the paths in
-`config/main.yaml`, or pass your options directly to these objects. Both the
-`Collator` and `Tokenizer` classes also accept `**kwargs` that are merged on top
-of the YAML config via OmegaConf, so any config value can be overridden
-programmatically:
+Both `Collator`, `Tokenizer`, and `Winnower` also accept `**kwargs` that are
+merged on top of the loaded config via OmegaConf, so any config value can be
+overridden programmatically:
 
 ```python
 from cocoa.collator import Collator
 from cocoa.tokenizer import Tokenizer
 
-collator = Collator(raw_data_home="~/other/data")
-tokenizer = Tokenizer(n_bins=20, fused=False)
+collator = Collator(
+    raw_data_home="~/path/to/raw",
+    processed_data_home="~/path/to/output",
+)
+tokenizer = Tokenizer(
+    processed_data_home="~/path/to/output",
+    n_bins=20,
+    fused=False,
+)
 ```
 
 ### CLI
@@ -449,7 +450,7 @@ We provide a CLI:
 ```
  Usage: cocoa [OPTIONS] COMMAND [ARGS]...
 
- Configurable collation and tokenization
+ Configurable collation and tokenization (v26.3.1)
 
 ╭─ Options ───────────────────────────────────────────────────────────────────╮
 │ --install-completion          Install completion for the current shell.     │
@@ -462,7 +463,6 @@ We provide a CLI:
 │ tokenize  Tokenize collated data into integer sequences.                    │
 │ winnow    Winnow held-out data for evaluation.                              │
 │ pipeline  Run the full pipeline: collate, tokenize, & winnow.               │
-│ info      Display configuration information.                                │
 ╰─────────────────────────────────────────────────────────────────────────────╯
 ```
 
@@ -475,21 +475,18 @@ with commands:
 
   Collate raw data into a denormalized format.
 
-  Reads configuration from config/main.yaml and produces a MEDS-like
-  parquet file with collated events.
+  Reads collation configuration and produces a MEDS-like parquet file
+  with collated events.
 
   ╭─ Options ───────────────────────────────────────────────────────────────────╮
-  │ --main-config          -m      PATH  Main configuration file (overrides     │
-  │                                      default)                               │
-  │ --collation-config     -c      PATH  Collation configuration file           │
-  │                                      (overrides config)                     │
-  │ --raw-data-home        -r      TEXT  Raw data directory (overrides config)  │
-  │ --processed-data-home  -p      TEXT  Processed data directory (overrides    │
-  │                                      config)                                │
-  │ --verbose              -v            Verbose logging for collate; this may  │
-  │                                      cause memory issues with large         │
-  │                                      datasets                               │
-  │ --help                               Show this message and exit.            │
+  │    --collation-config     -c      PATH  Collation configuration file        │
+  │                                         (overrides config)                  │
+  │ *  --raw-data-home        -r      TEXT  Raw data directory [required]       │
+  │ *  --processed-data-home  -p      TEXT  Processed data directory [required] │
+  │    --verbose              -v            Verbose logging for collate; this   │
+  │                                         may cause memory issues with large  │
+  │                                         datasets                            │
+  │    --help                               Show this message and exit.         │
   ╰─────────────────────────────────────────────────────────────────────────────╯
   ```
 
@@ -504,18 +501,15 @@ with commands:
   vocabulary and bin information.
 
   ╭─ Options ───────────────────────────────────────────────────────────────────╮
-  │ --main-config          -m      PATH  Main configuration file (overrides     │
-  │                                      default)                               │
-  │ --tokenization-config  -c      PATH  Tokenization configuration file        │
-  │                                      (overrides config)                     │
-  │ --processed-data-home  -p      TEXT  Processed data directory (overrides    │
-  │                                      config)                                │
-  │ --tokenizer-home       -t      TEXT  Use a pretrained tokenizer at this     │
-  │                                      path (overrides config)                │
-  │ --verbose              -v            Verbose logging for collate; this may  │
-  │                                      cause memory issues with large         │
-  │                                      datasets                               │
-  │ --help                               Show this message and exit.            │
+  │    --tokenization-config  -c      PATH  Tokenization configuration file     │
+  │                                         (overrides config)                  │
+  │ *  --processed-data-home  -p      TEXT  Processed data directory [required] │
+  │    --tokenizer-home       -t      TEXT  Use a pretrained tokenizer at this  │
+  │                                         path (overrides config)             │
+  │    --verbose              -v            Verbose logging for collate; this   │
+  │                                         may cause memory issues with large  │
+  │                                         datasets                            │
+  │    --help                               Show this message and exit.         │
   ╰─────────────────────────────────────────────────────────────────────────────╯
   ```
 
@@ -530,15 +524,12 @@ with commands:
   from evaluation based on the configured criteria.
 
   ╭─ Options ───────────────────────────────────────────────────────────────────╮
-  │ --main-config          -m      PATH  Main configuration file (overrides     │
-  │                                      default)                               │
-  │ --winnowing-config     -c      PATH  Winnowing configuration file           │
-  │                                      (overrides config)                     │
-  │ --processed-data-home  -p      TEXT  Processed data directory (overrides    │
-  │                                      config)                                │
-  │ --verbose              -v            Verbose logging for winnow; prints     │
-  │                                      summary statistics                     │
-  │ --help                               Show this message and exit.            │
+  │    --winnowing-config     -c      PATH  Winnowing configuration file        │
+  │                                         (overrides config)                  │
+  │ *  --processed-data-home  -p      TEXT  Processed data directory [required] │
+  │    --verbose              -v            Verbose logging for winnow; prints  │
+  │                                         summary statistics                  │
+  │    --help                               Show this message and exit.         │
   ╰─────────────────────────────────────────────────────────────────────────────╯
   ```
 
@@ -550,19 +541,16 @@ with commands:
   Run the full pipeline: collate, tokenize, & winnow.
 
   ╭─ Options ───────────────────────────────────────────────────────────────────╮
-  │ --main-config          -m      PATH  Main configuration file (overrides     │
-  │                                      default)                               │
-  │ --collation-config             PATH  Collation configuration file           │
-  │                                      (overrides config)                     │
-  │ --tokenization-config          PATH  Tokenization configuration file        │
-  │                                      (overrides config)                     │
-  │ --winnowing-config             PATH  Winnowing configuration file           │
-  │                                      (overrides config)                     │
-  │ --raw-data-home        -r      TEXT  Raw data directory (overrides config)  │
-  │ --processed-data-home  -p      TEXT  Processed data directory (overrides    │
-  │                                      config)                                │
-  │ --verbose              -v            Verbose logging for pipeline steps     │
-  │ --help                               Show this message and exit.            │
+  │    --collation-config             PATH  Collation configuration file        │
+  │                                         (overrides config)                  │
+  │    --tokenization-config          PATH  Tokenization configuration file     │
+  │                                         (overrides config)                  │
+  │    --winnowing-config             PATH  Winnowing configuration file        │
+  │                                         (overrides config)                  │
+  │ *  --raw-data-home        -r      TEXT  Raw data directory [required]       │
+  │ *  --processed-data-home  -p      TEXT  Processed data directory [required] │
+  │    --verbose              -v            Verbose logging for pipeline steps  │
+  │    --help                               Show this message and exit.         │
   ╰─────────────────────────────────────────────────────────────────────────────╯
   ```
 

@@ -8,48 +8,30 @@ import pathlib
 
 import numpy as np
 import polars as pl
-from omegaconf import OmegaConf
 
-from cocoa.logger import Logger
+from cocoa.configurable import Configurable
 
 
-class Collator:
+class Collator(Configurable):
+    default_file = "collation.yaml"
+
     def __init__(
         self,
-        main_cfg: pathlib.Path | str = None,
         collation_cfg: pathlib.Path | str = None,
+        raw_data_home: pathlib.Path | str = None,
+        processed_data_home: pathlib.Path | str = None,
         **kwargs,
     ):
-        main_cfg = OmegaConf.load(
-            pathlib.Path(main_cfg if main_cfg is not None else "./config/main.yaml")
-            .expanduser()
-            .resolve()
-        )
-        collation_cfg = OmegaConf.load(
-            pathlib.Path(
-                collation_cfg
-                if collation_cfg is not None
-                else main_cfg.collation_config
-            )
-            .expanduser()
-            .resolve()
-        )
-        self.cfg = OmegaConf.merge(
-            main_cfg, collation_cfg, {k: v for k, v in kwargs.items() if v is not None}
-        )  # cli overrides enter the configuration here
-        self.raw_data_home = (
-            pathlib.Path(self.cfg.get("raw_data_home", self.cfg.get("data_home")))
-            .expanduser()
-            .resolve()
-        )
-        self.processed_data_home = (
-            pathlib.Path(self.cfg.processed_data_home).expanduser().resolve()
+        super().__init__(collation_cfg, **kwargs)
+
+        self.raw_data_home, self.processed_data_home = map(
+            lambda p: pathlib.Path(p).expanduser().resolve(),
+            [raw_data_home, processed_data_home],
         )
         self.processed_data_home.mkdir(parents=True, exist_ok=True)
         self.reference_frame = None
         self.splits: tuple = ("train", "tuning", "held_out")
 
-        self.logger = Logger()
         self.logger.info("Collator initialized...")
         self.logger.info(f"{self.raw_data_home=}")
         self.logger.info(f"{self.processed_data_home=}")
@@ -266,7 +248,10 @@ class Collator:
 
 
 if __name__ == "__main__":
-    self = Collator(raw_data_home="./raw_data/raw-mimic/dev/")
+    self = Collator(
+        raw_data_home="./raw_data/raw-mimic/dev/",
+        processed_data_home="./processed/mimic/",
+    )
     self.save_all(verbose=True)
     # print(self.get_subject_splits())
     # breakpoint()

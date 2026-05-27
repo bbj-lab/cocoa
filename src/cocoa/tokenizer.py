@@ -27,23 +27,25 @@ class Tokenizer:
         is_training: bool = True,
         **kwargs,
     ):
-        main_cfg = OmegaConf.load(
-            pathlib.Path(main_cfg if main_cfg is not None else "./config/main.yaml")
-            .expanduser()
-            .resolve()
-        )
-        tokenization_cfg = OmegaConf.load(
-            pathlib.Path(
-                tokenization_cfg
-                if tokenization_cfg is not None
-                else main_cfg.tokenization_config
-            )
-            .expanduser()
-            .resolve()
-        )
+        self.main_cfg = main_cfg
+        self.tokenization_cfg = tokenization_cfg
         self.cfg = OmegaConf.merge(
-            main_cfg,
-            tokenization_cfg,
+            OmegaConf.load(
+                pathlib.Path(
+                    self.main_cfg if self.main_cfg is not None else "./config/main.yaml"
+                )
+                .expanduser()
+                .resolve()
+            ),
+            OmegaConf.load(
+                pathlib.Path(
+                    self.tokenization_cfg
+                    if self.tokenization_cfg is not None
+                    else main_cfg.tokenization_config
+                )
+                .expanduser()
+                .resolve()
+            ),
             {k: v for k, v in kwargs.items() if v is not None},
         )
         self.processed_data_home = (
@@ -60,7 +62,6 @@ class Tokenizer:
         )
 
         self.logger = Logger()
-        self.logger.info("Tokenizer initialized...")
 
     def get_data(self) -> pl.LazyFrame:
         self.logger.info(f"Loading collated data with {self.processed_data_home=}")
@@ -341,15 +342,19 @@ class Tokenizer:
             }
         )
 
-    @classmethod
-    def from_yaml(cls, yaml_str: str, done_training=True) -> "Tokenizer":
+    def from_yaml(self, yaml_str: str, done_training=True) -> "Tokenizer":
         """
         construct tokenizer from yaml representation
         places tokenizer into inference mode by default
         """
         data = OmegaConf.create(yaml_str)
         cfg = OmegaConf.to_container(data.cfg)
-        tkzr = cls(is_training=data.is_training, **cfg)
+        tkzr = self.__class__(
+            main_cfg=self.main_cfg,
+            tokenization_cfg=self.tokenization_cfg,
+            is_training=data.is_training,
+            **OmegaConf.merge(self.cfg, cfg),
+        )
         tkzr.created_dttm = data.created_dttm
         if data.bins is not None:
             tkzr.bins = pl.DataFrame(

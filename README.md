@@ -1,3 +1,5 @@
+[![DOI](https://zenodo.org/badge/1174829117.svg)](https://doi.org/10.5281/zenodo.20413460)
+
 # Cocoa: a configurable collator
 
 > ☕️ Chicago's second favorite bean
@@ -363,7 +365,7 @@ All of these things are placed in `processed_data_home` as configured.
 > trainer: [🦜 cotorra](https://github.com/bbj-lab/cotorra)
 <!-- prettier-ignore-end -->
 
-## (3 -- optional) Winnowing
+## (3) Winnowing
 
 The winnower prepares held-out timelines for evaluation by filtering and flagging
 subjects based on outcome criteria. It:
@@ -449,7 +451,7 @@ We provide a CLI:
 ```
  Usage: cocoa [OPTIONS] COMMAND [ARGS]...
 
- Configurable collation and tokenization
+ Configurable collation and tokenization (vXX.X.X)
 
 ╭─ Options ───────────────────────────────────────────────────────────────────╮
 │ --install-completion          Install completion for the current shell.     │
@@ -578,16 +580,10 @@ Run in tmux:
 tmux new -s co || tmux a -t co
 ```
 
-Send to randi:
-```
-rsync -avht \
- --delete \
- --exclude "raw_data/" \
- --exclude "processed/" \
- --exclude ".venv/" \
- --exclude ".idea/" \
- ~/Documents/chicago/cocoa \
- randi:/gpfs/data/bbj-lab/users/burkh4rt
+Format:
+```sh
+ruff format .
+ruff check . --fix
 ```
 
 Send to bbj-lab1:

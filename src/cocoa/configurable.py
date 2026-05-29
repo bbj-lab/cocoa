@@ -35,9 +35,9 @@ class Configurable:
             else OmegaConf.create()
         )
         self.cfg = OmegaConf.merge(
-            self.default
+            self.passed
             if self.config_file is not None
-            else self.passed,  # options left unspecified in the passed config
+            else self.default,  # options left unspecified in the passed config
             # should not inherit from default
             {k: v for k, v in kwargs.items() if v is not None},
         )

@@ -29,7 +29,7 @@ tokenized electronic health records. [^1] [^2] [^3] [^4]
 You can download and install this package as follows:
 
 ```sh
-git clone git@github.com:bbj-lab/cocoa.git
+git clone --branch config-refactor git@github.com:bbj-lab/cocoa.git
 cd cocoa
 python -m venv .venv
 . .venv/bin/activate

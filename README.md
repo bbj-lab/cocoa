@@ -1,4 +1,4 @@
-[![DOI](https://zenodo.org/badge/1174829117.svg)](https://doi.org/10.5281/zenodo.20413460)
+[![DOI](img/1174829117.svg)](https://doi.org/10.5281/zenodo.20413460)
 [![SWH](https://archive.softwareheritage.org/badge/origin/https://github.com/bbj-lab/cocoa/)](https://archive.softwareheritage.org/browse/origin/?origin_url=https://github.com/bbj-lab/cocoa)
 
 # Cocoa: a configurable collator
@@ -100,8 +100,8 @@ reference:
       with_col_expr: pl.lit("AGE").alias("AGE")
 ```
 
-- `table` — the name of the parquet (or csv) file in `data_home` (without the
-  extension).
+- `table` — the name of the parquet (or csv) file in `--raw-data-home` (without
+  the extension).
 - `start_time` / `end_time` — columns that define the subject's time window; used
   to filter events from other tables when `reference_key` is set (see below).
 - `augmentation_tables` — optional list of tables to join onto the reference
@@ -135,69 +135,121 @@ entry's fields tell the collator which source columns map to these outputs.
 
 **Examples:**
 
-A simple categorical event from the reference frame:
+- A simple categorical event from the reference frame:
 
-```yaml
-- table: REFERENCE
-  prefix: DSCG
-  code: discharge_category
-  time: discharge_dttm
-```
+  ```yaml
+  - table: REFERENCE
+    prefix: DSCG
+    code: discharge_category
+    time: discharge_dttm
+  ```
 
-A numeric event from an external table:
+  creates codes such as `DSCG//assisted_living`, `DSCG//home`, `DSCG//hospice`
+  with time `discharge_dttm`.
 
-```yaml
-- table: clif_labs
-  prefix: LAB-RES
-  code: lab_category
-  numeric_value: lab_value_numeric
-  time: lab_result_dttm
-```
+- A numeric event from an external table:
 
-Filtering rows before extraction (single filter):
+  ```yaml
+  - table: clif_labs
+    prefix: LAB-RES
+    code: lab_category
+    numeric_value: lab_value_numeric
+    time: lab_result_dttm
+  ```
 
-```yaml
-- table: clif_position
-  prefix: POSN
-  filter_expr: pl.col("position_category") == "prone"
-  code: position_category
-  time: recorded_dttm
-```
+  creates codes such as `LAB-RES//alt` and `LAB-RES//ast` with numeric_value
+  `lab_value_numeric` at time `lab_result_dttm`.
 
-Multiple filters (applied as a list):
+- Tables can be filtered prior to extraction with `filter_expr`:
 
-```yaml
-- table: clif_medication_admin_intermittent_converted
-  prefix: MED-INT
-  filter_expr:
-    - pl.col("mar_action_category") == "given"
-    - pl.col("_convert_status") == "success"
-  code: med_category
-  numeric_value: med_dose_converted
-  time: admin_dttm
-```
+  ```yaml
+  - table: clif_position
+    prefix: POSN
+    filter_expr: pl.col("position_category") == "prone"
+    code: position_category
+    time: recorded_dttm
+  ```
 
-Creating a computed column with `with_col_expr` to use as the code:
+  selects only rows where `pl.col("position_category") == "prone"`
 
-```yaml
-- table: clif_respiratory_support_processed
-  prefix: RESP
-  with_col_expr: pl.lit("fio2_set").alias("code")
-  filter_expr: pl.col("fio2_set").is_finite()
-  code: code
-  numeric_value: fio2_set
-  time: recorded_dttm
-```
+- Multiple filters can be applied as a list:
 
-Using `reference_key` to restrict events to a subject's time window:
+  ```yaml
+  - table: clif_medication_admin_intermittent_converted
+    prefix: MED-INT
+    filter_expr:
+      - pl.col("mar_action_category") == "given"
+      - pl.col("_convert_status") == "success"
+    code: med_category
+    numeric_value: med_dose_converted
+    time: admin_dttm
+  ```
 
-```yaml
-- table: clif_code_status
-  prefix: CODE
-  code: code_status_category
-  time: admission_dttm
-  reference_key: patient_id
-```
+- Creating a computed column with `with_col_expr` to use as the code:
+
+  ```yaml
+  - table: clif_respiratory_support_processed
+    prefix: RESP
+    with_col_expr: pl.lit("fio2_set").alias("code")
+    filter_expr: pl.col("fio2_set").is_finite()
+    code: code
+    numeric_value: fio2_set
+    time: recorded_dttm
+  ```
+
+- The `reference_key` can be used to restrict events to a subject's time window:
+
+  ```yaml
+  - table: clif_code_status
+    prefix: CODE
+    code: code_status_category
+    time: admission_dttm
+    reference_key: patient_id
+  ```
+
+### Outputs
+
+- `meds.parquet` gives a table of the collated events:
+
+  ```
+  ┌────────────┬─────────────────────┬──────────────────────────────┬───────────────┬────────────┐
+  │ subject_id ┆ time                ┆ code                         ┆ numeric_value ┆ text_value │
+  │ ---        ┆ ---                 ┆ ---                          ┆ ---           ┆ ---        │
+  │ str        ┆ datetime[μs]        ┆ str                          ┆ f32           ┆ str        │
+  ╞════════════╪═════════════════════╪══════════════════════════════╪═══════════════╪════════════╡
+  │ 24591817   ┆ 2111-09-26 18:15:00 ┆ MED-CTS//sodium_chloride     ┆ 0.0           ┆ null       │
+  │ 21343412   ┆ 2112-01-11 06:31:00 ┆ LAB-RES//albumin             ┆ 3.3           ┆ null       │
+  │ 24894995   ┆ 2113-01-14 14:25:00 ┆ LAB-ORD//creatinine          ┆ null          ┆ null       │
+  │ 20947416   ┆ 2110-12-12 18:41:00 ┆ LAB-RES//hemoglobin          ┆ 8.4           ┆ null       │
+  │ 25082363   ┆ 2110-06-17 17:00:00 ┆ VTL//respiratory_rate        ┆ 30.0          ┆ null       │
+  │ …          ┆ …                   ┆ …                            ┆ …             ┆ …          │
+  │ 22074503   ┆ 2110-07-13 03:53:00 ┆ LAB-ORD//chloride            ┆ null          ┆ null       │
+  │ 24524153   ┆ 2110-10-08 03:20:00 ┆ LAB-RES//glucose_serum       ┆ 179.0         ┆ null       │
+  │ 28104308   ┆ 2112-03-22 14:31:00 ┆ LAB-RES//sodium              ┆ 137.0         ┆ null       │
+  │ 23859742   ┆ 2110-08-21 21:35:00 ┆ LAB-RES//ptt                 ┆ 26.299999     ┆ null       │
+  │ 25805890   ┆ 2110-10-03 11:00:00 ┆ LAB-ORD//eosinophils_percent ┆ null          ┆ null       │
+  └────────────┴─────────────────────┴──────────────────────────────┴───────────────┴────────────┘
+  ```
+
+- `subject_splits.parquet` gives a table of all subject_id's and their
+  corresponding split assignment:
+
+  ```
+  ┌────────────┬──────────┐
+  │ subject_id ┆ split    │
+  │ ---        ┆ ---      │
+  │ str        ┆ str      │
+  ╞════════════╪══════════╡
+  │ 21081215   ┆ train    │
+  │ 20302177   ┆ train    │
+  │ …          ┆ …        │
+  │ 27116134   ┆ tuning   │
+  │ 29134959   ┆ tuning   │
+  │ …          ┆ …        │
+  │ 28150003   ┆ held_out │
+  │ 22151813   ┆ held_out │
+  └────────────┴──────────┘
+  ```
 
 ## (2) Tokenization
 
@@ -233,136 +285,80 @@ that specifies:
 - `clocks` — list of hour strings (e.g., `00`, `04`, ...) at which to insert
   clock tokens.
 
-## Outputs
+### Outputs
 
-The tokenizer produces two main outputs:
+- `tokens_times.parquet` gives one row per subject with three columns:
+  - `subject_id`
+  - `tokens` — the integer token sequence for the subject's timeline.
+  - `times` — a parallel list of timestamps, one per token, indicating when each
+    event occurred.
 
-### Tokenized timelines
+  The table will look something like this:
 
-`tokens_times.parquet` gives one row per subject with three columns:
+  ```
+  ┌────────────────────┬─────────────────┬─────────────────────────────────┐
+  │ subject_id         ┆ tokens          ┆ times                           │
+  │ ---                ┆ ---             ┆ ---                             │
+  │ str                ┆ list[u32]       ┆ list[datetime[μs]]              │
+  ╞════════════════════╪═════════════════╪═════════════════════════════════╡
+  │ 20002103           ┆ [20, 350, … 21] ┆ [2116-05-08 02:45:00, 2116-05-… │
+  │ 20008372           ┆ [20, 350, … 21] ┆ [2110-10-30 13:03:00, 2110-10-… │
+  │ …                  ┆ …               ┆ …                               │
+  │ 29994865           ┆ [20, 364, … 21] ┆ [2111-01-28 21:49:00, 2111-01-… │
+  └────────────────────┴─────────────────┴─────────────────────────────────┘
+  ```
 
-- `subject_id`
-- `tokens` — the integer token sequence for the subject's timeline.
-- `times` — a parallel list of timestamps, one per token, indicating when each
-  event occurred.
+  In this example, token 20 corresponds to the beginning-of-sequence token
+  (`BOS`), token 21 to the end-of-sequence token (`EOS`), and the tokens in
+  between correspond to the subject's clinical events in chronological order
+  (with ties broken by the configured `ordering`). In fused mode each event is a
+  single token; in unfused mode an event with a numeric value becomes two tokens
+  (code + quantile bin).
 
-The table will look something like this:
+- `tokenizer.yaml` is a plain yaml file that contains information about the
+  configuration, learned vocabulary, and bins. This file is sufficient to
+  reconstitute the tokenizer object. Currently, there's an entry for the lookup
+  that maps strings to tokens:
 
-```
-┌────────────────────┬─────────────────┬─────────────────────────────────┐
-│ subject_id         ┆ tokens          ┆ times                           │
-│ ---                ┆ ---             ┆ ---                             │
-│ str                ┆ list[u32]       ┆ list[datetime[μs]]              │
-╞════════════════════╪═════════════════╪═════════════════════════════════╡
-│ 20002103           ┆ [20, 350, … 21] ┆ [2116-05-08 02:45:00, 2116-05-… │
-│ 20008372           ┆ [20, 350, … 21] ┆ [2110-10-30 13:03:00, 2110-10-… │
-│ …                  ┆ …               ┆ …                               │
-│ 29994865           ┆ [20, 364, … 21] ┆ [2111-01-28 21:49:00, 2111-01-… │
-└────────────────────┴─────────────────┴─────────────────────────────────┘
-```
+  ```yaml
+  lookup:
+    UNK: 0
+    ADMN//direct: 1
+    ADMN//ed: 2
+    ADMN//elective: 3
+    AGE//age_Q0: 4
+    …
+  ```
 
-In this example, token 20 corresponds to the beginning-of-sequence token (`BOS`),
-token 21 to the end-of-sequence token (`EOS`), and the tokens in between
-correspond to the subject's clinical events in chronological order (with ties
-broken by the configured `ordering`). In fused mode each event is a single token;
-in unfused mode an event with a numeric value becomes two tokens (code + quantile
-bin).
+  and an entry for bin cutpoints:
 
-### A record of the tokenizer object
+  ```yaml
+  bins:
+    VTL//heart_rate:
+      - 65.0
+      - 70.0
+      - 75.0
+      - 80.0
+      - 84.0
+      - 89.0
+      - 94.0
+      - 100.0
+      - 108.0
+    LAB-RES//platelet_count:
+      - 62.0
+      - 114.0
+      - 147.0
+      - 175.0
+      - 203.0
+      - 233.0
+      - 267.0
+      - 314.0
+      - 390.0
+    …
+  ```
 
-`tokenizer.yaml` is a plain yaml file that contains information about the
-configuration, learned vocabulary, and bins. This file is sufficient to
-reconstitute the tokenizer object. Currently, there's an entry for the lookup
-that maps strings to tokens:
-
-```yaml
-lookup:
-  UNK: 0
-  ADMN//direct: 1
-  ADMN//ed: 2
-  ADMN//elective: 3
-  AGE//age_Q0: 4
-  …
-```
-
-and an entry for bin cutpoints:
-
-```yaml
-bins:
-  VTL//heart_rate:
-    - 65.0
-    - 70.0
-    - 75.0
-    - 80.0
-    - 84.0
-    - 89.0
-    - 94.0
-    - 100.0
-    - 108.0
-  LAB-RES//platelet_count:
-    - 62.0
-    - 114.0
-    - 147.0
-    - 175.0
-    - 203.0
-    - 233.0
-    - 267.0
-    - 314.0
-    - 390.0
-  …
-```
-
-The lists following each key correspond to the cutpoints for the associated
-category.
-
-### A partition of subject_id's into train, tuning, and held_out splits
-
-`subject_splits.parquet` gives a table listing out all subject_id's and their
-corresponding split assignment:
-
-```
-┌────────────┬──────────┐
-│ subject_id ┆ split    │
-│ ---        ┆ ---      │
-│ str        ┆ str      │
-╞════════════╪══════════╡
-│ 21081215   ┆ train    │
-│ 20302177   ┆ train    │
-│ …          ┆ …        │
-│ 27116134   ┆ tuning   │
-│ 29134959   ┆ tuning   │
-│ …          ┆ …        │
-│ 28150003   ┆ held_out │
-│ 22151813   ┆ held_out │
-└────────────┴──────────┘
-```
-
-### A parquet dataframe in the meds format
-
-`meds.parquet` gives a table of the collated events that were passed to the
-tokenizer -- this is created in the `collate` step:
-
-```
-┌────────────┬─────────────────────┬──────────────────────────────┬───────────────┬────────────┐
-│ subject_id ┆ time                ┆ code                         ┆ numeric_value ┆ text_value │
-│ ---        ┆ ---                 ┆ ---                          ┆ ---           ┆ ---        │
-│ str        ┆ datetime[μs]        ┆ str                          ┆ f32           ┆ str        │
-╞════════════╪═════════════════════╪══════════════════════════════╪═══════════════╪════════════╡
-│ 24591817   ┆ 2111-09-26 18:15:00 ┆ MED-CTS//sodium_chloride     ┆ 0.0           ┆ null       │
-│ 21343412   ┆ 2112-01-11 06:31:00 ┆ LAB-RES//albumin             ┆ 3.3           ┆ null       │
-│ 24894995   ┆ 2113-01-14 14:25:00 ┆ LAB-ORD//creatinine          ┆ null          ┆ null       │
-│ 20947416   ┆ 2110-12-12 18:41:00 ┆ LAB-RES//hemoglobin          ┆ 8.4           ┆ null       │
-│ 25082363   ┆ 2110-06-17 17:00:00 ┆ VTL//respiratory_rate        ┆ 30.0          ┆ null       │
-│ …          ┆ …                   ┆ …                            ┆ …             ┆ …          │
-│ 22074503   ┆ 2110-07-13 03:53:00 ┆ LAB-ORD//chloride            ┆ null          ┆ null       │
-│ 24524153   ┆ 2110-10-08 03:20:00 ┆ LAB-RES//glucose_serum       ┆ 179.0         ┆ null       │
-│ 28104308   ┆ 2112-03-22 14:31:00 ┆ LAB-RES//sodium              ┆ 137.0         ┆ null       │
-│ 23859742   ┆ 2110-08-21 21:35:00 ┆ LAB-RES//ptt                 ┆ 26.299999     ┆ null       │
-│ 25805890   ┆ 2110-10-03 11:00:00 ┆ LAB-ORD//eosinophils_percent ┆ null          ┆ null       │
-└────────────┴─────────────────────┴──────────────────────────────┴───────────────┴────────────┘
-```
-
-All of these things are placed in `processed_data_home` as configured.
+  The lists following each key correspond to the cutpoints for the associated
+  category.
 
 <!-- prettier-ignore-start -->
 > [!TIP]
@@ -371,8 +367,6 @@ All of these things are placed in `processed_data_home` as configured.
 <!-- prettier-ignore-end -->
 
 ## (3) Winnowing
-
-## 3 Winnowing
 
 The winnower prepares held-out timelines for evaluation by filtering and flagging
 subjects based on outcome criteria. It:
@@ -419,9 +413,11 @@ threshold:
 horizon_after_threshold_s: !!int 2592000 # 30d outcome window after prediction threshold
 ```
 
-The output is saved as `held_out_for_inference.parquet` with columns for each
-outcome token (e.g., `XFR-IN//icu_past`, `XFR-IN//icu_future`) indicating whether
-that outcome occurred in the respective time periods.
+### Outputs
+
+- `held_out_for_inference.parquet` has columns for each outcome token (e.g.,
+  `XFR-IN//icu_past`, `XFR-IN//icu_future`) indicating whether that outcome
+  occurred in the respective time period.
 
 ## Usage
 
@@ -452,7 +448,7 @@ tokenizer = Tokenizer(
 
 ### CLI
 
-We provide a CLI:
+We provide a CLI that should be sufficient for most use cases:
 
 ```
  Usage: cocoa [OPTIONS] COMMAND [ARGS]...

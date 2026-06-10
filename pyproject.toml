@@ -12,7 +12,14 @@
         "Natural Language :: English",
         "Programming Language :: Python :: 3",
     ]
-    dependencies = [ "numpy", "omegaconf", "polars", "rich", "typer" ]
+    dependencies = [
+        "deepdiff",
+        "numpy",
+        "omegaconf",
+        "polars",
+        "rich",
+        "typer",
+    ]
     description = "configurable collator and tokenizer"
     keywords = [ "data collation", "generative event models", "tokenization" ]
     license = "MIT"
@@ -20,7 +27,7 @@
     name = "cocoa"
     readme = { file = "README.md", content-type = "text/markdown" }
     requires-python = ">=3.11"
-    version = "26.4.0"
+    version = "26.4.1"
 
     [project.scripts]
         cocoa = "cocoa.cli:main"
@@ -61,4 +68,4 @@
         where = [ "src" ]
 
     [tool.setuptools.package-data]
-        "config" = [ "*.yaml" ]
+        "cocoa.config" = [ "*.yaml" ]

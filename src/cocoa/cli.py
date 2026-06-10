@@ -16,6 +16,7 @@ from rich.table import Table
 
 from cocoa.collator import Collator
 from cocoa.tokenizer import Tokenizer
+from cocoa.util import combine_processed_data
 from cocoa.winnower import Winnower
 
 __version__ = version("cocoa")
@@ -296,24 +297,29 @@ def pipeline(
 
 
 @app.command()
-def info():
+def combine_datasets(
+    input_data_dirs: list[str],
+    output_data_dir: Annotated[
+        str,
+        typer.Option(
+            "--output-data-dir", "-o", help="Output directory for combined data"
+        ),
+    ] = ...,
+):
     """
-    Display configuration information.
+    Combine multiple processed datasets into one.
+
+    Merges parquet files and validates that tokenizer configurations match
+    across all input directories.
     """
-    from omegaconf import OmegaConf
-
-    main_cfg = OmegaConf.load(pathlib.Path("./config/main.yaml").expanduser().resolve())
-
-    table = Table(title="Cocoa Configuration")
-    table.add_column("Setting", style="cyan")
-    table.add_column("Value", style="green")
-
-    table.add_row("Raw data Home", str(main_cfg.raw_data_home))
-    table.add_row("Processed Data Home", str(main_cfg.processed_data_home))
-    table.add_row("Collation Config", str(main_cfg.collation_config))
-    table.add_row("Tokenization Config", str(main_cfg.tokenization_config))
-
-    console.print(table)
+    with console.status("[bold green]Combining datasets..."):
+        t0 = time.perf_counter()
+        output = combine_processed_data(
+            processed_data_homes=input_data_dirs, processed_data_home=output_data_dir
+        )
+        t1 = time.perf_counter()
+        print(f"\n[green]✓[/green] Combine completed in {t1 - t0:.2f}s.")
+        print(f"  Output at: [cyan]{output}[/cyan]")
 
 
 def main():

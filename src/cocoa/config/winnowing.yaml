@@ -1,0 +1,33 @@
+%YAML 1.2
+---
+outcome_tokens:
+  - XFR-IN//icu
+  - RESP//imv
+  - DSCG//expired
+  - DSCG//hospice
+  - LAB-RES//sodium_Q0
+  - LAB-RES//sodium_Q9
+  - LAB-RES//potassium_Q0
+  - LAB-RES//potassium_Q9
+  - LAB-RES//hemoglobin_Q0
+  - LAB-RES//glucose_serum_Q0
+  - VTL//heart_rate_Q9
+  - SOFA//resp-4
+  - SOFA//renal-4
+  - SOFA//liver-4
+  - SOFA//cv-4
+  - ASMT//cam_total_yes
+
+threshold:
+  # choose one and only one of the following
+  # duration_s: !!int 86400 # 24h
+  # first_occurrence: XFR-IN//icu
+  uniform_random: !!bool True
+
+# horizon_after_threshold_s: !!int 864000 # 10d outcome window after prediction threshold
+
+splits: #select which splits to prepare
+  - train
+  - tuning
+  - held_out
+# rep-based inference requires train and tuning splits

@@ -5,6 +5,7 @@
 
 > ☕️ Chicago's second favorite bean
 
+<p align="center">
 <img src="img/cocoa-bean.png" alt="cocoa bean" width="400" style="display: block;
 margin: 0 auto; -webkit-mask-image: radial-gradient(
     ellipse at center,
@@ -16,6 +17,7 @@ margin: 0 auto; -webkit-mask-image: radial-gradient(
     rgba(0,0,0,1) 50%,
     rgba(0,0,0,0) 100%
   );"/>
+</p>
 
 ## About
 
@@ -29,7 +31,7 @@ tokenized electronic health records. [^1] [^2] [^3] [^4]
 You can download and install this package as follows:
 
 ```sh
-git clone git@github.com:bbj-lab/cocoa.git
+git clone --branch config-refactor git@github.com:bbj-lab/cocoa.git
 cd cocoa
 python -m venv .venv
 . .venv/bin/activate
@@ -462,10 +464,11 @@ We provide a CLI that should be sufficient for most use cases:
 │ --help                        Show this message and exit.                   │
 ╰─────────────────────────────────────────────────────────────────────────────╯
 ╭─ Commands ──────────────────────────────────────────────────────────────────╮
-│ collate   Collate raw data into a denormalized format.                      │
-│ tokenize  Tokenize collated data into integer sequences.                    │
-│ winnow    Winnow held-out data for evaluation.                              │
-│ pipeline  Run the full pipeline: collate, tokenize, & winnow.               │
+│ collate           Collate raw data into a denormalized format.              │
+│ tokenize          Tokenize collated data into integer sequences.            │
+│ winnow            Winnow held-out data for evaluation.                      │
+│ pipeline          Run the full pipeline: collate, tokenize, & winnow.       │
+│ combine-datasets  Combine multiple processed datasets into one.             │
 ╰─────────────────────────────────────────────────────────────────────────────╯
 ```
 
@@ -483,7 +486,7 @@ with commands:
 
   ╭─ Options ───────────────────────────────────────────────────────────────────╮
   │    --collation-config     -c      PATH  Collation configuration file        │
-  │                                         (overrides config)                  │
+  │                                         (overrides default)                 │
   │ *  --raw-data-home        -r      TEXT  Raw data directory [required]       │
   │ *  --processed-data-home  -p      TEXT  Processed data directory [required] │
   │    --verbose              -v            Verbose logging for collate; this   │

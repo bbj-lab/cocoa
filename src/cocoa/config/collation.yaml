@@ -1,0 +1,231 @@
+%YAML 1.2
+---
+subject_id: hospitalization_id # the atomic unit of interest
+group_id: patient_id # multiple subjects can belong to a group
+
+subject_splits:
+  train_frac: !!float 0.7
+  tuning_frac: !!float 0.1
+  # remainder is held_out
+
+# primary reference table for static data to which other tables will be joined
+reference:
+  table: clif_hospitalization
+  start_time: admission_dttm
+  end_time: discharge_dttm
+
+  # join other tables to the reference table
+  augmentation_tables:
+    - table: clif_patient
+      key: patient_id
+      validation: "m:1"
+      with_col_expr: pl.lit("age").alias("AGE")
+
+entries:
+  - table: REFERENCE
+    prefix: RACE
+    code: race_category
+    time: admission_dttm
+
+  - table: REFERENCE
+    prefix: ETHN
+    code: ethnicity_category
+    time: admission_dttm
+
+  - table: REFERENCE
+    prefix: SEX
+    code: sex_category
+    time: admission_dttm
+
+  - table: REFERENCE
+    prefix: AGE
+    code: AGE
+    numeric_value: age_at_admission
+    time: admission_dttm
+
+  - table: REFERENCE
+    prefix: ADMN
+    code: admission_type_category
+    time: admission_dttm
+
+  - table: clif_adt
+    prefix: XFR-IN
+    code: location_category
+    time: in_dttm
+
+  - table: clif_adt
+    prefix: XFR-OUT
+    code: location_category
+    time: out_dttm
+
+  - table: clif_code_status
+    prefix: CODE
+    code: code_status_category
+    time: admission_dttm
+    reference_key: patient_id
+
+  - table: clif_crrt_therapy
+    prefix: CRRT
+    filter_expr: pl.col("crrt_mode_category").is_not_null()
+    code: crrt_mode_category
+    numeric_value: blood_flow_rate
+    time: recorded_dttm
+
+  # lab ordered
+  - table: clif_labs
+    prefix: LAB-ORD
+    code: lab_category
+    time: lab_order_dttm
+
+  # lab result available
+  - table: clif_labs
+    prefix: LAB-RES
+    code: lab_category
+    numeric_value: lab_value_numeric
+    time: lab_result_dttm
+
+  # converted continuous medications
+  - table: clif_medication_admin_continuous_converted
+    prefix: MED-CTS
+    filter_expr: pl.col("_convert_status") == "success"
+    code: med_category
+    numeric_value: med_dose_converted
+    time: admin_dttm
+
+  # unconverted continuous medications
+  - table: clif_medication_admin_continuous_converted
+    prefix: MED-CTS
+    filter_expr: ~(pl.col("_convert_status") == "success")
+    code: med_category
+    time: admin_dttm
+
+  # converted, administered intermittent medications
+  - table: clif_medication_admin_intermittent_converted
+    prefix: MED-INT
+    filter_expr:
+      - pl.col("mar_action_category") == "given"
+      - pl.col("_convert_status") == "success"
+    code: med_category
+    numeric_value: med_dose_converted
+    time: admin_dttm
+
+  # unconverted, administered intermittent medications
+  - table: clif_medication_admin_intermittent_converted
+    prefix: MED-INT
+    filter_expr:
+      - pl.col("mar_action_category") == "given"
+      - pl.col("_convert_status") != "success"
+    code: med_category
+    time: admin_dttm
+
+  # quantitative assessments
+  - table: clif_patient_assessments
+    prefix: ASMT
+    filter_expr: pl.col("numerical_value").is_not_null()
+    code: assessment_category
+    numeric_value: numerical_value
+    time: recorded_dttm
+
+  # qualitative assessments
+  - table: clif_patient_assessments
+    prefix: ASMT
+    filter_expr: pl.col("numerical_value").is_null()
+    with_col_expr: >-
+      pl.when(pl.col("assessment_category") == "cam_total").then(
+        pl.when(pl.col("categorical_value") == "Positive")
+          .then(pl.lit("Yes"))
+          .when(pl.col("categorical_value") == "Negative")
+          .then(pl.lit("No"))
+          .otherwise(pl.col("categorical_value"))
+      ).otherwise(pl.col("categorical_value")).alias("categorical_value")
+    code: assessment_category
+    text_value: categorical_value
+    time: recorded_dttm
+
+  - table: clif_position
+    prefix: POSN
+    filter_expr: pl.col("position_category") == "prone"
+    code: position_category
+    time: recorded_dttm
+
+  # clif_respiratory_support_processed is clif_respiratory_support processed by clifpy
+  - table: clif_respiratory_support_processed
+    prefix: RESP
+    code: mode_category
+    time: recorded_dttm
+
+  - table: clif_respiratory_support_processed
+    prefix: RESP
+    code: device_category
+    time: recorded_dttm
+
+  - table: clif_respiratory_support_processed
+    prefix: RESP
+    with_col_expr: pl.lit("fio2_set").alias("code")
+    filter_expr: pl.col("fio2_set").is_finite()
+    code: code
+    numeric_value: fio2_set
+    time: recorded_dttm
+
+  - table: clif_respiratory_support_processed
+    prefix: RESP
+    with_col_expr: pl.lit("peep_set").alias("code")
+    filter_expr: pl.col("peep_set").is_finite()
+    code: code
+    numeric_value: peep_set
+    time: recorded_dttm
+
+  - table: clif_respiratory_support_processed
+    prefix: RESP
+    with_col_expr: pl.lit("tidal_volume_set").alias("code")
+    filter_expr: pl.col("tidal_volume_set").is_finite()
+    code: code
+    numeric_value: tidal_volume_set
+    time: recorded_dttm
+
+  - table: clif_sofa
+    prefix: SOFA
+    with_col_expr: (pl.lit("cv-") + pl.col("sofa_cv_97").cast(str)).alias("cv")
+    code: cv
+    time: event_time
+
+  - table: clif_sofa
+    prefix: SOFA
+    with_col_expr: (pl.lit("cns-") + pl.col("sofa_cns").cast(str)).alias("cns")
+    code: cns
+    time: event_time
+
+  - table: clif_sofa
+    prefix: SOFA
+    with_col_expr: (pl.lit("coag-") + pl.col("sofa_coag").cast(str)).alias("coag")
+    code: coag
+    time: event_time
+
+  - table: clif_sofa
+    prefix: SOFA
+    with_col_expr: (pl.lit("liver-") + pl.col("sofa_liver").cast(str)).alias("liver")
+    code: liver
+    time: event_time
+
+  - table: clif_sofa
+    prefix: SOFA
+    with_col_expr: (pl.lit("renal-") + pl.col("sofa_renal").cast(str)).alias("renal")
+    code: renal
+    time: event_time
+
+  - table: clif_sofa
+    prefix: SOFA
+    with_col_expr: (pl.lit("resp-") + pl.col("sofa_resp").cast(str)).alias("resp")
+    code: resp
+    time: event_time
+
+  - table: clif_vitals
+    prefix: VTL
+    code: vital_category
+    numeric_value: vital_value
+    time: recorded_dttm
+
+  - table: REFERENCE
+    prefix: DSCG
+    code: discharge_category
+    time: discharge_dttm

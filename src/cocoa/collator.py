@@ -256,9 +256,9 @@ class Collator:
             df_all.sink_parquet(meds_path, engine="streaming")
         except Exception as e:
             self.logger.warning(f"Streaming write failed: {e}")
-            df_all.sink_parquet(meds_path, engine="in-memory")
+            df_all.sink_parquet(meds_path, engine="in-memory", mkdir=True)
         (df_splits := self.get_subject_splits()).write_parquet(
-            self.processed_data_home / "subject_splits.parquet"
+            self.processed_data_home / "subject_splits.parquet", mkdir=True
         )
 
         if verbose:

@@ -5,6 +5,7 @@ tokenizes collated data into integer sequences, creating bins & a lookup table
 """
 
 import datetime
+import importlib.metadata as meta
 import pathlib
 import zoneinfo
 
@@ -263,7 +264,9 @@ class Tokenizer:
             .join(
                 self.get_lookup(pt).lazy(), on="to_tokenize", validate="m:1", how="left"
             )
-            .with_columns(pl.col("token").fill_null(0))  # UNK is 0
+            .with_columns(
+                pl.col("token").fill_null(pl.lit(0, dtype=pl.UInt32))
+            )  # UNK is 0
             .group_by("subject_id", maintain_order=True)
             .agg(
                 pl.col("token").alias("tokens"),
@@ -340,6 +343,7 @@ class Tokenizer:
                 "is_training": self.is_training,
                 "cfg": OmegaConf.to_container(self.cfg),
                 "created_dttm": self.created_dttm,
+                "cocoa_version": meta.version("cocoa"),
             }
         )
 
@@ -366,7 +370,7 @@ class Tokenizer:
         if data.lookup is not None:
             tkzr.lookup = pl.DataFrame(
                 list(dict(data.lookup).items()),
-                schema=["to_tokenize", "token"],
+                schema={"to_tokenize": pl.String, "token": pl.UInt32},
                 orient="row",
             )
         if done_training:

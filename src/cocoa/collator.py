@@ -181,17 +181,21 @@ class Collator:
             .cast(pl.Datetime)
             .dt.replace_time_zone(time_zone=None)
             .alias("time"),
-            pl.concat_str(
-                [
-                    pl.lit(prefix),
-                    pl.col(code)
-                    .cast(pl.String)
-                    .str.to_lowercase()
-                    .str.replace_all(r"\s+", "_"),
-                ],
-                separator="//",
-                ignore_nulls=True,
-            ).alias("code"),
+            pl.when(pl.col(code).is_not_null())
+            .then(
+                pl.concat_str(
+                    [
+                        pl.lit(prefix),
+                        pl.col(code)
+                        .cast(pl.String)
+                        .str.to_lowercase()
+                        .str.replace_all(r"\s+", "_"),
+                    ],
+                    separator="//",
+                    ignore_nulls=True,  # prefix is optional
+                )
+            )
+            .alias("code"),
             (pl.col(numeric_value) if numeric_value else pl.lit(None))
             .cast(pl.Float32)  # dumb
             .alias("numeric_value"),

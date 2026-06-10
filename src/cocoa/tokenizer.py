@@ -159,25 +159,32 @@ class Tokenizer(Configurable):
         """
         if self.cfg.get("insert_spacers", False):
             spcrs = dict(self.cfg.spacers)
-            return df.with_columns(
-                tdiff_mins=(
-                    pl.col("time") - pl.col("time").shift(1).over("subject_id")
-                ).dt.total_minutes()
-            ).with_columns(
-                t_spacer=pl.when(
-                    (pl.col("tdiff_mins") < min(spcrs.values()))
-                    | pl.col("tdiff_mins").is_null()
+            return (
+                df.sort("subject_id", "time")
+                .with_columns(
+                    tdiff_mins=(
+                        pl.col("time") - pl.col("time").shift(1).over("subject_id")
+                    ).dt.total_minutes()
                 )
-                .then(None)
-                .otherwise(
-                    pl.concat_str(
-                        pl.lit("TIME//"),
-                        pl.col("tdiff_mins")
-                        .cut(breaks=list(spcrs.values())[1:], labels=list(spcrs.keys()))
-                        .cast(pl.String),
+                .with_columns(
+                    t_spacer=pl.when(
+                        (pl.col("tdiff_mins") < min(spcrs.values()))
+                        | pl.col("tdiff_mins").is_null()
                     )
+                    .then(None)
+                    .otherwise(
+                        pl.concat_str(
+                            pl.lit("TIME//"),
+                            pl.col("tdiff_mins")
+                            .cut(
+                                breaks=list(spcrs.values())[1:],
+                                labels=list(spcrs.keys()),
+                            )
+                            .cast(pl.String),
+                        )
+                    )
+                    .cast(pl.String)
                 )
-                .cast(pl.String)
             )
         else:
             return df.with_columns(t_spacer=pl.lit(None))
@@ -195,7 +202,7 @@ class Tokenizer(Configurable):
                     ignore_nulls=True,
                 )
                 if self.cfg.get("fused", False)
-                else pl.concat_list("t_spacer", "code", "binned_value", "text_value"),
+                else pl.concat_list("code", "binned_value", "text_value"),
             )
             .list.drop_nulls()
             .alias("to_tokenize")
@@ -291,7 +298,7 @@ class Tokenizer(Configurable):
             return (
                 self.lookup.filter(pl.col("to_tokenize") == word).select("token").item()
             )
-        except ValueError or AttributeError:
+        except (ValueError, AttributeError):
             return 0  # UNK
 
     def __contains__(self, word: str) -> bool:

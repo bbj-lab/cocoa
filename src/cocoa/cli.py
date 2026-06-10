@@ -130,7 +130,7 @@ def tokenize(
         print(f"\n[green]✓[/green] Tokenization completed in {t1 - t0:.2f}s.")
     out_path = tokenizer.processed_data_home
     print(f"  Output: [cyan]{out_path}/tokens_times.parquet[/cyan]")
-    print(f"  Output: [cyan]{out_path}/tokens_vocab.json[/cyan]")
+    print(f"  Output: [cyan]{out_path}/tokenizer.yaml[/cyan]")
     print(f"  Vocabulary size: [cyan]{len(tokenizer)}[/cyan] tokens")
 
 

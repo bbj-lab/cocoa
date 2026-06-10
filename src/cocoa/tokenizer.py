@@ -213,7 +213,7 @@ class Tokenizer:
                     ignore_nulls=True,
                 )
                 if self.cfg.get("fused", False)
-                else pl.concat_list("t_spacer", "code", "binned_value", "text_value"),
+                else pl.concat_list("code", "binned_value", "text_value"),
             )
             .list.drop_nulls()
             .alias("to_tokenize")

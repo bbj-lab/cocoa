@@ -99,6 +99,32 @@ class Winnower:
                 + pl.lit(1)
                 # place the triggering token into the past; it is known
             )
+        elif "every_s" in self.cfg.get("threshold", {}):
+            # rolling decision points: one row per (subject, cutpoint), with
+            # cutpoints at multiples of `every_s` up to `max_decision_s` (default 7d)
+            # and strictly inside the stay. `decision_s` records each cutpoint so
+            # downstream evaluation can stratify performance by time into the stay.
+            stride = int(self.cfg.threshold.every_s)
+            cap = int(self.cfg.threshold.get("max_decision_s", 7 * 86400))
+            return (
+                df.with_columns(
+                    decision_s=pl.int_ranges(
+                        stride,
+                        pl.min_horizontal(
+                            pl.col("s_total_duration"), pl.lit(cap + 1)
+                        ),
+                        stride,
+                    )
+                )
+                .filter(pl.col("decision_s").list.len() > 0)
+                .explode("decision_s")
+                .with_columns(
+                    last_valid=pl.struct(["s_elapsed", "decision_s"]).map_elements(
+                        lambda r: sum(x < r["decision_s"] for x in r["s_elapsed"]),
+                        return_dtype=pl.Int64,
+                    )
+                )
+            )
         elif (
             "uniform_random" in self.cfg.get("threshold", {})
             and self.cfg.threshold.uniform_random
@@ -131,34 +157,67 @@ class Winnower:
             ),
         )  # split into past and future
         if "horizon_after_threshold_s" in self.cfg:
-            df = (
-                df.with_columns(
-                    s_elapsed_thresh=pl.col("times")
-                    .list.tail(
-                        pl.col("tokens_future").list.len() + 1
-                    )  # include threshold time
-                    .list.eval((pl.element() - pl.element().first()).dt.total_seconds())
-                )
-                .with_columns(
-                    valid_future_count=pl.col("s_elapsed_thresh")
-                    .list.eval(pl.element() <= self.cfg.horizon_after_threshold_s)
-                    .list.sum()
-                    - pl.lit(1)  # threshold token was counted, drop it
-                )
-                .with_columns(
-                    tokens_future=pl.col("tokens_future").list.head(
-                        "valid_future_count"
+            horizon_s = int(self.cfg.horizon_after_threshold_s)
+            if "decision_s" in df.collect_schema().names():
+                # rolling mode: window is (decision_s, decision_s + horizon],
+                # anchored at the cutpoint rather than the last observed event
+                df = (
+                    df.with_columns(
+                        s_elapsed_future=pl.col("s_elapsed").list.tail(
+                            pl.col("s_elapsed").list.len() - pl.col("last_valid")
+                        )
+                    )
+                    .with_columns(
+                        valid_future_count=pl.struct(
+                            ["s_elapsed_future", "decision_s"]
+                        ).map_elements(
+                            lambda r: sum(
+                                e <= r["decision_s"] + horizon_s
+                                for e in r["s_elapsed_future"]
+                            ),
+                            return_dtype=pl.Int64,
+                        )
+                    )
+                    .with_columns(
+                        tokens_future=pl.col("tokens_future").list.head(
+                            "valid_future_count"
+                        )
                     )
                 )
-            )
-        return df.select(
+            else:
+                df = (
+                    df.with_columns(
+                        s_elapsed_thresh=pl.col("times")
+                        .list.tail(
+                            pl.col("tokens_future").list.len() + 1
+                        )  # include threshold time
+                        .list.eval(
+                            (pl.element() - pl.element().first()).dt.total_seconds()
+                        )
+                    )
+                    .with_columns(
+                        valid_future_count=pl.col("s_elapsed_thresh")
+                        .list.eval(pl.element() <= self.cfg.horizon_after_threshold_s)
+                        .list.sum()
+                        - pl.lit(1)  # threshold token was counted, drop it
+                    )
+                    .with_columns(
+                        tokens_future=pl.col("tokens_future").list.head(
+                            "valid_future_count"
+                        )
+                    )
+                )
+        carry = [
             "subject_id",
             "tokens",
             "times",
             "tokens_past",
             "s_elapsed_past",
             "tokens_future",
-        ).with_columns(
+        ]
+        if "decision_s" in df.collect_schema().names():  # rolling (every_s) mode
+            carry.append("decision_s")
+        return df.select(*carry).with_columns(
             **{
                 f"{t}_{tense}": pl.col(f"tokens_{tense}").list.contains(
                     self.tkzr_cfg.lookup[t]

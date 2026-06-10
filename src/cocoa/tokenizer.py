@@ -391,7 +391,7 @@ if __name__ == "__main__":
     self = Tokenizer()
     self.save_all(verbose=True)
 
-    tkzr_cp = Tokenizer.from_yaml(self.to_yaml())
+    tkzr_cp = self.from_yaml(self.to_yaml())
     assert self.lookup.equals(tkzr_cp.lookup)
     assert self.bins.equals(tkzr_cp.bins)
     assert self("EOS") != 0

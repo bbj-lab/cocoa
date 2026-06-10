@@ -56,11 +56,11 @@ specifies:
   itself via `table: REFERENCE`) to the output schema. Each entry declares which
   column provides the `code`, `time`, and optionally `numeric_value`, and
   `text_value`. Codes can be given a prefix `prefix`. Some preprocessing can be
-  done with optional entries for `filter_expr`, `with_col_expr`, and `agg_expr`.
-  These take the form of polars expressions that are evaluated and applied to the
-  dataframe during loading. _Mild checks are performed when evaluating these
-  expressions, but in general, the yaml config is just as powerful as the python.
-  Check all yaml files prior to use._
+  done with optional entries for `filter_expr` and `with_col_expr`. These take
+  the form of polars expressions that are evaluated and applied to the dataframe
+  during loading. _Mild checks are performed when evaluating these expressions,
+  but in general, the yaml config is just as powerful as the python. Check all
+  yaml files prior to use._
 - **Subject splits** (`train_frac` / `tuning_frac`) that partition subjects
   chronologically into train, tuning, and held-out sets.
 
@@ -289,11 +289,13 @@ that specifies:
 
 ### Outputs
 
-- `tokens_times.parquet` gives one row per subject with three columns:
+- `tokens_times.parquet` gives one row per subject with three columns by default:
   - `subject_id`
   - `tokens` — the integer token sequence for the subject's timeline.
   - `times` — a parallel list of timestamps, one per token, indicating when each
     event occurred.
+  - `numeric_values` - corresponding values for numeric value tokens (only if
+    configured)
 
   The table will look something like this:
 
@@ -420,6 +422,8 @@ horizon_after_threshold_s: !!int 2592000 # 30d outcome window after prediction t
 - `held_out_for_inference.parquet` has columns for each outcome token (e.g.,
   `XFR-IN//icu_past`, `XFR-IN//icu_future`) indicating whether that outcome
   occurred in the respective time period.
+- `train_for_inference.parquet` and `tuning_for_inference.parquet` are also
+  provided; these are required to make rep-based predictions
 
 ## Usage
 

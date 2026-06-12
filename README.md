@@ -110,6 +110,26 @@ reference:
   frame. Each needs a `key` to join on and a `validation` mode (e.g. `"m:1"`).
   You can also add computed columns via `with_col_expr`.
 
+### Pass-through columns
+
+The `pass_through_columns` option allows you to preserve static columns from the
+reference table and include them in the output files. This is useful for
+demographic and contextual data that should accompany the collated events:
+
+```yaml
+pass_through_columns:
+  - age_at_admission
+  - admission_type_category
+  ...
+```
+
+Columns specified in this list will be copied from the reference table to:
+
+- `subject_splits.parquet`
+- `*_for_inference.parquet` files (e.g., `train_for_inference.parquet`,
+  `tuning_for_inference.parquet`, `held_out_for_inference.parquet`) — for use in
+  downstream tasks where you may need subject metadata alongside predictions
+
 ### Entries
 
 The `entries` list defines the events to extract. Every entry produces rows with

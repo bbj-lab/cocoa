@@ -137,14 +137,7 @@ class Winnower(Configurable):
                     )
                 )
             )
-        return df.select(
-            "subject_id",
-            "tokens",
-            "times",
-            "tokens_past",
-            "s_elapsed_past",
-            "tokens_future",
-        ).with_columns(
+        return df.with_columns(
             **{
                 f"{t}_{tense}": pl.col(f"tokens_{tense}").list.contains(
                     self.tkzr_cfg.lookup[t]

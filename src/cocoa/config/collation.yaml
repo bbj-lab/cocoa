@@ -239,3 +239,27 @@ entries:
     prefix: DSCG
     code: discharge_category
     time: discharge_dttm
+
+  # vasopressor initiation
+  - table: clif_medication_admin_continuous_converted
+    prefix: LABEL
+    filter_expr: >-
+      pl.col("med_category").is_in(["angiotensin", "dopamine", "epinephrine", "norepinephrine",
+      "phenylephrine" , "vasopressin"])
+    with_col_expr: pl.lit("pressor_init").alias("code")
+    agg_expr:
+      - pl.col("code").first()
+      - pl.col("admin_dttm").first()
+    code: code
+    time: admin_dttm
+
+  # CRRT initiation
+  - table: clif_crrt_therapy
+    prefix: LABEL
+    filter_expr: pl.col("crrt_mode_category").is_not_null()
+    with_col_expr: pl.lit("crrt_init").alias("code")
+    agg_expr:
+      - pl.col("code").first()
+      - pl.col("recorded_dttm").first()
+    code: code
+    time: recorded_dttm

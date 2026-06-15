@@ -129,6 +129,8 @@ class Collator(Configurable):
         reference_key: str = None,
         subject_id_str: str = None,
         fix_date_to_time: bool = None,
+        agg_expr: str | list = None,
+        key: str = None,
     ) -> pl.LazyFrame:
         """create tokens corresponding to a configured event"""
         df = (
@@ -139,6 +141,8 @@ class Collator(Configurable):
                 filter_expr=filter_expr,
                 with_col_expr=with_col_expr,
                 subject_id_str=subject_id_str,
+                agg_expr=agg_expr,
+                key=key,
             )
         )
         if fix_date_to_time:
@@ -275,5 +279,5 @@ if __name__ == "__main__":
         processed_data_home="./processed/mimic/",
     )
     self.save_all(verbose=True)
-    # print(self.get_subject_splits())
-    # breakpoint()
+    print(self.get_subject_splits())
+    breakpoint()

@@ -153,6 +153,8 @@ entry's fields tell the collator which source columns map to these outputs.
 | `text_value`    | Column to use as the text value for the event.                                                                                   |
 | `filter_expr`   | A Polars expression (or list of expressions) to filter rows before extraction.                                                   |
 | `with_col_expr` | A Polars expression (or list) to add computed columns before extraction.                                                         |
+| `agg_expr`      | A Polars aggregation expression (or list) applied via `group_by(...).agg(...)` before extraction.                                |
+| `key`           | Grouping key used with `agg_expr`. Defaults to `subject_id` when not provided.                                                   |
 | `reference_key` | Join the source table to the reference frame on this key and keep only rows within the subject's `start_time`–`end_time` window. |
 
 **Examples:**
@@ -205,6 +207,20 @@ entry's fields tell the collator which source columns map to these outputs.
     code: med_category
     numeric_value: med_dose_converted
     time: admin_dttm
+  ```
+
+- Pre-aggregating events before token extraction with `agg_expr`:
+
+  ```yaml
+  - table: clif_crrt_therapy
+    prefix: LABEL
+    filter_expr: pl.col("crrt_mode_category").is_not_null()
+    with_col_expr: pl.lit("crrt_init").alias("code")
+    agg_expr:
+      - pl.col("code").first()
+      - pl.col("recorded_dttm").first()
+    code: code
+    time: recorded_dttm
   ```
 
 - Creating a computed column with `with_col_expr` to use as the code:
@@ -538,7 +554,7 @@ with commands:
 
 - `cocoa pipeline`
 
-  ```
+  ````
   Usage: cocoa pipeline [OPTIONS]
 
   Run the full pipeline: collate, tokenize, & winnow.
@@ -555,12 +571,11 @@ with commands:
   │    --verbose              -v            Verbose logging for pipeline steps  │
   │    --help                 -h            Show this message and exit.         │
   ╰─────────────────────────────────────────────────────────────────────────────╯
-  ```
-
-<!-- prettier-ignore-start -->
-> [!TIP]
-> For common use cases, check out the [recipes](./recipes/README.md) section!
-<!-- prettier-ignore-end -->
+  ```<!-- prettier-ignore-start -->
+  > [!TIP]
+  > For common use cases, check out the [recipes](./recipes/README.md) section!
+  <!-- prettier-ignore-end -->
+  ````
 
 [^1]:
     M. Burkhart, B. Ramadan, Z. Liao, K. Chhikara, J. Rojas, W. Parker, & B.

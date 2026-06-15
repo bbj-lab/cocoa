@@ -1,6 +1,18 @@
 {
+  "breadcrumbs.enabled": true,
+  "chat.tools.terminal.autoApprove": {
+    "pytest": true
+  },
   "cSpell.diagnosticLevel": "Hint",
+  "editor.bracketPairColorization.enabled": true,
   "editor.formatOnSave": true,
+  "editor.rulers": [88],
+  "editor.minimap.enabled": false,
+  "editor.inlineSuggest.enabled": true,
+  "editor.guides.bracketPairs": true,
+  "files.trimTrailingWhitespace": true,
+  "files.insertFinalNewline": true,
+  "git.autofetch": true,
   "[json]": {
     "editor.defaultFormatter": "esbenp.prettier-vscode"
   },
@@ -8,9 +20,11 @@
     "editor.defaultFormatter": "esbenp.prettier-vscode"
   },
   "[markdown]": {
-    "editor.defaultFormatter": "esbenp.prettier-vscode"
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.rulers": [81]
   },
   "prettier.configPath": ".prettierrc.toml",
+  "python.experiments.enabled": false,
   "[python]": {
     "editor.defaultFormatter": "charliermarsh.ruff",
     "editor.codeActionsOnSave": {
@@ -18,19 +32,19 @@
     }
   },
   "ruff.configuration": "${workspaceFolder}/pyproject.toml",
+  "search.exclude": {
+    "**/.venv": true,
+    "**/wandb": true
+  },
   "[shellscript]": {
     "editor.defaultFormatter": "mkhl.shfmt"
   },
   "shellformat.useEditorConfig": true,
+  "terminal.integrated.shellIntegration.enabled": false,
   "[toml]": {
     "editor.defaultFormatter": "tamasfe.even-better-toml"
   },
   "[yaml]": {
     "editor.defaultFormatter": "esbenp.prettier-vscode"
-  },
-  "python.experiments.enabled": false,
-  "terminal.integrated.shellIntegration.enabled": false,
-  "chat.tools.terminal.autoApprove": {
-    "pytest": true
   }
 }

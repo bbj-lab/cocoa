@@ -21,7 +21,8 @@ reference:
       validation: "m:1"
       with_col_expr: pl.lit("age").alias("AGE")
 
-# copy these from reference table to subject_splits.parquet and then *_for_inference.parquet
+# copy these from reference table to subject_splits.parquet
+# and then *_for_inference.parquet
 pass_through_columns:
   - age_at_admission
   - admission_type_category

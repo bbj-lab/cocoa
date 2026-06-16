@@ -59,11 +59,16 @@ def combine_processed_data(
 
     for f in parquets:
         try:
-            pl.scan_parquet(
-                [d / f for d in input_dirs], missing_columns="insert"
-            ).with_row_index("_idx").with_columns(
-                pl.col("_idx").hash(seed=42).alias("_rand")  # deterministic shuffle
-            ).sort("_rand").drop("_rand").sink_parquet(processed_data_home / f)
+            (
+                pl.scan_parquet([d / f for d in input_dirs], missing_columns="insert")
+                .with_row_index("_idx")
+                .with_columns(
+                    pl.col("_idx").hash(seed=42).alias("_rand")  # deterministic shuffle
+                )
+                .sort("_rand")
+                .drop(["_rand", "_idx"])
+                .sink_parquet(processed_data_home / f)
+            )
         except (
             pl.SchemaError
         ):  # versions <=26.4.0 of tokenizer created Int64 tokens when loaded from json

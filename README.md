@@ -442,7 +442,7 @@ specifies:
 ```yaml
 outcome_tokens: # supports patterns with fnmatch
   - XFR-IN//icu # ICU transfer
-  - RESP//imv # invasive mechanical ventillation event
+  - RESP//imv # invasive mechanical ventilation event
   - DSCG//expired # discharge due to death
   - LABEL//* # any kind of label token
 threshold:

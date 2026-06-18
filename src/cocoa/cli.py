@@ -34,6 +34,7 @@ def collate(
             "--collation-config",
             "-c",
             help="Collation configuration file (overrides default)",
+            show_default=False,
         ),
     ] = None,
     raw_data_home: Annotated[
@@ -83,6 +84,7 @@ def tokenize(
             "--tokenization-config",
             "-c",
             help="Tokenization configuration file (overrides default)",
+            show_default=False,
         ),
     ] = None,
     processed_data_home: Annotated[
@@ -92,7 +94,10 @@ def tokenize(
     tokenizer_home: Annotated[
         Optional[str],
         typer.Option(
-            "--tokenizer-home", "-t", help="Use a pretrained tokenizer at this path"
+            "--tokenizer-home",
+            "-t",
+            help="Use a pretrained tokenizer at this path",
+            show_default=False,
         ),
     ] = None,
     verbose: Annotated[
@@ -142,6 +147,7 @@ def winnow(
             "--winnowing-config",
             "-c",
             help="Winnowing configuration file (overrides default)",
+            show_default=False,
         ),
     ] = None,
     processed_data_home: Annotated[
@@ -184,6 +190,7 @@ def pipeline(
         typer.Option(
             "--collation-config",
             help="Collation configuration file (overrides default)",
+            show_default=False,
         ),
     ] = None,
     tokenization_config: Annotated[
@@ -191,6 +198,7 @@ def pipeline(
         typer.Option(
             "--tokenization-config",
             help="Tokenization configuration file (overrides default)",
+            show_default=False,
         ),
     ] = None,
     winnowing_config: Annotated[
@@ -198,6 +206,7 @@ def pipeline(
         typer.Option(
             "--winnowing-config",
             help="Winnowing configuration file (overrides default)",
+            show_default=False,
         ),
     ] = None,
     raw_data_home: Annotated[

@@ -58,6 +58,7 @@ class Collator(Configurable):
         with_col_expr: str | list = None,
         key: str = None,
         subject_id_str: str = None,
+        time: str = None,
         **kwargs,
     ) -> pl.LazyFrame:
         """
@@ -91,10 +92,14 @@ class Collator(Configurable):
                 else [self.slightly_safer_eval(c) for c in with_col_expr]
             )
         if agg_expr is not None:
-            df = df.group_by(key if key is not None else self.cfg["subject_id"]).agg(
-                self.slightly_safer_eval(agg_expr)
-                if isinstance(agg_expr, str)
-                else [self.slightly_safer_eval(c) for c in agg_expr]
+            df = (
+                df.sort(time)
+                .group_by(key if key is not None else self.cfg["subject_id"])
+                .agg(
+                    self.slightly_safer_eval(agg_expr)
+                    if isinstance(agg_expr, str)
+                    else [self.slightly_safer_eval(c) for c in agg_expr]
+                )
             )
         return df
 

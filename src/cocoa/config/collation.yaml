@@ -254,8 +254,8 @@ entries:
       "phenylephrine" , "vasopressin"])
     with_col_expr: pl.lit("pressor_init").alias("code")
     agg_expr:
-      - pl.col("code").first()
-      - pl.col("admin_dttm").first()
+      - pl.col("code").sort_by("admin_dttm").first()
+      - pl.col("admin_dttm").min()
     code: code
     time: admin_dttm
 
@@ -265,8 +265,8 @@ entries:
     filter_expr: pl.col("crrt_mode_category").is_not_null()
     with_col_expr: pl.lit("crrt_init").alias("code")
     agg_expr:
-      - pl.col("code").first()
-      - pl.col("recorded_dttm").first()
+      - pl.col("code").sort_by("recorded_dttm").first()
+      - pl.col("recorded_dttm").min()
     code: code
     time: recorded_dttm
 
@@ -279,8 +279,8 @@ entries:
       - pl.col("lab_value_numeric") >= 6.5
     with_col_expr: pl.lit("hyperK_init").alias("code")
     agg_expr:
-      - pl.col("code").first()
-      - pl.col("lab_result_dttm").first()
+      - pl.col("code").sort_by("lab_result_dttm").first()
+      - pl.col("lab_result_dttm").min()
     code: code
     time: lab_result_dttm
 
@@ -292,8 +292,8 @@ entries:
       - pl.col("lab_value_numeric") < 2.5
     with_col_expr: pl.lit("hypoK_init").alias("code")
     agg_expr:
-      - pl.col("code").first()
-      - pl.col("lab_result_dttm").first()
+      - pl.col("code").sort_by("lab_result_dttm").first()
+      - pl.col("lab_result_dttm").min()
     code: code
     time: lab_result_dttm
 
@@ -305,8 +305,8 @@ entries:
       - pl.col("lab_value_numeric") < 7.0
     with_col_expr: pl.lit("anemia_init").alias("code")
     agg_expr:
-      - pl.col("code").first()
-      - pl.col("lab_result_dttm").first()
+      - pl.col("code").sort_by("lab_result_dttm").first()
+      - pl.col("lab_result_dttm").min()
     code: code
     time: lab_result_dttm
 
@@ -319,8 +319,8 @@ entries:
       - pl.col("lab_value_numeric") < 120.
     with_col_expr: pl.lit("hypoNA_init").alias("code")
     agg_expr:
-      - pl.col("code").first()
-      - pl.col("lab_result_dttm").first()
+      - pl.col("code").sort_by("lab_result_dttm").first()
+      - pl.col("lab_result_dttm").min()
     code: code
     time: lab_result_dttm
 
@@ -332,8 +332,8 @@ entries:
       - pl.col("lab_value_numeric") >= 160.
     with_col_expr: pl.lit("hyperNA_init").alias("code")
     agg_expr:
-      - pl.col("code").first()
-      - pl.col("lab_result_dttm").first()
+      - pl.col("code").sort_by("lab_result_dttm").first()
+      - pl.col("lab_result_dttm").min()
     code: code
     time: lab_result_dttm
 
@@ -345,8 +345,8 @@ entries:
       - pl.col("vital_value") >= 130
     with_col_expr: pl.lit("tachy_init").alias("code")
     agg_expr:
-      - pl.col("code").first()
-      - pl.col("recorded_dttm").first()
+      - pl.col("code").sort_by("recorded_dttm").first()
+      - pl.col("recorded_dttm").min()
     code: code
     time: recorded_dttm
 
@@ -358,8 +358,8 @@ entries:
       ((pl.col("vital_category") == "dbp") & (pl.col("vital_value") >= 120))
     with_col_expr: pl.lit("hypertension_init").alias("code")
     agg_expr:
-      - pl.col("code").first()
-      - pl.col("recorded_dttm").first()
+      - pl.col("code").sort_by("recorded_dttm").first()
+      - pl.col("recorded_dttm").min()
     code: code
     time: recorded_dttm
 
@@ -371,8 +371,8 @@ entries:
       ((pl.col("vital_category") == "sbp") & (pl.col("vital_value") < 90))
     with_col_expr: pl.lit("hypotension_init").alias("code")
     agg_expr:
-      - pl.col("code").first()
-      - pl.col("recorded_dttm").first()
+      - pl.col("code").sort_by("recorded_dttm").first()
+      - pl.col("recorded_dttm").min()
     code: code
     time: recorded_dttm
 
@@ -382,7 +382,7 @@ entries:
     filter_expr: pl.col("sofa_total") >= 2
     with_col_expr: pl.lit("sepsis_onset").alias("code")
     agg_expr:
-      - pl.col("code").first()
-      - pl.col("event_time").first()
+      - pl.col("code").sort_by("event_time").first()
+      - pl.col("event_time").min()
     code: code
     time: event_time

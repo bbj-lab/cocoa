@@ -85,5 +85,5 @@ def combine_processed_data(
                 [pl.col(k).cast(pl.List(pl.UInt32)) for k in tk_cols]
             ).with_row_index("_idx").with_columns(
                 pl.col("_idx").hash(seed=42).alias("_rand")  # deterministic shuffle
-            ).sort("_rand").drop("_rand").sink_parquet(processed_data_home / f)
+            ).sort("_rand").drop(["_rand", "_idx"]).sink_parquet(processed_data_home / f)
     return str(processed_data_home)

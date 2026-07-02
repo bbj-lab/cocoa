@@ -31,6 +31,7 @@ class Collator(Configurable):
         self.processed_data_home.mkdir(parents=True, exist_ok=True)
         self.reference_frame = None
         self.splits: tuple = ("train", "tuning", "held_out")
+        self._tz_warned: set = set()
 
         self.logger.info("Collator initialized...")
         self.logger.info(f"{self.raw_data_home=}")
@@ -48,6 +49,29 @@ class Collator(Configurable):
             {"__builtins__": {"str": str, "int": int, "float": float, "bool": bool}},
             {"pl": pl},
         )
+
+    def to_utc_naive(
+        self, df: pl.LazyFrame, column: str, *, table: str = None
+    ) -> pl.Expr:
+        """
+        expression converting `column` to a timezone-naive UTC datetime;
+        tz-aware columns are converted to UTC (instant-preserving),
+        tz-naive columns are assumed to already be UTC
+        """
+        dtype = df.collect_schema().get(column)
+        if isinstance(dtype, pl.Datetime) and dtype.time_zone not in (None, "UTC"):
+            if (key := (table, column, dtype.time_zone)) not in self._tz_warned:
+                self._tz_warned.add(key)
+                self.logger.warning(
+                    f"{table or '<frame>'}.{column}: "
+                    f"converting {dtype.time_zone} -> UTC"
+                )
+            return (
+                pl.col(column)
+                .dt.convert_time_zone("UTC")
+                .dt.replace_time_zone(time_zone=None)
+            )
+        return pl.col(column).cast(pl.Datetime).dt.replace_time_zone(time_zone=None)
 
     def load_table(
         self,
@@ -117,6 +141,10 @@ class Collator(Configurable):
                 how="left",
                 maintain_order="left",
             )
+        for col in (cfg["start_time"], cfg["end_time"]):
+            df = df.with_columns(
+                self.to_utc_naive(df, col, table=cfg["table"]).alias(col)
+            )
         self.reference_frame = df  # cache result
         return self.reference_frame
 
@@ -151,6 +179,9 @@ class Collator(Configurable):
                 key=key,
             )
         )
+        if time in df.collect_schema().names():
+            df = df.with_columns(self.to_utc_naive(df, time, table=table).alias(time))
+        # otherwise `time` arrives normalized via the reference_key join below
         if fix_date_to_time:
             # if a date was cast to a time,
             # the default of 00:00:00 should be replaced with 23:59:59
@@ -176,10 +207,8 @@ class Collator(Configurable):
 
         return df.select(
             pl.col(self.cfg["subject_id"]).cast(pl.String).alias("subject_id"),
-            pl.col(time)
-            .cast(pl.Datetime)
-            .dt.replace_time_zone(time_zone=None)
-            .alias("time"),
+            # `time` was normalized to naive UTC when the frame was loaded above
+            pl.col(time).alias("time"),
             pl.when(pl.col(code).is_not_null())
             .then(
                 pl.concat_str(

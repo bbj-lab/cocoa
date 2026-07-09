@@ -24,10 +24,10 @@
     keywords = [ "data collation", "generative event models", "tokenization" ]
     license = "MIT"
     license-files = [ "LICEN[CS]E.*" ]
-    name = "cocoa"
+    name = "cocoa-tokenizer"
     readme = { file = "README.md", content-type = "text/markdown" }
     requires-python = ">=3.11"
-    version = "26.5.1"
+    version = "26.6.0"
 
     [project.scripts]
         cocoa = "cocoa.cli:main"

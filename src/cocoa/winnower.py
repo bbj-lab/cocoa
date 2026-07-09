@@ -94,22 +94,6 @@ class Winnower(Configurable):
                 + pl.lit(1)
                 # place the triggering token into the past; it is known
             )
-        elif (
-            "uniform_random" in self.cfg.get("threshold", {})
-            and self.cfg.threshold.uniform_random
-        ):
-            # set the threshold uniformly at random over the duration of each stay
-            return df.with_columns(
-                sampled_duration=pl.col("s_total_duration").map_elements(
-                    lambda x: x * self.rng.random()
-                )
-            ).with_columns(
-                last_valid=pl.struct(["s_elapsed", "sampled_duration"]).map_elements(
-                    lambda row: sum(
-                        x < row["sampled_duration"] for x in row["s_elapsed"]
-                    )
-                )
-            )
         else:
             raise NotImplementedError("Please check the thresholding configuration.")
 

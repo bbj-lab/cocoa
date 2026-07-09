@@ -58,9 +58,9 @@ specifies:
   `text_value`. Codes can be given a prefix `prefix`. Some preprocessing can be
   done with optional entries for `filter_expr`, `with_col_expr`, `agg_expr`, and
   `key`. These take the form of polars expressions that are evaluated and applied
-  to the dataframe during loading. _Mild checks are performed when evaluating these expressions,
-  but in general, the yaml config is just as powerful as the python. Check all
-  yaml files prior to use._
+  to the dataframe during loading. _Mild checks are performed when evaluating
+  these expressions, but in general, the yaml config is just as powerful as the
+  python. Check all yaml files prior to use._
 - **Subject splits** (`train_frac` / `tuning_frac`) that partition subjects
   chronologically into train, tuning, and held-out sets.
 
@@ -432,8 +432,6 @@ specifies:
   - `duration_s` (integer) thresholds after a given duration (in seconds)
   - `first_occurrence` (token string) thresholds after the first occurrence of
     the provided token
-  - `uniform_random` (boolean) thresholds at a point in time chosen uniformly at
-    random from the total duration of the timeline
 - `horizon_after_threshold_s` is an optional parameter that allows you to set a
   prediction window (in seconds) after the threshold is triggered
 
@@ -447,9 +445,8 @@ outcome_tokens: # supports patterns with fnmatch
   - LABEL//* # any kind of label token
 threshold:
   # choose one and only one of the following
-  # duration_s: !!int 86400 # 24h
+  duration_s: !!int 86400 # 24h
   # first_occurrence: XFR-IN//icu
-  uniform_random: !!bool True
 
 horizon_after_threshold_s: !!int 2592000 # 30d outcome window after prediction threshold
 ```
@@ -625,6 +622,26 @@ rsync -avht \
  --exclude ".idea/" \
  ~/Documents/chicago/cocoa \
  bbj-lab1:~
+```
+
+
+Send to randi:
+```
+for d in data-raw processed; do
+	ln -s /gpfs/data/bbj-lab/users/burkh4rt/$d $d
+done
+```
+```
+rsync -avh \
+ --exclude "output" \
+ --exclude "processed" \
+ --exclude "data-raw" \
+ --exclude "logs" \
+ --exclude "wandb" \
+ --exclude ".venv/" \
+ --exclude ".idea/" \
+ ~/Documents/chicago/cocoa \
+ randi:/gpfs/data/bbj-lab/users/burkh4rt
 ```
 
 -->

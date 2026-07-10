@@ -1,0 +1,105 @@
+/* Self-hosted Gotham fonts (see docs/fonts/) */
+
+@font-face {
+  font-family: "Gotham";
+  src: url("../fonts/Gotham-Light.otf") format("opentype");
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Gotham";
+  src: url("../fonts/Gotham-LightItalic.otf") format("opentype");
+  font-weight: 300;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Gotham";
+  src: url("../fonts/Gotham-Book.otf") format("opentype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Gotham";
+  src: url("../fonts/Gotham-BookItalic.otf") format("opentype");
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
+/* Medium is the heaviest weight we ship. The 500-700 range maps bold text
+   (Material requests 700) onto Medium without the browser synthesizing a
+   heavier faux-bold. */
+@font-face {
+  font-family: "Gotham";
+  src: url("../fonts/Gotham-Medium.otf") format("opentype");
+  font-weight: 500 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Gotham";
+  src: url("../fonts/Gotham-MediumItalic.otf") format("opentype");
+  font-weight: 500 700;
+  font-style: italic;
+  font-display: swap;
+}
+
+:root {
+  /* Material combines this with its own system fallbacks. Code font is
+     left unset so it falls back to Material's default monospace stack. */
+  --md-text-font: "Gotham";
+}
+
+/* --------------------------------------------------------------------------
+   Color scheme
+     maroon          #800000   (primary: header, nav, links)
+     dark greystone  #737373   (muted / secondary text)
+     greystone       #A6A6A6   (borders, dividers)
+     light grey      #D9D9D9   (subtle surfaces)
+   Selected via `primary: custom` / `accent: custom` in mkdocs.yml.
+   -------------------------------------------------------------------------- */
+
+/* Maroon header, nav and accents. White text on maroon clears WCAG AA (~11:1). */
+[data-md-color-primary="custom"] {
+  --md-primary-fg-color: #800000;
+  --md-primary-fg-color--light: #800000;
+  --md-primary-fg-color--dark: #800000;
+}
+
+[data-md-color-accent="custom"] {
+  --md-accent-fg-color: #800000;
+  --md-accent-fg-color--transparent: #d9d9d9;
+}
+
+/* Light scheme: the greys carry neutral surfaces, muted text and dividers. */
+[data-md-color-scheme="default"] {
+  --md-default-fg-color--light: #737373; /* dark greystone */
+  --md-default-fg-color--lighter: #a6a6a6; /* greystone */
+  --md-default-fg-color--lightest: #d9d9d9; /* light grey */
+}
+
+/* Dark (slate) scheme: maroon is too dark to read as a link on a dark
+   background, so links and accents shift to a lighter rose that echoes it.
+   The header keeps the full maroon (white text stays high-contrast). */
+[data-md-color-scheme="slate"] {
+  --md-accent-fg-color: #800000;
+  --md-typeset-a-color: #800000;
+}
+
+/* Bold the site name in the header. The first .md-header__topic is the site
+   title; the second (shown on scroll) is the current page, left unchanged.
+   700 maps onto Gotham Medium via the font-weight range above. */
+h1 {
+  font-weight: 700;
+}
+
+.md-typeset h1 {
+  font-weight: 700;
+}

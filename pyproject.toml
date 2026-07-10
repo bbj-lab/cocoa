@@ -36,7 +36,14 @@
         Repository = "https://github.com/bbj-lab/cocoa"
 
     [project.optional-dependencies]
+        all = [ "cotorra[dev,docs]" ]
         dev = [ "pip", "ruff" ]
+        docs = [
+            "mkdocs",
+            "mkdocs-material",
+            "mkdocstrings[python]",
+            "mkdocs-include-markdown-plugin",
+        ]
 
 [build-system]
     build-backend = "setuptools.build_meta"

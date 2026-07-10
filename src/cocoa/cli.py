@@ -18,7 +18,7 @@ from cocoa.tokenizer import Tokenizer
 from cocoa.util import combine_processed_data
 from cocoa.winnower import Winnower
 
-__version__ = version("cocoa")
+__version__ = version("cocoa-tokenizer")
 
 app = typer.Typer(
     name="cocoa",
@@ -98,7 +98,8 @@ def tokenize(
         typer.Option(
             "--tokenizer-home",
             "-t",
-            help="Use a pretrained tokenizer at this path",
+            help="Load a previously learned tokenizer from this "
+            "tokenizer.yaml file (reuses its frozen vocabulary and bins)",
             show_default=False,
         ),
     ] = None,
@@ -107,7 +108,7 @@ def tokenize(
         typer.Option(
             "--verbose",
             "-v",
-            help="Verbose logging for collate; this may cause "
+            help="Verbose logging for tokenize; this may cause "
             "memory issues with large datasets",
             is_flag=True,
         ),

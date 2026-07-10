@@ -1,0 +1,67 @@
+site_name: Cocoa
+site_description: Configurable collator and tokenizer
+site_url: https://cocoa-tokenizer.readthedocs.io/
+repo_url: https://github.com/bbj-lab/cocoa
+repo_name: bbj-lab/cocoa
+
+theme:
+  name: material
+  logo: svg/emoji_u2615.svg
+  favicon: svg/emoji_u2615.svg
+  font: false
+  palette:
+    scheme: default
+    primary: custom
+    accent: custom
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.top
+    - content.code.copy
+    - content.code.annotate
+    - toc.follow
+    - search.suggest
+    - search.highlight
+
+markdown_extensions:
+  - admonition
+  - footnotes
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.snippets:
+      base_path: ["."]
+  - toc:
+      permalink: true
+
+extra_css:
+  - stylesheets/extra.css
+
+validation:
+  links:
+    not_found: warn
+
+plugins:
+  - search
+  - include-markdown
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+          options:
+            show_source: true
+            show_bases: true
+            show_root_heading: true
+
+nav:
+  - Home: index.md
+  - API Reference:
+      - Collator: api/collator.md
+      - Tokenizer: api/tokenizer.md
+      - Winnower: api/winnower.md
+      - CLI: api/cli.md
+  - Recipes:
+      - Overview: recipes/index.md
+      - Configure New Token: recipes/configure-new-token.md
+      - Date-Based Generative Inference: recipes/date-based-generative-inference.md
+      - Tokenizer Transfer: recipes/tokenizer-transfer.md

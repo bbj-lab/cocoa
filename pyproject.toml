@@ -33,10 +33,19 @@
         cocoa = "cocoa.cli:main"
 
     [project.urls]
-        Repository = "https://github.com/bbj-lab/cocoa"
+        Documentation = "https://cocoa-tokenizer.readthedocs.io"
+        Issues        = "https://github.com/bbj-lab/cocoa/issues"
+        Repository    = "https://github.com/bbj-lab/cocoa"
 
     [project.optional-dependencies]
+        all = [ "cocoa-tokenizer[dev,docs]" ]
         dev = [ "pip", "ruff" ]
+        docs = [
+            "mkdocs",
+            "mkdocs-material",
+            "mkdocstrings[python]",
+            "mkdocs-include-markdown-plugin",
+        ]
 
 [build-system]
     build-backend = "setuptools.build_meta"

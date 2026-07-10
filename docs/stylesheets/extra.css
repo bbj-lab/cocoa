@@ -1,0 +1,73 @@
+/* Self-hosted Gotham fonts (see docs/fonts/) */
+
+@font-face {
+  font-family: "Gotham";
+  src: url("../fonts/Gotham-Book.otf") format("opentype");
+  font-weight: 300 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Gotham";
+  src: url("../fonts/Gotham-BookItalic.otf") format("opentype");
+  font-weight: 300 400;
+  font-style: italic;
+  font-display: swap;
+}
+
+/* Medium is the heaviest weight we ship. The 500-700 range maps bold text
+   (Material requests 700) onto Medium without the browser synthesizing a
+   heavier faux-bold. */
+@font-face {
+  font-family: "Gotham";
+  src: url("../fonts/Gotham-Medium.otf") format("opentype");
+  font-weight: 500 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Gotham";
+  src: url("../fonts/Gotham-MediumItalic.otf") format("opentype");
+  font-weight: 500 700;
+  font-style: italic;
+  font-display: swap;
+}
+
+:root {
+  /* Material combines this with its own system fallbacks. Code font is
+     left unset so it falls back to Material's default monospace stack. */
+  --md-text-font: "Gotham";
+}
+
+[data-md-color-primary="custom"] {
+  --md-primary-fg-color: #800000;
+  --md-primary-fg-color--light: #800000;
+  --md-primary-fg-color--dark: #800000;
+}
+
+[data-md-color-accent="custom"] {
+  --md-accent-fg-color: #800000;
+  --md-accent-fg-color--transparent: #d9d9d9;
+}
+
+/* The greys carry neutral surfaces, muted text and dividers. */
+[data-md-color-scheme="default"] {
+  --md-default-fg-color--light: #737373; /* dark greystone */
+  --md-default-fg-color--lighter: #a6a6a6; /* greystone */
+  --md-default-fg-color--lightest: #d9d9d9; /* light grey */
+  --md-code-hl-keyword-color: #007396;
+  --md-code-hl-string-color: #275d38;
+  --md-code-hl-special-color: #a4343a;
+  --md-code-hl-function-color: #86647a;
+  --md-code-hl-constant-color: #59315f;
+}
+
+h1 {
+  font-weight: 700;
+}
+
+.md-typeset h1 {
+  font-weight: 700;
+}

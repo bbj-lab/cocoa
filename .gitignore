@@ -1,8 +1,12 @@
 # idiosyncratic
 .venv
 .idea
-raw-data
+data-raw
 processed
+dist
+build
+site
+.claude
 
 # Created by https://www.toptal.com/developers/gitignore/api/python,pycharm+all,visualstudiocode,macos,windows,linux
 # Edit at https://www.toptal.com/developers/gitignore?templates=python,pycharm+all,visualstudiocode,macos,windows,linux

@@ -4,6 +4,9 @@
     "pytest": true
   },
   "cSpell.diagnosticLevel": "Hint",
+  "[css]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
   "editor.bracketPairColorization.enabled": true,
   "editor.formatOnSave": true,
   "editor.rulers": [88],

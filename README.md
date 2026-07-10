@@ -72,9 +72,9 @@ subject_id: hospitalization_id # the atomic unit of interest
 group_id: patient_id # multiple subjects can belong to a group
 
 subject_splits:
-  train_frac: 0.7
-  tuning_frac: 0.1
-  # the remainder is held out
+    train_frac: 0.7
+    tuning_frac: 0.1
+    # the remainder is held out
 ```
 
 `subject_id` is the column that uniquely identifies each subject (e.g. a
@@ -89,15 +89,15 @@ can be joined:
 
 ```yaml
 reference:
-  table: clif_hospitalization
-  start_time: admission_dttm
-  end_time: discharge_dttm
+    table: clif_hospitalization
+    start_time: admission_dttm
+    end_time: discharge_dttm
 
-  augmentation_tables:
-    - table: clif_patient
-      key: patient_id
-      validation: "m:1"
-      with_col_expr: pl.lit("AGE").alias("AGE")
+    augmentation_tables:
+        - table: clif_patient
+          key: patient_id
+          validation: "m:1"
+          with_col_expr: pl.lit("AGE").alias("AGE")
 ```
 
 - `table` — the name of the parquet (or csv) file in `--raw-data-home` (without
@@ -159,133 +159,133 @@ entry's fields tell the collator which source columns map to these outputs.
 
 - A simple categorical event from the reference frame:
 
-  ```yaml
-  - table: REFERENCE
-    prefix: DSCG
-    code: discharge_category
-    time: discharge_dttm
-  ```
+    ```yaml
+    - table: REFERENCE
+      prefix: DSCG
+      code: discharge_category
+      time: discharge_dttm
+    ```
 
-  creates codes such as `DSCG//assisted_living`, `DSCG//home`, `DSCG//hospice`
-  with time `discharge_dttm`.
+    creates codes such as `DSCG//assisted_living`, `DSCG//home`, `DSCG//hospice`
+    with time `discharge_dttm`.
 
 - A numeric event from an external table:
 
-  ```yaml
-  - table: clif_labs
-    prefix: LAB-RES
-    code: lab_category
-    numeric_value: lab_value_numeric
-    time: lab_result_dttm
-  ```
+    ```yaml
+    - table: clif_labs
+      prefix: LAB-RES
+      code: lab_category
+      numeric_value: lab_value_numeric
+      time: lab_result_dttm
+    ```
 
-  creates codes such as `LAB-RES//alt` and `LAB-RES//ast` with numeric_value
-  `lab_value_numeric` at time `lab_result_dttm`.
+    creates codes such as `LAB-RES//alt` and `LAB-RES//ast` with numeric_value
+    `lab_value_numeric` at time `lab_result_dttm`.
 
 - Tables can be filtered prior to extraction with `filter_expr`:
 
-  ```yaml
-  - table: clif_position
-    prefix: POSN
-    filter_expr: pl.col("position_category") == "prone"
-    code: position_category
-    time: recorded_dttm
-  ```
+    ```yaml
+    - table: clif_position
+      prefix: POSN
+      filter_expr: pl.col("position_category") == "prone"
+      code: position_category
+      time: recorded_dttm
+    ```
 
-  selects only rows where `pl.col("position_category") == "prone"`
+    selects only rows where `pl.col("position_category") == "prone"`
 
 - Multiple filters can be applied as a list:
 
-  ```yaml
-  - table: clif_medication_admin_intermittent_converted
-    prefix: MED-INT
-    filter_expr:
-      - pl.col("mar_action_category") == "given"
-      - pl.col("_convert_status") == "success"
-    code: med_category
-    numeric_value: med_dose_converted
-    time: admin_dttm
-  ```
+    ```yaml
+    - table: clif_medication_admin_intermittent_converted
+      prefix: MED-INT
+      filter_expr:
+          - pl.col("mar_action_category") == "given"
+          - pl.col("_convert_status") == "success"
+      code: med_category
+      numeric_value: med_dose_converted
+      time: admin_dttm
+    ```
 
 - Pre-aggregating events before token extraction with `agg_expr`:
 
-  ```yaml
-  - table: clif_crrt_therapy
-    prefix: LABEL
-    filter_expr: pl.col("crrt_mode_category").is_not_null()
-    with_col_expr: pl.lit("crrt_init").alias("code")
-    agg_expr:
-      - pl.col("code").first()
-      - pl.col("recorded_dttm").first()
-    code: code
-    time: recorded_dttm
-  ```
+    ```yaml
+    - table: clif_crrt_therapy
+      prefix: LABEL
+      filter_expr: pl.col("crrt_mode_category").is_not_null()
+      with_col_expr: pl.lit("crrt_init").alias("code")
+      agg_expr:
+          - pl.col("code").first()
+          - pl.col("recorded_dttm").first()
+      code: code
+      time: recorded_dttm
+    ```
 
 - Creating a computed column with `with_col_expr` to use as the code:
 
-  ```yaml
-  - table: clif_respiratory_support_processed
-    prefix: RESP
-    with_col_expr: pl.lit("fio2_set").alias("code")
-    filter_expr: pl.col("fio2_set").is_finite()
-    code: code
-    numeric_value: fio2_set
-    time: recorded_dttm
-  ```
+    ```yaml
+    - table: clif_respiratory_support_processed
+      prefix: RESP
+      with_col_expr: pl.lit("fio2_set").alias("code")
+      filter_expr: pl.col("fio2_set").is_finite()
+      code: code
+      numeric_value: fio2_set
+      time: recorded_dttm
+    ```
 
 - The `reference_key` can be used to restrict events to a subject's time window:
 
-  ```yaml
-  - table: clif_code_status
-    prefix: CODE
-    code: code_status_category
-    time: admission_dttm
-    reference_key: patient_id
-  ```
+    ```yaml
+    - table: clif_code_status
+      prefix: CODE
+      code: code_status_category
+      time: admission_dttm
+      reference_key: patient_id
+    ```
 
 ### Outputs
 
 - `meds.parquet` gives a table of the collated events:
 
-  ```
-  ┌────────────┬─────────────────────┬──────────────────────────────┬───────────────┬────────────┐
-  │ subject_id ┆ time                ┆ code                         ┆ numeric_value ┆ text_value │
-  │ ---        ┆ ---                 ┆ ---                          ┆ ---           ┆ ---        │
-  │ str        ┆ datetime[μs]        ┆ str                          ┆ f32           ┆ str        │
-  ╞════════════╪═════════════════════╪══════════════════════════════╪═══════════════╪════════════╡
-  │ 24591817   ┆ 2111-09-26 18:15:00 ┆ MED-CTS//sodium_chloride     ┆ 0.0           ┆ null       │
-  │ 21343412   ┆ 2112-01-11 06:31:00 ┆ LAB-RES//albumin             ┆ 3.3           ┆ null       │
-  │ 24894995   ┆ 2113-01-14 14:25:00 ┆ LAB-ORD//creatinine          ┆ null          ┆ null       │
-  │ 20947416   ┆ 2110-12-12 18:41:00 ┆ LAB-RES//hemoglobin          ┆ 8.4           ┆ null       │
-  │ 25082363   ┆ 2110-06-17 17:00:00 ┆ VTL//respiratory_rate        ┆ 30.0          ┆ null       │
-  │ …          ┆ …                   ┆ …                            ┆ …             ┆ …          │
-  │ 22074503   ┆ 2110-07-13 03:53:00 ┆ LAB-ORD//chloride            ┆ null          ┆ null       │
-  │ 24524153   ┆ 2110-10-08 03:20:00 ┆ LAB-RES//glucose_serum       ┆ 179.0         ┆ null       │
-  │ 28104308   ┆ 2112-03-22 14:31:00 ┆ LAB-RES//sodium              ┆ 137.0         ┆ null       │
-  │ 23859742   ┆ 2110-08-21 21:35:00 ┆ LAB-RES//ptt                 ┆ 26.299999     ┆ null       │
-  │ 25805890   ┆ 2110-10-03 11:00:00 ┆ LAB-ORD//eosinophils_percent ┆ null          ┆ null       │
-  └────────────┴─────────────────────┴──────────────────────────────┴───────────────┴────────────┘
-  ```
+    ```
+    ┌────────────┬─────────────────────┬──────────────────────────────┬───────────────┬────────────┐
+    │ subject_id ┆ time                ┆ code                         ┆ numeric_value ┆ text_value │
+    │ ---        ┆ ---                 ┆ ---                          ┆ ---           ┆ ---        │
+    │ str        ┆ datetime[μs]        ┆ str                          ┆ f32           ┆ str        │
+    ╞════════════╪═════════════════════╪══════════════════════════════╪═══════════════╪════════════╡
+    │ 24591817   ┆ 2111-09-26 18:15:00 ┆ MED-CTS//sodium_chloride     ┆ 0.0           ┆ null       │
+    │ 21343412   ┆ 2112-01-11 06:31:00 ┆ LAB-RES//albumin             ┆ 3.3           ┆ null       │
+    │ 24894995   ┆ 2113-01-14 14:25:00 ┆ LAB-ORD//creatinine          ┆ null          ┆ null       │
+    │ 20947416   ┆ 2110-12-12 18:41:00 ┆ LAB-RES//hemoglobin          ┆ 8.4           ┆ null       │
+    │ 25082363   ┆ 2110-06-17 17:00:00 ┆ VTL//respiratory_rate        ┆ 30.0          ┆ null       │
+    │ …          ┆ …                   ┆ …                            ┆ …             ┆ …          │
+    │ 22074503   ┆ 2110-07-13 03:53:00 ┆ LAB-ORD//chloride            ┆ null          ┆ null       │
+    │ 24524153   ┆ 2110-10-08 03:20:00 ┆ LAB-RES//glucose_serum       ┆ 179.0         ┆ null       │
+    │ 28104308   ┆ 2112-03-22 14:31:00 ┆ LAB-RES//sodium              ┆ 137.0         ┆ null       │
+    │ 23859742   ┆ 2110-08-21 21:35:00 ┆ LAB-RES//ptt                 ┆ 26.299999     ┆ null       │
+    │ 25805890   ┆ 2110-10-03 11:00:00 ┆ LAB-ORD//eosinophils_percent ┆ null          ┆ null       │
+    └────────────┴─────────────────────┴──────────────────────────────┴───────────────┴────────────┘
+    ```
 
 - `subject_splits.parquet` gives a table of all subject_id's and their
   corresponding split assignment:
 
-  ```
-  ┌────────────┬──────────┐
-  │ subject_id ┆ split    │
-  │ ---        ┆ ---      │
-  │ str        ┆ str      │
-  ╞════════════╪══════════╡
-  │ 21081215   ┆ train    │
-  │ 20302177   ┆ train    │
-  │ …          ┆ …        │
-  │ 27116134   ┆ tuning   │
-  │ 29134959   ┆ tuning   │
-  │ …          ┆ …        │
-  │ 28150003   ┆ held_out │
-  │ 22151813   ┆ held_out │
-  └────────────┴──────────┘
-  ```
+    ```
+    ┌────────────┬──────────┐
+    │ subject_id ┆ split    │
+    │ ---        ┆ ---      │
+    │ str        ┆ str      │
+    ╞════════════╪══════════╡
+    │ 21081215   ┆ train    │
+    │ 20302177   ┆ train    │
+    │ …          ┆ …        │
+    │ 27116134   ┆ tuning   │
+    │ 29134959   ┆ tuning   │
+    │ …          ┆ …        │
+    │ 28150003   ┆ held_out │
+    │ 22151813   ┆ held_out │
+    └────────────┴──────────┘
+    ```
 
 ## (2) Tokenization
 
@@ -324,79 +324,79 @@ that specifies:
 ### Outputs
 
 - `tokens_times.parquet` gives one row per subject with three columns by default:
-  - `subject_id`
-  - `tokens` — the integer token sequence for the subject's timeline.
-  - `times` — a parallel list of timestamps, one per token, indicating when each
-    event occurred.
-  - `numeric_values` - corresponding values for numeric value tokens (only if
-    configured)
+    - `subject_id`
+    - `tokens` — the integer token sequence for the subject's timeline.
+    - `times` — a parallel list of timestamps, one per token, indicating when
+      each event occurred.
+    - `numeric_values` - corresponding values for numeric value tokens (only if
+      configured)
 
-  The table will look something like this:
+    The table will look something like this:
 
-  ```
-  ┌────────────────────┬─────────────────┬─────────────────────────────────┐
-  │ subject_id         ┆ tokens          ┆ times                           │
-  │ ---                ┆ ---             ┆ ---                             │
-  │ str                ┆ list[u32]       ┆ list[datetime[μs]]              │
-  ╞════════════════════╪═════════════════╪═════════════════════════════════╡
-  │ 20002103           ┆ [20, 350, … 21] ┆ [2116-05-08 02:45:00, 2116-05-… │
-  │ 20008372           ┆ [20, 350, … 21] ┆ [2110-10-30 13:03:00, 2110-10-… │
-  │ …                  ┆ …               ┆ …                               │
-  │ 29994865           ┆ [20, 364, … 21] ┆ [2111-01-28 21:49:00, 2111-01-… │
-  └────────────────────┴─────────────────┴─────────────────────────────────┘
-  ```
+    ```
+    ┌────────────────────┬─────────────────┬─────────────────────────────────┐
+    │ subject_id         ┆ tokens          ┆ times                           │
+    │ ---                ┆ ---             ┆ ---                             │
+    │ str                ┆ list[u32]       ┆ list[datetime[μs]]              │
+    ╞════════════════════╪═════════════════╪═════════════════════════════════╡
+    │ 20002103           ┆ [20, 350, … 21] ┆ [2116-05-08 02:45:00, 2116-05-… │
+    │ 20008372           ┆ [20, 350, … 21] ┆ [2110-10-30 13:03:00, 2110-10-… │
+    │ …                  ┆ …               ┆ …                               │
+    │ 29994865           ┆ [20, 364, … 21] ┆ [2111-01-28 21:49:00, 2111-01-… │
+    └────────────────────┴─────────────────┴─────────────────────────────────┘
+    ```
 
-  In this example, token 20 corresponds to the beginning-of-sequence token
-  (`BOS`), token 21 to the end-of-sequence token (`EOS`), and the tokens in
-  between correspond to the subject's clinical events in chronological order
-  (with ties broken by the configured `ordering`). In fused mode each event is a
-  single token; in unfused mode an event with a numeric value becomes two tokens
-  (code + quantile bin).
+    In this example, token 20 corresponds to the beginning-of-sequence token
+    (`BOS`), token 21 to the end-of-sequence token (`EOS`), and the tokens in
+    between correspond to the subject's clinical events in chronological order
+    (with ties broken by the configured `ordering`). In fused mode each event is
+    a single token; in unfused mode an event with a numeric value becomes two
+    tokens (code + quantile bin).
 
 - `tokenizer.yaml` is a plain yaml file that contains information about the
   configuration, learned vocabulary, and bins. This file is sufficient to
   reconstitute the tokenizer object. Currently, there's an entry for the lookup
   that maps strings to tokens:
 
-  ```yaml
-  lookup:
-    UNK: 0
-    ADMN//direct: 1
-    ADMN//ed: 2
-    ADMN//elective: 3
-    AGE//age_Q0: 4
-    …
-  ```
+    ```yaml
+    lookup:
+      UNK: 0
+      ADMN//direct: 1
+      ADMN//ed: 2
+      ADMN//elective: 3
+      AGE//age_Q0: 4
+      …
+    ```
 
-  and an entry for bin cutpoints:
+    and an entry for bin cutpoints:
 
-  ```yaml
-  bins:
-    VTL//heart_rate:
-      - 65.0
-      - 70.0
-      - 75.0
-      - 80.0
-      - 84.0
-      - 89.0
-      - 94.0
-      - 100.0
-      - 108.0
-    LAB-RES//platelet_count:
-      - 62.0
-      - 114.0
-      - 147.0
-      - 175.0
-      - 203.0
-      - 233.0
-      - 267.0
-      - 314.0
-      - 390.0
-    …
-  ```
+    ```yaml
+    bins:
+      VTL//heart_rate:
+        - 65.0
+        - 70.0
+        - 75.0
+        - 80.0
+        - 84.0
+        - 89.0
+        - 94.0
+        - 100.0
+        - 108.0
+      LAB-RES//platelet_count:
+        - 62.0
+        - 114.0
+        - 147.0
+        - 175.0
+        - 203.0
+        - 233.0
+        - 267.0
+        - 314.0
+        - 390.0
+      …
+    ```
 
-  The lists following each key correspond to the cutpoints for the associated
-  category.
+    The lists following each key correspond to the cutpoints for the associated
+    category.
 
 <!-- prettier-ignore-start -->
 > [!TIP]
@@ -427,9 +427,9 @@ that specifies:
   outcome indicating whether that token appears in the past or future period.
 - `threshold` — defines how the threshold is set. Currently supported options are
   as follows:
-  - `duration_s` (integer) thresholds after a given duration (in seconds)
-  - `first_occurrence` (token string) thresholds after the first occurrence of
-    the provided token
+    - `duration_s` (integer) thresholds after a given duration (in seconds)
+    - `first_occurrence` (token string) thresholds after the first occurrence of
+      the provided token
 - `horizon_after_threshold_s` is an optional parameter that allows you to set a
   prediction window (in seconds) after the threshold is triggered
 
@@ -437,14 +437,14 @@ that specifies:
 
 ```yaml
 outcome_tokens: # supports patterns with fnmatch
-  - XFR-IN//icu # ICU transfer
-  - RESP//imv # invasive mechanical ventilation event
-  - DSCG//expired # discharge due to death
-  - LABEL//* # any kind of label token
+    - XFR-IN//icu # ICU transfer
+    - RESP//imv # invasive mechanical ventilation event
+    - DSCG//expired # discharge due to death
+    - LABEL//* # any kind of label token
 threshold:
-  # choose one and only one of the following
-  duration_s: !!int 86400 # 24h
-  # first_occurrence: XFR-IN//icu
+    # choose one and only one of the following
+    duration_s: !!int 86400 # 24h
+    # first_occurrence: XFR-IN//icu
 
 horizon_after_threshold_s: !!int 2592000 # 30d outcome window after prediction threshold
 ```
@@ -485,91 +485,91 @@ with commands:
 
 - `cocoa collate`
 
-  ```
-  Usage: cocoa collate [OPTIONS]
+    ```
+    Usage: cocoa collate [OPTIONS]
 
-  Collate raw data into a denormalized format.
+    Collate raw data into a denormalized format.
 
-  Reads collation configuration and produces a MEDS-like parquet file
-  with collated events.
+    Reads collation configuration and produces a MEDS-like parquet file
+    with collated events.
 
-  ╭─ Options ───────────────────────────────────────────────────────────────────╮
-  │    --collation-config     -c      PATH  Collation configuration file        │
-  │                                         (overrides default)                 │
-  │ *  --raw-data-home        -r      TEXT  Raw data directory [required]       │
-  │ *  --processed-data-home  -p      TEXT  Processed data directory [required] │
-  │    --verbose              -v            Verbose logging for collate; this   │
-  │                                         may cause memory issues with large  │
-  │                                         datasets                            │
-  │    --help                 -h            Show this message and exit.         │
-  ╰─────────────────────────────────────────────────────────────────────────────╯
-  ```
+    ╭─ Options ───────────────────────────────────────────────────────────────────╮
+    │    --collation-config     -c      PATH  Collation configuration file        │
+    │                                         (overrides default)                 │
+    │ *  --raw-data-home        -r      TEXT  Raw data directory [required]       │
+    │ *  --processed-data-home  -p      TEXT  Processed data directory [required] │
+    │    --verbose              -v            Verbose logging for collate; this   │
+    │                                         may cause memory issues with large  │
+    │                                         datasets                            │
+    │    --help                 -h            Show this message and exit.         │
+    ╰─────────────────────────────────────────────────────────────────────────────╯
+    ```
 
 - `cocoa tokenize`
 
-  ```
-  Usage: cocoa tokenize [OPTIONS]
+    ```
+    Usage: cocoa tokenize [OPTIONS]
 
-  Tokenize collated data into integer sequences.
+    Tokenize collated data into integer sequences.
 
-  Reads collated parquet files and produces tokenized timelines with
-  vocabulary and bin information.
+    Reads collated parquet files and produces tokenized timelines with
+    vocabulary and bin information.
 
-  ╭─ Options ───────────────────────────────────────────────────────────────────╮
-  │    --tokenization-config  -c      PATH  Tokenization configuration file     │
-  │                                         (overrides default)                 │
-  │ *  --processed-data-home  -p      TEXT  Processed data directory [required] │
-  │    --tokenizer-home       -t      TEXT  Load a previously learned tokenizer │
-  │                                         from this tokenizer.yaml file       │
-  │                                         (reuses its frozen vocabulary and   │
-  │                                         bins)                               │
-  │    --verbose              -v            Verbose logging for tokenize; this  │
-  │                                         may cause memory issues with large  │
-  │                                         datasets                            │
-  │    --help                 -h            Show this message and exit.         │
-  ╰─────────────────────────────────────────────────────────────────────────────╯
-  ```
+    ╭─ Options ───────────────────────────────────────────────────────────────────╮
+    │    --tokenization-config  -c      PATH  Tokenization configuration file     │
+    │                                         (overrides default)                 │
+    │ *  --processed-data-home  -p      TEXT  Processed data directory [required] │
+    │    --tokenizer-home       -t      TEXT  Load a previously learned tokenizer │
+    │                                         from this tokenizer.yaml file       │
+    │                                         (reuses its frozen vocabulary and   │
+    │                                         bins)                               │
+    │    --verbose              -v            Verbose logging for tokenize; this  │
+    │                                         may cause memory issues with large  │
+    │                                         datasets                            │
+    │    --help                 -h            Show this message and exit.         │
+    ╰─────────────────────────────────────────────────────────────────────────────╯
+    ```
 
 - `cocoa winnow`
 
-  ```
-  Usage: cocoa winnow [OPTIONS]
+    ```
+    Usage: cocoa winnow [OPTIONS]
 
-  Winnow held-out data for evaluation.
+    Winnow held-out data for evaluation.
 
-  Filters held-out timelines and assigns flags to disqualify certain subjects
-  from evaluation based on the configured criteria.
+    Filters held-out timelines and assigns flags to disqualify certain subjects
+    from evaluation based on the configured criteria.
 
-  ╭─ Options ───────────────────────────────────────────────────────────────────╮
-  │    --winnowing-config     -c      PATH  Winnowing configuration file        │
-  │                                         (overrides default)                 │
-  │ *  --processed-data-home  -p      TEXT  Processed data directory [required] │
-  │    --verbose              -v            Verbose logging for winnow; prints  │
-  │                                         summary statistics                  │
-  │    --help                 -h            Show this message and exit.         │
-  ╰─────────────────────────────────────────────────────────────────────────────╯
-  ```
+    ╭─ Options ───────────────────────────────────────────────────────────────────╮
+    │    --winnowing-config     -c      PATH  Winnowing configuration file        │
+    │                                         (overrides default)                 │
+    │ *  --processed-data-home  -p      TEXT  Processed data directory [required] │
+    │    --verbose              -v            Verbose logging for winnow; prints  │
+    │                                         summary statistics                  │
+    │    --help                 -h            Show this message and exit.         │
+    ╰─────────────────────────────────────────────────────────────────────────────╯
+    ```
 
 - `cocoa pipeline`
 
-  ```
-  Usage: cocoa pipeline [OPTIONS]
+    ```
+    Usage: cocoa pipeline [OPTIONS]
 
-  Run the full pipeline: collate, tokenize, & winnow.
+    Run the full pipeline: collate, tokenize, & winnow.
 
-  ╭─ Options ───────────────────────────────────────────────────────────────────╮
-  │    --collation-config             PATH  Collation configuration file        │
-  │                                         (overrides default)                 │
-  │    --tokenization-config          PATH  Tokenization configuration file     │
-  │                                         (overrides default)                 │
-  │    --winnowing-config             PATH  Winnowing configuration file        │
-  │                                         (overrides default)                 │
-  │ *  --raw-data-home        -r      TEXT  Raw data directory [required]       │
-  │ *  --processed-data-home  -p      TEXT  Processed data directory [required] │
-  │    --verbose              -v            Verbose logging for pipeline steps  │
-  │    --help                 -h            Show this message and exit.         │
-  ╰─────────────────────────────────────────────────────────────────────────────╯
-  ```
+    ╭─ Options ───────────────────────────────────────────────────────────────────╮
+    │    --collation-config             PATH  Collation configuration file        │
+    │                                         (overrides default)                 │
+    │    --tokenization-config          PATH  Tokenization configuration file     │
+    │                                         (overrides default)                 │
+    │    --winnowing-config             PATH  Winnowing configuration file        │
+    │                                         (overrides default)                 │
+    │ *  --raw-data-home        -r      TEXT  Raw data directory [required]       │
+    │ *  --processed-data-home  -p      TEXT  Processed data directory [required] │
+    │    --verbose              -v            Verbose logging for pipeline steps  │
+    │    --help                 -h            Show this message and exit.         │
+    ╰─────────────────────────────────────────────────────────────────────────────╯
+    ```
 
 <!-- prettier-ignore-start -->
 > [!TIP]

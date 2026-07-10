@@ -2,6 +2,11 @@ printWidth = 81
 proseWrap  = "always"
 
 [[overrides]]
+    files = "*.md"
+    [overrides.options]
+        tabWidth = 4
+
+[[overrides]]
     files = "*.yaml"
     [overrides.options]
         printWidth = 100

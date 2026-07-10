@@ -26,42 +26,42 @@ raw_ucmc="${hm}/data-raw/ucmc-2.1.0"
 
 1. Run collation on each dataset separately with the same config:
 
-   ```sh
-   cocoa collate \
-       --raw-data-home ${raw_mimic} \
-       --processed-data-home ./processed/mimic \
-       --verbose
+    ```sh
+    cocoa collate \
+        --raw-data-home ${raw_mimic} \
+        --processed-data-home ./processed/mimic \
+        --verbose
 
-   cocoa collate \
-       --raw-data-home ${raw_ucmc} \
-       --processed-data-home ./processed/ucmc \
-       --verbose
-   ```
+    cocoa collate \
+        --raw-data-home ${raw_ucmc} \
+        --processed-data-home ./processed/ucmc \
+        --verbose
+    ```
 
 2. Learn a tokenizer on the first dataset:
 
-   ```sh
-   cocoa tokenize \
-     --processed-data-home ./processed/mimic
-   ```
+    ```sh
+    cocoa tokenize \
+      --processed-data-home ./processed/mimic
+    ```
 
 3. Supply the `--tokenizer-home` argument to the `tokenize` command to load the
    previously learned tokenizer (with fixed vocabulary and binning cutpoints):
 
-   ```sh
-   cocoa tokenize \
-     --tokenizer-home ./processed/mimic/tokenizer.yaml \
-     --processed-data-home ./processed/ucmc \
-     --verbose
-   ```
+    ```sh
+    cocoa tokenize \
+      --tokenizer-home ./processed/mimic/tokenizer.yaml \
+      --processed-data-home ./processed/ucmc \
+      --verbose
+    ```
 
 4. Proceed as usual:
 
-   ```sh
-   cocoa winnow \
-     --processed-data-home ./processed/mimic \
-     --verbose
+    ```sh
+    cocoa winnow \
+      --processed-data-home ./processed/mimic \
+      --verbose
 
-   cocoa winnow \
-     --processed-data-home ./processed/ucmc
-   ```
+    cocoa winnow \
+      --processed-data-home ./processed/ucmc
+    ```

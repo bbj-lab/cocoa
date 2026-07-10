@@ -1,9 +1,9 @@
 # Tokenizer
 
-The `Tokenizer` is the second stage of the pipeline. It takes the collated
-events and turns them into per-subject **integer sequences** ("timelines"),
-learning a vocabulary and numeric-binning scheme along the way. Its behavior is
-driven by a tokenization config (`tokenization.yaml`).
+The `Tokenizer` is the second stage of the pipeline. It takes the collated events
+and turns them into per-subject **integer sequences** ("timelines"), learning a
+vocabulary and numeric-binning scheme along the way. Its behavior is driven by a
+tokenization config (`tokenization.yaml`).
 
 Crucially, both the vocabulary and the numeric bins are learned **only on the
 training split**, so no information leaks from tuning or held-out subjects.
@@ -46,9 +46,9 @@ A tokenizer's learned state round-trips through
 dataset can be **frozen** (`is_training=False`) and applied to another — see the
 [Tokenizer Transfer](../recipes/tokenizer-transfer.md) recipe.
 
-!!! tip "It behaves like a mapping"
-    A `Tokenizer` is callable and dict-like: `tkzr("EOS")` returns a token id
-    (`0` for out-of-vocabulary words), `"foo" in tkzr` tests vocabulary
-    membership, and `len(tkzr)` reports the vocabulary size.
+!!! tip "It behaves like a mapping" A `Tokenizer` is callable and dict-like:
+`tkzr("EOS")` returns a token id (`0` for out-of-vocabulary words),
+`"foo" in tkzr` tests vocabulary membership, and `len(tkzr)` reports the
+vocabulary size.
 
 ::: cocoa.tokenizer

@@ -1,10 +1,10 @@
 # Winnower
 
-The `Winnower` is the final stage of the pipeline. It prepares held-out
-timelines for evaluation: it splits each timeline at a configurable cut-point
-into a **past** portion (the context a model is given) and a **future** portion
-(what the model must predict), and it attaches outcome labels. Its behavior is
-driven by a winnowing config (`winnowing.yaml`).
+The `Winnower` is the final stage of the pipeline. It prepares held-out timelines
+for evaluation: it splits each timeline at a configurable cut-point into a
+**past** portion (the context a model is given) and a **future** portion (what
+the model must predict), and it attaches outcome labels. Its behavior is driven
+by a winnowing config (`winnowing.yaml`).
 
 The name is apt — the winnower also **filters out** subjects that cannot be
 fairly evaluated, for example timelines that end before the outcome horizon is
@@ -34,9 +34,8 @@ these steps:
    example `DSCG//expired_past` and `DSCG//expired_future`), so you can tell
    whether an outcome truly falls within the prediction window.
 
-!!! note "Depends on tokenizer artifacts"
-    The winnower reads the `tokenizer.yaml` written by the [Tokenizer](tokenizer.md)
-    to resolve outcome-token patterns against the learned vocabulary, so
-    tokenization must run first.
+!!! note "Depends on tokenizer artifacts" The winnower reads the `tokenizer.yaml`
+written by the [Tokenizer](tokenizer.md) to resolve outcome-token patterns
+against the learned vocabulary, so tokenization must run first.
 
 ::: cocoa.winnower

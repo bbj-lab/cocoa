@@ -64,6 +64,12 @@
   --md-code-hl-constant-color: #59315f;
 }
 
+/* Last-updated line in the footer copyright block, in muted small type. */
+.md-copyright__revision {
+  font-size: 0.6rem;
+  color: var(--md-footer-fg-color--lighter);
+}
+
 h1 {
   font-weight: 700;
 }

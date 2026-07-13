@@ -6,6 +6,7 @@ repo_name: bbj-lab/cocoa
 
 theme:
   name: material
+  custom_dir: overrides
   logo: svg/emoji_u2615.svg
   favicon: svg/emoji_u2615.svg
   font: false

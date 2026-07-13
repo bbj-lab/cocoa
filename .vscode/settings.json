@@ -16,6 +16,9 @@
   "files.trimTrailingWhitespace": true,
   "files.insertFinalNewline": true,
   "git.autofetch": true,
+  "[html]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
   "[json]": {
     "editor.defaultFormatter": "esbenp.prettier-vscode"
   },

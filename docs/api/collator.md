@@ -8,7 +8,11 @@ a uniform schema of `subject_id`, `time`, `code`, `numeric_value`, and
 
 Which tables to read, how to filter and aggregate them, and how each event maps
 onto a `code` are all driven by a collation config (`collation.yaml`). Timestamps
-are normalized to timezone-naive UTC along the way.
+are normalized along the way to timezone-aware datetimes in the config's
+`default_timezone` (`UTC` if unset): columns that already carry a timezone are
+converted instant-preserving, while columns that don't are assumed to be local
+times in that zone. An ambiguous local time takes the later instant; one that a
+daylight-saving shift skips over raises.
 
 ## What it produces
 

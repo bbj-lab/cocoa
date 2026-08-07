@@ -83,9 +83,16 @@ relevant stage against real data — not by adding a framework unless asked.
   in the tokenization config breaks ties between events at the same timestamp; a
   prefix missing from `ordering` sorts last. When adding a new event prefix, add
   it to `ordering` too.
-- **Times** are normalized to naive UTC on load (`Collator.to_utc_naive`);
-  tz-aware columns are instant-preserved, tz-naive columns are assumed already
-  UTC.
+- **Times** are normalized on load to the collation config's `default_timezone`
+  (`Collator.to_default_tz`; `UTC` if unset) and stay **tz-aware** for the rest
+  of the pipeline: tz-aware columns are instant-preserved, tz-naive columns are
+  assumed to be local times in that zone (ambiguous DST times take the later
+  instant; nonexistent ones raise `ComputeError`). Downstream duration math
+  (spacers, winnowing thresholds/horizons) works on instants and is therefore
+  tz-invariant, but `CLCK//HH` tokens carry the _local_ hour — the zone is part
+  of what that vocabulary means, and `tokenizer.yaml` does not record it, so a
+  transferred tokenizer only agrees with a new dataset if both were collated in
+  the same zone.
 
 ## Conventions
 
@@ -116,4 +123,7 @@ relevant stage against real data — not by adding a framework unless asked.
   every user — usually you want a separate config passed with `-c` instead.
 - `combine-datasets` refuses to merge processed dirs whose tokenizer configs
   differ (it diffs the yamls, ignoring `created_dttm`); it also handles a legacy
-  Int64-token schema from tokenizers `<= 26.4.0`. </content>
+  Int64-token schema from tokenizers `<= 26.4.0`. Only `tokenizer.yaml` is
+  written to the processed dir, so a `default_timezone` mismatch escapes that
+  config diff and instead surfaces as a polars `SchemaError` on the datetime
+  columns. </content>

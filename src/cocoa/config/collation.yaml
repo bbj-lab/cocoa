@@ -2,6 +2,7 @@
 ---
 subject_id: hospitalization_id # the atomic unit of interest
 group_id: patient_id # multiple subjects can belong to a group
+default_timezone: UTC # or, e.g. America/Chicago; times are stored in this zone
 
 subject_splits:
   train_frac: !!float 0.7

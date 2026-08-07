@@ -15,7 +15,7 @@
 This repo provides a configurable way to collate data from multiple sources into
 a single denormalized dataframe and create tokenized timelines from the results.
 It benefits from previous experience collating data to train foundation models on
-tokenized electronic health records. [^1] [^2] [^3] [^4]
+tokenized electronic health records. [^1] [^2] [^3] [^4] [^5]
 
 <!-- cards-anchor -->
 
@@ -72,6 +72,7 @@ the reference + entries that define which events to extract.
 ```yaml
 subject_id: hospitalization_id # the atomic unit of interest
 group_id: patient_id # multiple subjects can belong to a group
+default_timezone: UTC # or, e.g. America/Chicago; times are stored in this zone
 
 subject_splits:
     train_frac: 0.7
@@ -83,6 +84,22 @@ subject_splits:
 hospitalization). `group_id` is an optional higher-level grouping column.
 Subjects are sorted chronologically and split into train / tuning / held-out sets
 according to the specified fractions.
+
+All timestamps are stored as timezone-aware datetimes in `default_timezone` (an
+IANA name like `America/Chicago`, defaulting to `UTC` if unset). Columns that
+already carry a timezone are converted instant-preserving; columns without one
+are assumed to be local times in `default_timezone` and labeled as such. Where a
+daylight-saving shift makes such a local time ambiguous, the later instant is
+used; a local time that a shift skips over is an error.
+
+The timezone is part of the stored dtype, so it travels with the data through the
+rest of the pipeline. Durations are computed from instants and are therefore
+unaffected by the choice: time spacing tokens, and the winnowing thresholds and
+horizons, measure elapsed physical time across a daylight-saving shift. Clock
+tokens are different — `CLCK//HH` marks an hour of the _local_ day in
+`default_timezone` (see [Tokenization](#2-tokenization)). And because processed
+timestamps keep their timezone, `cocoa combine-datasets` cannot merge processed
+directories that were collated with different `default_timezone` values.
 
 ### Reference table
 
@@ -321,7 +338,9 @@ that specifies:
 - `spacers` — mapping of time intervals (e.g., `5m-15m`, `1h-2h`) to their lower
   bounds in minutes, used for time spacing tokens.
 - `clocks` — list of hour strings (e.g., `00`, `04`, ...) at which to insert
-  clock tokens.
+  clock tokens. Hours are read in the collation config's `default_timezone`, so
+  across a daylight-saving shift a repeated hour yields two tokens and a skipped
+  hour yields none.
 
 ### Outputs
 
@@ -405,7 +424,7 @@ that specifies:
 <!-- prettier-ignore-start -->
 > [!TIP]
 > To train a generative event model on this data, check out our configurable
-> trainer: [🦜 cotorra](https://github.com/bbj-lab/cotorra)
+> trainer: [🦜 cotorra](https://pypi.org/project/cotorra/)
 <!-- prettier-ignore-end -->
 
 ## (3) Winnowing
@@ -498,26 +517,26 @@ with commands:
 
 - `cocoa collate`
 
-          ```
-          Usage: cocoa collate [OPTIONS]
+    ```
+    Usage: cocoa collate [OPTIONS]
 
-          Collate raw data into a denormalized format.
+    Collate raw data into a denormalized format.
 
-          Reads collation configuration and produces a MEDS-like parquet file
-          with collated events.
+    Reads collation configuration and produces a MEDS-like parquet file
+    with collated events.
 
-          ╭─ Options ───────────────────────────────────────────────────────────────╮
-          │    --collation-config     -c      PATH  Collation configuration file    │
-          │                                         (overrides default)             │
-          │ *  --raw-data-home        -r      TEXT  Raw data directory [required]   │
-          │ *  --processed-data-home  -p      TEXT  Processed data directory        │
-          │                                         [required]                      │
-          │    --verbose              -v            Verbose logging for collate;    │
-          │                                         this may cause memory issues    │
-          │                                         with large datasets             │
-          │    --help                 -h            Show this message and exit.     │
-          ╰─────────────────────────────────────────────────────────────────────────╯
-          ```
+    ╭─ Options ───────────────────────────────────────────────────────────────╮
+    │    --collation-config     -c      PATH  Collation configuration file    │
+    │                                         (overrides default)             │
+    │ *  --raw-data-home        -r      TEXT  Raw data directory [required]   │
+    │ *  --processed-data-home  -p      TEXT  Processed data directory        │
+    │                                         [required]                      │
+    │    --verbose              -v            Verbose logging for collate;    │
+    │                                         this may cause memory issues    │
+    │                                         with large datasets             │
+    │    --help                 -h            Show this message and exit.     │
+    ╰─────────────────────────────────────────────────────────────────────────╯
+    ```
 
 - `cocoa tokenize`
 
@@ -617,6 +636,12 @@ with commands:
     Representation before training: a fixed-budget benchmark for generative
     medical event models,
     [arXiv:2604.16775](https://doi.org/10.48550/arXiv.2604.16775)
+
+[^5]:
+    M. Burkhart, L. Solo, I. Lee, S. Charles, Z. Liao, K. Chhikara, D. Therese,
+    W.-T. Liao, C. Gao, W. Parker, & B. Beaulieu-Jones, Federated generative
+    event models for tokenized electronic health records,
+    [arXiv:2608.02939](https://doi.org/10.48550/arXiv.2608.02939)
 
 <!--
 

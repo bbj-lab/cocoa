@@ -50,28 +50,27 @@ class Collator(Configurable):
             {"pl": pl},
         )
 
-    def to_utc_naive(
+    def to_default_tz(
         self, df: pl.LazyFrame, column: str, *, table: str = None
     ) -> pl.Expr:
         """
-        expression converting `column` to a timezone-naive UTC datetime;
-        tz-aware columns are converted to UTC (instant-preserving),
-        tz-naive columns are assumed to already be UTC
+        expression converting `column` to the configured default_timezone;
+        tz-aware columns are converted instant-preserving,
+        tz-naive columns are localized to `default_timezone` (UTC if unset);
+        an ambiguous local time takes the later instant and
+        a local time skipped by a daylight-saving shift raises
         """
-        dtype = df.collect_schema().get(column)
-        if isinstance(dtype, pl.Datetime) and dtype.time_zone not in (None, "UTC"):
-            if (key := (table, column, dtype.time_zone)) not in self._tz_warned:
-                self._tz_warned.add(key)
-                self.logger.warning(
-                    f"{table or '<frame>'}.{column}: "
-                    f"converting {dtype.time_zone} -> UTC"
-                )
-            return (
-                pl.col(column)
-                .dt.convert_time_zone("UTC")
-                .dt.replace_time_zone(time_zone=None)
-            )
-        return pl.col(column).cast(pl.Datetime).dt.replace_time_zone(time_zone=None)
+        default_tz = self.cfg.get("default_timezone", None) or "UTC"
+        if (
+            isinstance(dtype := df.collect_schema().get(column), pl.Datetime)
+            and dtype.time_zone is not None
+        ):  # a no-op when the column is already in default_tz
+            return pl.col(column).dt.convert_time_zone(default_tz)
+        return (
+            pl.col(column)
+            .cast(pl.Datetime)
+            .dt.replace_time_zone(time_zone=default_tz, ambiguous="latest")
+        )
 
     def load_table(
         self,
@@ -143,7 +142,7 @@ class Collator(Configurable):
             )
         for col in (cfg["start_time"], cfg["end_time"]):
             df = df.with_columns(
-                self.to_utc_naive(df, col, table=cfg["table"]).alias(col)
+                self.to_default_tz(df, col, table=cfg["table"]).alias(col)
             )
         self.reference_frame = df  # cache result
         return self.reference_frame
@@ -179,10 +178,8 @@ class Collator(Configurable):
                 key=key,
             )
         )
-        if time in df.collect_schema().names():
-            df = df.with_columns(self.to_utc_naive(df, time, table=table).alias(time))
-        # otherwise `time` arrives normalized via the reference_key join below
-        if fix_date_to_time:
+        schema = df.collect_schema()
+        if fix_date_to_time and time in schema.names():
             # if a date was cast to a time,
             # the default of 00:00:00 should be replaced with 23:59:59
             df = df.with_columns(
@@ -195,6 +192,9 @@ class Collator(Configurable):
                 .otherwise(pl.col(time).cast(pl.Datetime))
                 .alias(time)
             )
+        if time in schema.names():
+            df = df.with_columns(self.to_default_tz(df, time, table=table).alias(time))
+        # otherwise `time` arrives normalized via the reference_key join below
         if reference_key is not None:
             df = df.join(self.reference_frame, on=reference_key, how="inner").filter(
                 pl.col(time)
@@ -207,7 +207,7 @@ class Collator(Configurable):
 
         return df.select(
             pl.col(self.cfg["subject_id"]).cast(pl.String).alias("subject_id"),
-            # `time` was normalized to naive UTC when the frame was loaded above
+            # `time` was normalized to the default timezone when loaded above
             pl.col(time).alias("time"),
             pl.when(pl.col(code).is_not_null())
             .then(

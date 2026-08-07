@@ -26,7 +26,8 @@ in order:
 1. [`add_ends`][cocoa.tokenizer.Tokenizer.add_ends] — insert `BOS` / `EOS`
    markers at the start and end of each subject's timeline.
 2. [`add_clocks`][cocoa.tokenizer.Tokenizer.add_clocks] — optionally insert
-   `CLCK//HH` tokens at configured hours of the day.
+   `CLCK//HH` tokens at configured hours of the day, read in the collation
+   config's `default_timezone`.
 3. [`bin_data`][cocoa.tokenizer.Tokenizer.bin_data] — discretize numeric values
    into quantile bins (`Q0`, `Q1`, …) using cut points learned by
    [`get_bins`][cocoa.tokenizer.Tokenizer.get_bins].

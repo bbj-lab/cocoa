@@ -15,7 +15,7 @@
 This repo provides a configurable way to collate data from multiple sources into
 a single denormalized dataframe and create tokenized timelines from the results.
 It benefits from previous experience collating data to train foundation models on
-tokenized electronic health records. [^1] [^2] [^3] [^4]
+tokenized electronic health records. [^1] [^2] [^3] [^4] [^5]
 
 <!-- cards-anchor -->
 
@@ -636,6 +636,12 @@ with commands:
     Representation before training: a fixed-budget benchmark for generative
     medical event models,
     [arXiv:2604.16775](https://doi.org/10.48550/arXiv.2604.16775)
+
+[^5]:
+    M. Burkhart, L. Solo, I. Lee, S. Charles, Z. Liao, K. Chhikara, D. Therese,
+    W.-T. Liao, C. Gao, W. Parker, & B. Beaulieu-Jones, Federated generative
+    event models for tokenized electronic health records,
+    [arXiv:2608.02939](https://doi.org/10.48550/arXiv.2608.02939)
 
 <!--
 

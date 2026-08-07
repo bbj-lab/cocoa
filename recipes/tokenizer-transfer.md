@@ -9,7 +9,10 @@ In this example, we'll train a tokenizer on mimic and apply it to ucmc.
     raw_ucmc="/path/to/data-raw/ucmc-2.1.0"
     ```
 
-1. Run collation on each dataset separately with the same config:
+1. Run collation on each dataset separately with the same config. Keeping
+   `default_timezone` the same across both matters if you tokenize with clock
+   tokens, since `CLCK//HH` refers to an hour of the local day in that zone and
+   the learned vocabulary carries no record of it:
 
     ```sh
     cocoa collate \

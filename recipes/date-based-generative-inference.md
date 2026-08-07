@@ -12,6 +12,9 @@ To prepare data for inference at first midnight after admission,
       - !!str 00 # produces token CLCK//00
     ```
 
+    Clock hours are read in the collation config's `default_timezone`, so
+    `CLCK//00` marks local midnight in that zone (`UTC` if unset).
+
 2. In your winnowing config (e.g. `winnowing.yaml`), threshold at the first
    occurrence of `CLCK//00`:
 

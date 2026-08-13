@@ -109,6 +109,20 @@ class Winnower(Configurable):
                 pl.col("tokens").list.len() - pl.col("last_valid")
             ),
         )  # split into past and future
+        if "exact_ranks" in df.collect_schema().names():
+            # carried through so a use_exact_rank model's embeddings at
+            # inference/extraction time see the same continuous per-event
+            # rank used during training, instead of falling back to a
+            # coarser bin-midpoint proxy (see NumericalBasisModel).
+            df = df.with_columns(
+                exact_ranks_past=pl.col("exact_ranks").list.head("last_valid")
+            )
+        if "zscore_ranks" in df.collect_schema().names():
+            # same reasoning as exact_ranks_past above, for the sigmoid(robust
+            # z-score) rank variant.
+            df = df.with_columns(
+                zscore_ranks_past=pl.col("zscore_ranks").list.head("last_valid")
+            )
         if "horizon_after_threshold_s" in self.cfg:
             df = (
                 df.with_columns(

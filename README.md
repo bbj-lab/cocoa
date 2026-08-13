@@ -314,6 +314,11 @@ that specifies:
   token (`true`) or keep them as separate tokens (`false`).
 - `include_numeric_values` — whether to include raw numeric values alongside
   tokens in the output (`false` by default).
+- `include_exact_rank` — whether to include, for each numeric value, its exact
+  rank (percentile position, linearly interpolated between learned quantile
+  breakpoints and normalized to `[0, 1]`) alongside tokens in the output
+  (`false` by default). Unlike `include_numeric_values`, this is comparable
+  across codes regardless of their raw units/scale.
 - `insert_spacers` — whether to insert time spacing tokens between events.
 - `insert_clocks` — whether to insert clock tokens at specified times.
 - `ordering` — the priority order of code prefixes when sorting events within the
@@ -334,6 +339,9 @@ that specifies:
 
     A fourth column, `numeric_values`, holding the corresponding values for
     numeric value tokens, is added only when `include_numeric_values` is set.
+    Similarly, a column `exact_ranks`, holding each numeric value token's
+    interpolated `[0, 1]` rank, is added only when `include_exact_rank` is
+    set.
 
     The table will look something like this:
 

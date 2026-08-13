@@ -1,6 +1,6 @@
 %YAML 1.2
 ---
-n_bins: !!int 10
+n_bins: !!int 100
 fused: !!bool true
 include_numeric_values: !!bool false
 

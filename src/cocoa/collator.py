@@ -277,7 +277,12 @@ class Collator(Configurable):
             else self.get_reference_frame()
             .collect()
             .join(partition, on=self.cfg["group_id"])
-        ).select(pl.col(self.cfg["subject_id"]).alias("subject_id"), "split")
+        ).select(
+            # cast to match get_entry, so meds.parquet and subject_splits.parquet
+            # share a key dtype and the downstream joins hold
+            pl.col(self.cfg["subject_id"]).cast(pl.String).alias("subject_id"),
+            "split",
+        )
 
     def save_all(self, verbose: bool = False):
         """save collated data and subject splits to disc, optionally w/ summary stats"""
@@ -293,7 +298,7 @@ class Collator(Configurable):
         if "pass_through_columns" in self.cfg:
             df_splits = df_splits.join(
                 self.reference_frame.select(
-                    pl.col(self.cfg["subject_id"]).alias("subject_id"),
+                    pl.col(self.cfg["subject_id"]).cast(pl.String).alias("subject_id"),
                     *self.cfg.pass_through_columns,
                 ).collect(),
                 on="subject_id",

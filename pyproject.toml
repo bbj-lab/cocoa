@@ -34,7 +34,7 @@
         Repository    = "https://github.com/bbj-lab/cocoa"
 
     [project.optional-dependencies]
-        all = [ "cocoa-tokenizer[dev,docs]" ]
+        all = [ "cocoa-tokenizer[dev,docs,test]" ]
         dev = [ "pip", "ruff" ]
         docs = [
             "mkdocs",
@@ -44,6 +44,7 @@
             "mkdocs-callouts",
             "mkdocs-git-revision-date-localized-plugin",
         ]
+        test = [ "pytest" ]
 
 [build-system]
     build-backend = "setuptools.build_meta"
@@ -76,3 +77,8 @@
 
     [tool.setuptools.package-data]
         "cocoa.config" = [ "*.yaml" ]
+
+[tool.pytest.ini_options]
+    addopts    = [ "--strict-config", "--strict-markers" ]
+    pythonpath = [ "tests" ]
+    testpaths  = [ "tests" ]

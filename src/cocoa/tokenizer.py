@@ -134,7 +134,7 @@ class Tokenizer(Configurable):
         return (
             df.join(self.get_bins(df).lazy(), on="code", how="left")
             .with_columns(
-                pl.when(pl.col("numeric_value").is_not_null())
+                pl.when(pl.col("numeric_value").is_finite())
                 .then(
                     pl.concat_str(
                         pl.lit("Q"),

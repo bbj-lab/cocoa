@@ -36,28 +36,42 @@ Data flows strictly stage-to-stage through files in `--processed-data-home`.
 ```sh
 # Dev install (Python >= 3.11)
 python -m venv .venv && . .venv/bin/activate
-pip install -e '.[all]'          # all = dev + docs extras
+pip install -e '.[all]'          # all = dev + docs + test extras
 
 # Run the pipeline (or a single stage: collate | tokenize | winnow)
 cocoa pipeline -r <raw-data-home> -p <processed-data-home> [--verbose]
 cocoa <stage> -c <config.yaml> ... # -c overrides the shipped default for that stage
 cocoa <stage> -h                   # help; --verbose prints summary stats
 
-# Format + lint (the only tooling; run before committing)
+# Format + lint (run before committing)
 ruff format .
 ruff check . --fix
+
+# Tests (pytest, synthetic data only)
+pytest
 
 # Docs (mkdocs-material, published to readthedocs)
 mkdocs build
 mkdocs serve --dev-addr 127.0.0.1:8001
 ```
 
-There is **no test suite and no CI**. Each module instead has an
-`if __name__ == "__main__"` block that self-tests against a local processed
-dataset (e.g. `./processed/mimic/`). Run a module directly
-(`python -m cocoa.tokenizer`) to exercise it; the tokenizer block also asserts
-round-trip save/load equality. If you change behavior, verify by running the
-relevant stage against real data — not by adding a framework unless asked.
+There's a pytest suite in [tests/](tests/) — run it with `pytest`; there's still
+no CI. [tests/synth.py](tests/synth.py) generates synthetic CLIF-like raw data,
+and [tests/conftest.py](tests/conftest.py) turns it into shared fixtures: a
+session-scoped `pipeline` (collate → tokenize → winnow once with shipped
+defaults) and a per-test `runner` for re-running individual stages with
+overridden configs in an isolated tmp dir — no real patient data needed. Test
+files mostly mirror `src/cocoa` modules, except tokenizer coverage is split into
+core behavior (`test_tokenizer.py`), serialization/transfer
+(`test_tokenizer_io.py`), and configurable options (`test_tokenizer_options.py`),
+plus cross-cutting suites for subject splits, timezones, and full pipeline
+integration.
+
+Each module also keeps an `if __name__ == "__main__"` block that self-tests
+against a local processed dataset (e.g. `./processed/mimic/`); run a module
+directly (`python -m cocoa.tokenizer`) to exercise it against real data — the
+tokenizer block also asserts round-trip save/load equality. When you change
+behavior, add/update a pytest case first.
 
 ## Architecture notes
 

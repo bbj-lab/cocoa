@@ -7,7 +7,6 @@ import math
 import pathlib
 import re
 
-import numpy as np
 import polars as pl
 import pytest
 import synth
@@ -244,6 +243,28 @@ def test_entry_without_a_prefix_yields_a_bare_code(runner):
         [entry],
     )
     assert events(meds) == [(utc(ADM + HOUR), "heart_rate", 90.0, None)]
+
+
+def test_iso8601_string_time_column_is_parsed_to_the_same_instant(runner):
+    """a raw table storing `time` as iso8601 text collates like a native datetime"""
+    meds = hand_collate(
+        runner,
+        {
+            "clif_vitals": [
+                {
+                    "hospitalization_id": "H0",
+                    "recorded_dttm": "2024-03-01T09:00:00",
+                    "vital_category": "heart_rate",
+                    "vital_value": 90.0,
+                }
+            ]
+        },
+        shipped_entries("clif_vitals", "VTL"),
+        schemas={
+            "clif_vitals": {**synth.SCHEMAS["clif_vitals"], "recorded_dttm": pl.String}
+        },
+    )
+    assert events(meds) == [(utc(ADM + HOUR), "VTL//heart_rate", 90.0, None)]
 
 
 # --- filter_expr -------------------------------------------------------------

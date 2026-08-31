@@ -246,7 +246,7 @@ class Tokenizer(Configurable):
                 self.get_priority().lazy(), on="code_type", how="left", validate="m:1"
             )
             .with_columns(pl.col("priority").fill_null(len(self.cfg.ordering)))
-            .sort("time", "priority")
+            .sort("time", "priority", "to_tokenize")  # thanks, @lukesolo-ml!
             .explode("to_tokenize")
             .join(
                 self.get_lookup(pt).lazy(), on="to_tokenize", validate="m:1", how="left"

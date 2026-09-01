@@ -84,5 +84,6 @@
         "--strict-config",
         "--strict-markers",
     ]
-    pythonpath = [ "tests" ]
+    log_level = "INFO"
+    pythonpath = [ "src", "tests" ]
     testpaths = [ "tests" ]

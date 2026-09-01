@@ -47,9 +47,12 @@ A tokenizer's learned state round-trips through
 dataset can be **frozen** (`is_training=False`) and applied to another — see the
 [Tokenizer Transfer](../recipes/tokenizer-transfer.md) recipe.
 
-!!! tip "It behaves like a mapping" A `Tokenizer` is callable and dict-like:
-`tkzr("EOS")` returns a token id (`0` for out-of-vocabulary words),
-`"foo" in tkzr` tests vocabulary membership, and `len(tkzr)` reports the
-vocabulary size.
+<!-- prettier-ignore-start -->
+!!! tip "It behaves like a mapping"
+
+    A `Tokenizer` is callable and dict-like: `tkzr("EOS")` returns a token id
+    (`0` for out-of-vocabulary words), `"foo" in tkzr` tests vocabulary
+    membership, and `len(tkzr)` reports the vocabulary size.
+<!-- prettier-ignore-end -->
 
 ::: cocoa.tokenizer

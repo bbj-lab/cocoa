@@ -34,8 +34,12 @@ these steps:
    example `DSCG//expired_past` and `DSCG//expired_future`), so you can tell
    whether an outcome truly falls within the prediction window.
 
-!!! note "Depends on tokenizer artifacts" The winnower reads the `tokenizer.yaml`
-written by the [Tokenizer](tokenizer.md) to resolve outcome-token patterns
-against the learned vocabulary, so tokenization must run first.
+<!-- prettier-ignore-start -->
+!!! note "Depends on tokenizer artifacts"
+
+    The winnower reads the `tokenizer.yaml` written by the
+    [Tokenizer](tokenizer.md) to resolve outcome-token patterns against the
+    learned vocabulary, so tokenization must run first.
+<!-- prettier-ignore-end -->
 
 ::: cocoa.winnower

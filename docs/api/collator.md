@@ -36,11 +36,15 @@ two files to the processed-data directory:
 4. [`get_subject_splits`][cocoa.collator.Collator.get_subject_splits] assigns the
    data splits.
 
-!!! warning "Config files are trusted input" Collation configs may contain Polars
-expression _strings_ (for filters, added columns, and aggregations) that are
-evaluated at load time. These run through
-[`slightly_safer_eval`][cocoa.collator.Collator.slightly_safer_eval], which
-restricts the available namespace but is **not** secure against malicious input.
-Only run configs you trust.
+<!-- prettier-ignore-start -->
+!!! warning "Config files are trusted input"
+
+    Collation configs may contain Polars expression _strings_ (for filters,
+    added columns, and aggregations) that are evaluated at load time. These
+    run through
+    [`slightly_safer_eval`][cocoa.collator.Collator.slightly_safer_eval],
+    which restricts the available namespace but is **not** secure against
+    malicious input. Only run configs you trust.
+<!-- prettier-ignore-end -->
 
 ::: cocoa.collator

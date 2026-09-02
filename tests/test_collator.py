@@ -6,6 +6,7 @@ import datetime
 import math
 import pathlib
 import re
+import zoneinfo
 
 import polars as pl
 import pytest
@@ -713,10 +714,11 @@ EXTRA = {
 }
 
 
-def collate_extra(runner, entry) -> pl.DataFrame:
+def collate_extra(runner, entry, **overrides) -> pl.DataFrame:
     """collate the extra-events table (plus one reference entry) alone"""
     cfg = default_cfg("collation")
     cfg["entries"] = shipped_entries("REFERENCE", "RACE") + [entry]
+    cfg.update(overrides)
     dest = runner.dir()
     runner.collate(cfg=cfg, dest=dest)
     return pl.read_parquet(dest / "meds.parquet").filter(
@@ -738,10 +740,14 @@ def test_reference_key_drops_events_outside_the_stay(runner):
     }
 
 
-def test_fix_date_to_time_moves_midnight_to_the_end_of_the_day(runner):
+@pytest.mark.parametrize("zone", ["UTC", "America/Chicago", "Asia/Tokyo"])
+def test_fix_date_to_time_moves_midnight_to_the_end_of_the_local_day(runner, zone):
+    """the end of the day means the end of the day in `default_timezone`"""
     m = runner.raw
     xtra = collate_extra(
-        runner, {**EXTRA, "time": "event_date", "fix_date_to_time": True}
+        runner,
+        {**EXTRA, "time": "event_date", "fix_date_to_time": True},
+        default_timezone=zone,
     )
     expected = set()
     for pid in m.patient_ids:
@@ -750,10 +756,111 @@ def test_fix_date_to_time_moves_midnight_to_the_end_of_the_day(runner):
             (m.admission[first] + HOUR).date(), datetime.time(23, 59, 59)
         )
         if m.admission[first] <= end_of_day <= m.discharge[first]:
-            expected.add((first, utc(end_of_day)))
+            # the raw times are naive, so every wall clock reads in `zone`
+            expected.add((first, end_of_day.replace(tzinfo=zoneinfo.ZoneInfo(zone))))
     assert 0 < len(expected) < m.n_patients  # both branches are exercised
     assert set(xtra["code"]) == {"XTRA//inside_window"}
     assert {(s, t) for s, t in zip(xtra["subject_id"], xtra["time"])} == expected
+
+
+@pytest.mark.parametrize(
+    "column_zone,zone", [("Asia/Tokyo", "UTC"), ("UTC", "America/Chicago")]
+)
+def test_fix_date_to_time_reads_a_tz_aware_midnight_in_its_own_zone(
+    runner, column_zone, zone
+):
+    """a date cast to a timestamp is midnight in the zone it was cast in"""
+    tz = zoneinfo.ZoneInfo(column_zone)
+    day = ADM.date()  # the hand-built stay runs 2024-03-01 08:00 local for 48h
+    midnight = datetime.datetime.combine(day, datetime.time(0, 0), tzinfo=tz)
+    meds = hand_collate(
+        runner,
+        {
+            "clif_extra_events": [
+                {"patient_id": "P0", "event_dttm": midnight, "extra_category": "date"}
+            ]
+        },
+        shipped_entries("REFERENCE", "RACE")
+        + [{**EXTRA, "time": "event_dttm", "fix_date_to_time": True}],
+        schemas={
+            "clif_extra_events": {
+                "patient_id": pl.String,
+                "event_dttm": pl.Datetime("us", column_zone),
+                "extra_category": pl.String,
+            }
+        },
+        default_timezone=zone,
+    )
+    xtra = meds.filter(pl.col("code").str.starts_with("XTRA//"))
+    # the end of that same calendar day, as the column's own zone reckons it
+    assert xtra["time"].to_list() == [
+        datetime.datetime.combine(day, datetime.time(23, 59, 59), tzinfo=tz)
+    ]
+    assert xtra.schema["time"] == pl.Datetime("us", zone)
+
+
+def test_fix_date_to_time_leaves_real_timestamps_alone(runner):
+    """only midnight moves: an intraday reading keeps its exact instant"""
+    noon = ADM + 4 * HOUR  # 2024-03-01 12:00, inside the 48h stay
+    midnight = datetime.datetime(2024, 3, 2, 0, 0)  # the second day of the stay
+    dawn = midnight + 6 * HOUR
+    meds = hand_collate(
+        runner,
+        {
+            "clif_extra_events": [
+                {"patient_id": "P0", "event_dttm": t, "extra_category": c}
+                for t, c in [(noon, "noon"), (midnight, "date"), (dawn, "dawn")]
+            ]
+        },
+        shipped_entries("REFERENCE", "RACE")
+        + [{**EXTRA, "time": "event_dttm", "fix_date_to_time": True}],
+    )
+    xtra = meds.filter(pl.col("code").str.starts_with("XTRA//")).sort("time")
+    end_of_day = midnight + datetime.timedelta(seconds=86399)
+    assert list(zip(xtra["code"], xtra["time"])) == [
+        ("XTRA//noon", utc(noon)),  # untouched
+        ("XTRA//dawn", utc(dawn)),  # untouched
+        ("XTRA//date", utc(end_of_day)),  # moved to the end of its own day
+    ]
+    # the point of the flag: the date-derived event cannot leak into the past,
+    # so it lands after every real event of the day it belongs to
+    assert utc(end_of_day) > utc(dawn) > utc(midnight)
+
+
+def test_fix_date_to_time_on_a_day_whose_local_midnight_does_not_exist(runner):
+    """cuba springs forward at 00:00, so the unfixed midnight cannot localize"""
+    zone = "America/Havana"
+    tz = zoneinfo.ZoneInfo(zone)
+    skipped = datetime.date(2024, 3, 10)  # 00:00 -> 01:00 CDT in havana
+    meds = hand_collate(
+        runner,
+        {
+            "clif_hospitalization": [
+                {
+                    **BASE_TABLES["clif_hospitalization"][0],
+                    "admission_dttm": datetime.datetime(2024, 3, 8, 8, 0),
+                    "discharge_dttm": datetime.datetime(2024, 3, 12, 8, 0),
+                }
+            ],
+            "clif_extra_events": [
+                {"patient_id": "P0", "event_date": skipped, "extra_category": "date"}
+            ],
+        },
+        shipped_entries("REFERENCE", "RACE")
+        + [{**EXTRA, "time": "event_date", "fix_date_to_time": True}],
+        schemas={
+            "clif_extra_events": {
+                "patient_id": pl.String,
+                "event_date": pl.Date,
+                "extra_category": pl.String,
+            }
+        },
+        default_timezone=zone,
+    )
+    xtra = meds.filter(pl.col("code").str.starts_with("XTRA//"))
+    assert xtra["time"].to_list() == [
+        datetime.datetime.combine(skipped, datetime.time(23, 59, 59), tzinfo=tz)
+    ]
 
 
 def test_without_fix_date_to_time_a_date_stays_at_midnight(runner):

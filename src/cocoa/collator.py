@@ -31,7 +31,7 @@ class Collator(Configurable):
         self.processed_data_home.mkdir(parents=True, exist_ok=True)
         self.reference_frame = None
         self.splits: tuple = ("train", "tuning", "held_out")
-        self._tz_warned: set = set()
+        self.tz = self.cfg.get("default_timezone", None) or "UTC"
 
         self.logger.info("Collator initialized...")
         self.logger.info(f"{self.raw_data_home=}")
@@ -50,9 +50,15 @@ class Collator(Configurable):
             {"pl": pl},
         )
 
-    def to_default_tz(
-        self, df: pl.LazyFrame, column: str, *, table: str = None
-    ) -> pl.Expr:
+    @staticmethod
+    def is_tz_aware(schema: pl.Schema, column: str) -> bool:
+        """whether `column` already carries a timezone, i.e. denotes an instant"""
+        return (
+            isinstance(dtype := schema.get(column), pl.Datetime)
+            and dtype.time_zone is not None
+        )
+
+    def to_default_tz(self, df: pl.LazyFrame, column: str) -> pl.Expr:
         """
         expression converting `column` to the configured default_timezone;
         tz-aware columns are converted instant-preserving,
@@ -60,16 +66,14 @@ class Collator(Configurable):
         an ambiguous local time takes the later instant and
         a local time skipped by a daylight-saving shift raises
         """
-        default_tz = self.cfg.get("default_timezone", None) or "UTC"
-        if (
-            isinstance(dtype := df.collect_schema().get(column), pl.Datetime)
-            and dtype.time_zone is not None
-        ):  # a no-op when the column is already in default_tz
-            return pl.col(column).dt.convert_time_zone(default_tz)
         return (
-            pl.col(column)
-            .cast(pl.Datetime)
-            .dt.replace_time_zone(time_zone=default_tz, ambiguous="latest")
+            pl.col(column).dt.convert_time_zone(self.tz)
+            if self.is_tz_aware(df.collect_schema(), column)
+            else (
+                pl.col(column)
+                .cast(pl.Datetime)
+                .dt.replace_time_zone(time_zone=self.tz, ambiguous="latest")
+            )
         )
 
     def load_table(
@@ -141,9 +145,7 @@ class Collator(Configurable):
                 maintain_order="left",
             )
         for col in (cfg["start_time"], cfg["end_time"]):
-            df = df.with_columns(
-                self.to_default_tz(df, col, table=cfg["table"]).alias(col)
-            )
+            df = df.with_columns(self.to_default_tz(df, col).alias(col))
         self.reference_frame = df  # cache result
         return self.reference_frame
 
@@ -179,21 +181,27 @@ class Collator(Configurable):
             )
         )
         schema = df.collect_schema()
-        if fix_date_to_time and time in schema.names():
-            # if a date was cast to a time,
-            # the default of 00:00:00 should be replaced with 23:59:59
-            df = df.with_columns(
-                pl.when(pl.col(time).cast(pl.Datetime).dt.time() == pl.time(0, 0, 0))
-                .then(
-                    pl.col(time)
-                    .cast(pl.Datetime)
-                    .dt.replace(hour=23, minute=59, second=59)
-                )
-                .otherwise(pl.col(time).cast(pl.Datetime))
-                .alias(time)
-            )
         if time in schema.names():
-            df = df.with_columns(self.to_default_tz(df, time, table=table).alias(time))
+            if fix_date_to_time:
+                # a date cast to a time lands at 00:00 in whatever zone it was
+                # cast in: the zone a tz-aware column carries, or the wall clock
+                # of a naive one, which to_default_tz localizes below. fixing it
+                # there also keeps midnight off the wire, since 23:59:59 exists
+                # in every zone but midnight need not (some spring forward at 00:00)
+                t = (
+                    pl.col(time)
+                    if self.is_tz_aware(schema, time)
+                    else pl.col(time).cast(pl.Datetime)
+                )
+                # 00:00 would place the event at the start of its day and leak
+                # it early; the end of the day is the conservative reading
+                df = df.with_columns(
+                    pl.when(t.dt.time() == pl.time(0, 0, 0))
+                    .then(t.dt.replace(hour=23, minute=59, second=59))
+                    .otherwise(t)
+                    .alias(time)
+                )
+            df = df.with_columns(self.to_default_tz(df, time).alias(time))
         # otherwise `time` arrives normalized via the reference_key join below
         if reference_key is not None:
             df = df.join(self.reference_frame, on=reference_key, how="inner").filter(

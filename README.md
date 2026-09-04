@@ -331,6 +331,11 @@ that specifies:
   token (`true`) or keep them as separate tokens (`false`).
 - `include_numeric_values` — whether to include raw numeric values alongside
   tokens in the output (`false` by default).
+- `include_hours_to_end_time` — whether to include, alongside tokens, the
+  fractional hours from each token to its subject's `end_time` as recorded in
+  `subject_splits.parquet` (`false` by default). Values count down toward the
+  end time and go negative for tokens beyond it, which the `EOS` and time
+  spacing tokens of a timeline running past `end_time` can be.
 - `min_training_ct` — minimum number of times a word must occur in the training
   split to earn a place in the vocabulary. `0` (the default) disables the
   threshold and keeps every word seen while training. Raise it to prune the long
@@ -356,8 +361,9 @@ that specifies:
     - `times` — a parallel list of timestamps, one per token, indicating when
       each event occurred.
 
-    A fourth column, `numeric_values`, holding the corresponding values for
-    numeric value tokens, is added only when `include_numeric_values` is set.
+    A `numeric_values` column, holding the corresponding values for numeric
+    value tokens, is added only when `include_numeric_values` is set, and an
+    `hours_to_end_time` column only when `include_hours_to_end_time` is.
 
     The table will look something like this:
 

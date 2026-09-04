@@ -256,7 +256,7 @@ class Tokenizer(Configurable):
 
     def tokenize_data(self, pt: pl.LazyFrame) -> pl.LazyFrame:
         """apply lookup table to pretokenized data"""
-        return (
+        t = (
             pt.with_columns(code_type=pl.col("code").str.split("//").list[0])
             .join(
                 self.get_priority().lazy(), on="code_type", how="left", validate="m:1"
@@ -267,19 +267,32 @@ class Tokenizer(Configurable):
             .join(
                 self.get_lookup(pt).lazy(), on="to_tokenize", validate="m:1", how="left"
             )
-            .with_columns(
-                pl.col("token").fill_null(pl.lit(0, dtype=pl.UInt32))
-            )  # UNK is 0
-            .group_by("subject_id", maintain_order=True)
-            .agg(
-                pl.col("token").alias("tokens"),
-                pl.col("time").alias("times"),
-                *(
-                    [pl.col("numeric_value").alias("numeric_values")]
-                    if self.cfg.get("include_numeric_values", False)
-                    else []
-                ),
+            .with_columns(pl.col("token").fill_null(pl.lit(0, dtype=pl.UInt32)))
+        )  # UNK is 0
+        if self.cfg.get("include_hours_to_end_time", False):
+            t = t.join(
+                self.subject_splits.select("subject_id", "end_time"),
+                on="subject_id",
+                validate="m:1",
+                how="left",
+            ).with_columns(
+                hours_to_end_time=(pl.col("end_time") - pl.col("time"))
+                .dt.total_seconds()
+                .truediv(3600)
             )
+        return t.group_by("subject_id", maintain_order=True).agg(
+            pl.col("token").alias("tokens"),
+            pl.col("time").alias("times"),
+            *(
+                [pl.col("numeric_value").alias("numeric_values")]
+                if self.cfg.get("include_numeric_values", False)
+                else []
+            ),
+            *(
+                [pl.col("hours_to_end_time")]
+                if self.cfg.get("include_hours_to_end_time", False)
+                else []
+            ),
         )
 
     def get_all(self, verbose: bool = False) -> pl.LazyFrame:

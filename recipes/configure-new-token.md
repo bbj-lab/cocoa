@@ -74,5 +74,8 @@ preprocessing completed successfully (`pl.col("_convert_status") == "success"`).
     └────────────┴─────────────────────┴────────────────────────────────┴───────────────┴────────────┘
     ```
 
-3. When tokenization is run, these codes will be picked up and processed as
-   usual.
+3. When tokenization is run, these codes will be picked up and processed as usual
+   — with one caveat if you've raised `min_training_ct` above its default of `0`:
+   a code occurring fewer than that many times in the training split doesn't earn
+   its own token and tokenizes to `UNK` instead. If your new table is sparse and
+   you want each of its codes represented, keep the threshold low.

@@ -3,6 +3,7 @@
 n_bins: !!int 10
 fused: !!bool true
 include_numeric_values: !!bool false
+min_training_ct: !!int 0 # words rarer than this in training become UNK; 0 disables it
 
 ordering:
   - BOS

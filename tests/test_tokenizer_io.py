@@ -17,7 +17,15 @@ from omegaconf import OmegaConf
 from cocoa.collator import Collator
 from cocoa.tokenizer import Tokenizer
 
-YAML_KEYS = {"lookup", "bins", "is_training", "cfg", "created_dttm", "cocoa_version"}
+YAML_KEYS = {
+    "lookup",
+    "counts",
+    "bins",
+    "is_training",
+    "cfg",
+    "created_dttm",
+    "cocoa_version",
+}
 
 MIN_HOSP = [
     {
@@ -121,8 +129,19 @@ def test_to_yaml_has_expected_top_level_keys_and_records_version(trained):
     assert set(y.keys()) == YAML_KEYS
     assert y.cocoa_version == meta.version("cocoa-tokenizer")
     assert y.created_dttm == trained.created_dttm
-    assert dict(y.lookup) == dict(trained.lookup.rows())
+    assert dict(y.lookup) == dict(trained.lookup.select("to_tokenize", "token").rows())
+    assert dict(y.counts) == dict(trained.lookup.select("to_tokenize", "count").rows())
     assert y.cfg.n_bins == trained.cfg.n_bins == 10
+
+
+def test_from_yaml_tolerates_a_legacy_yaml_without_counts(trained):
+    """tokenizers written before counts existed still load, with null counts"""
+    y = OmegaConf.create(trained.to_yaml())
+    del y.counts
+    cp = trained.from_yaml(OmegaConf.to_yaml(y))
+    assert cp.lookup.drop("count").equals(trained.lookup.drop("count"))
+    assert cp.lookup["count"].null_count() == cp.lookup.height
+    assert cp("EOS") == trained("EOS")
 
 
 @pytest.mark.parametrize(
@@ -197,7 +216,7 @@ def test_load_from_disc_round_trips(trained, tmp_path):
 def test_save_all_writes_tokenizer_yaml_matching_the_vocabulary(trained, src_yaml):
     y = OmegaConf.load(src_yaml)
     assert set(y.keys()) == YAML_KEYS
-    assert dict(y.lookup) == dict(trained.lookup.rows())
+    assert dict(y.lookup) == dict(trained.lookup.select("to_tokenize", "token").rows())
     assert y.lookup["UNK"] == 0
     assert y.is_training is True  # a freshly learned tokenizer is saved unfrozen
     assert len(dict(y.bins)) == trained.bins.height
@@ -206,7 +225,7 @@ def test_save_all_writes_tokenizer_yaml_matching_the_vocabulary(trained, src_yam
 def test_relearning_the_same_collation_gives_the_same_vocabulary(trained, pipeline):
     """vocabulary learning is deterministic across runs"""
     assert len(pipeline.vocab) > 0
-    assert dict(trained.lookup.rows()) == pipeline.vocab
+    assert dict(trained.lookup.select("to_tokenize", "token").rows()) == pipeline.vocab
 
 
 # --- dunders -----------------------------------------------------------------

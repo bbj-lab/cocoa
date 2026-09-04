@@ -183,6 +183,49 @@ def test_past_and_future_concatenate_to_the_timeline(pipeline, split):
         assert list(r["s_elapsed_past"]) == list(r["s_elapsed"])[: r["last_valid"]]
 
 
+def _with_hours(runner):
+    """a full run whose tokenization carries hours_to_end_time"""
+    tok = default_cfg("tokenization")
+    tok["include_hours_to_end_time"] = True
+    return runner.full(tokenization=tok)
+
+
+def test_hours_to_end_time_is_split_like_the_tokens(runner):
+    processed = _with_hours(runner)
+    d = processed.inference("held_out")
+    assert d.height > 0
+    assert {"hours_to_end_time_past", "hours_to_end_time_future"} <= set(d.columns)
+    ends = dict(processed.splits.select("subject_id", "end_time").iter_rows())
+    for r in d.iter_rows(named=True):
+        past, future = (
+            list(r["hours_to_end_time_past"]),
+            list(r["hours_to_end_time_future"]),
+        )
+        assert past + future == list(r["hours_to_end_time"])
+        assert len(past) == r["last_valid"] == len(r["tokens_past"])
+        assert len(future) == len(r["tokens_future"])
+        end = ends[r["subject_id"]]
+        assert past + future == [(end - t).total_seconds() / 3600 for t in r["times"]]
+
+
+def test_horizon_after_threshold_truncates_hours_to_end_time_too(runner):
+    processed = _with_hours(runner)
+    runner.winnow(
+        cfg=cfg(splits=["held_out"], horizon_after_threshold_s=HORIZON_S),
+        processed=processed.path,
+    )
+    d = pl.read_parquet(processed.path / "held_out_for_inference.parquet")
+    assert d.height > 0
+    shortened = 0
+    for r in d.iter_rows(named=True):
+        future = list(r["hours_to_end_time_future"])
+        assert len(future) == len(r["tokens_future"])
+        whole = list(r["hours_to_end_time"])[r["last_valid"] :]
+        assert future == whole[: len(future)]
+        shortened += len(future) < len(whole)
+    assert shortened == d.height, "the horizon truncated nothing"
+
+
 @pytest.mark.parametrize("split", SPLITS)
 def test_s_elapsed_is_seconds_since_the_first_event(pipeline, split):
     d = pipeline.inference(split)

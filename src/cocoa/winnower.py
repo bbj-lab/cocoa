@@ -102,12 +102,23 @@ class Winnower(Configurable):
         adds boolean flags for each outcome token and tense,
         e.g. DSCG//expired_past, DSCG//expired_future
         """
+        # per-token columns the tokenizer writes only when configured to
+        optional = [
+            c for c in ("hours_to_end_time",) if c in df.collect_schema().names()
+        ]
         df = df.with_columns(
             tokens_past=pl.col("tokens").list.head("last_valid"),
             s_elapsed_past=pl.col("s_elapsed").list.head("last_valid"),
             tokens_future=pl.col("tokens").list.tail(
                 pl.col("tokens").list.len() - pl.col("last_valid")
             ),
+            **{f"{c}_past": pl.col(c).list.head("last_valid") for c in optional},
+            **{
+                f"{c}_future": pl.col(c).list.tail(
+                    pl.col(c).list.len() - pl.col("last_valid")
+                )
+                for c in optional
+            },
         )  # split into past and future
         if "horizon_after_threshold_s" in self.cfg:
             df = (
@@ -127,7 +138,13 @@ class Winnower(Configurable):
                 .with_columns(
                     tokens_future=pl.col("tokens_future").list.head(
                         "valid_future_count"
-                    )
+                    ),
+                    **{
+                        f"{c}_future": pl.col(f"{c}_future").list.head(
+                            "valid_future_count"
+                        )
+                        for c in optional
+                    },
                 )
             )
         return df.with_columns(

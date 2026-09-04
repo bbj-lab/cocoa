@@ -218,14 +218,30 @@ class Tokenizer(Configurable):
                     on="subject_id",
                     validate="m:1",
                 )
-                .explode("to_tokenize")
-                .select(pl.col("to_tokenize").unique().sort())
-                .filter(pl.col("to_tokenize") != "UNK")  # UNK is 0
+                .explode("to_tokenize", empty_as_null=False)
+                .group_by("to_tokenize")
+                .len()
+                .rename({"len": "count"})
+            )
+            if (mn_ct := self.cfg.get("min_training_ct", -1) or 0) > 0:
+                lookup = lookup.filter(
+                    (pl.col("count") >= mn_ct)
+                    | pl.col("to_tokenize").str.contains(
+                        r"^(?:BOS$|EOS$|CLCK//|TIME//)"
+                    )  # don't drop these even if scant
+                )
+            lookup = (
+                lookup.filter(pl.col("to_tokenize") != "UNK")  # UNK is 0
+                .sort("to_tokenize")  # tokens are assigned alphabetically
                 .with_row_index("token", offset=1)
-                .select("to_tokenize", "token")
+                .select("to_tokenize", "token", "count")
             )
             unk_row = pl.LazyFrame(
-                {"to_tokenize": ["UNK"], "token": pl.Series([0], dtype=pl.UInt32)}
+                {
+                    "to_tokenize": ["UNK"],
+                    "token": pl.Series([0], dtype=pl.UInt32),
+                    "count": pl.Series([None], dtype=pl.UInt32),
+                }
             )
             self.lookup = pl.concat([unk_row, lookup]).collect()
         return self.lookup
@@ -247,7 +263,7 @@ class Tokenizer(Configurable):
             )
             .with_columns(pl.col("priority").fill_null(len(self.cfg.ordering)))
             .sort("time", "priority", "to_tokenize")  # thanks, @lukesolo-ml!
-            .explode("to_tokenize")
+            .explode("to_tokenize", empty_as_null=False)
             .join(
                 self.get_lookup(pt).lazy(), on="to_tokenize", validate="m:1", how="left"
             )
@@ -323,7 +339,12 @@ class Tokenizer(Configurable):
         """yaml representation of tokenizer; sufficient for reconstruction"""
         return OmegaConf.to_yaml(
             {
-                "lookup": dict(self.lookup.rows()) if self.lookup is not None else None,
+                "lookup": dict(self.lookup.select("to_tokenize", "token").rows())
+                if self.lookup is not None
+                else None,
+                "counts": dict(self.lookup.select("to_tokenize", "count").rows())
+                if self.lookup is not None
+                else None,
                 "bins": {k: v for k, *v in self.bins.rows()}
                 if self.bins is not None
                 else None,
@@ -355,9 +376,14 @@ class Tokenizer(Configurable):
                 orient="row",
             )
         if data.lookup is not None:
+            counts = dict(data.get("counts") or {})
             tkzr.lookup = pl.DataFrame(
-                list(dict(data.lookup).items()),
-                schema={"to_tokenize": pl.String, "token": pl.UInt32},
+                [(w, t, counts.get(w)) for w, t in dict(data.lookup).items()],
+                schema={
+                    "to_tokenize": pl.String,
+                    "token": pl.UInt32,
+                    "count": pl.UInt32,
+                },
                 orient="row",
             )
         if done_training:

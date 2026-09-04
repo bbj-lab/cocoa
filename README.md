@@ -331,6 +331,11 @@ that specifies:
   token (`true`) or keep them as separate tokens (`false`).
 - `include_numeric_values` — whether to include raw numeric values alongside
   tokens in the output (`false` by default).
+- `min_training_ct` — minimum number of times a word must occur in the training
+  split to earn a place in the vocabulary. `0` (the default) disables the
+  threshold and keeps every word seen while training. Raise it to prune the long
+  tail of one-off codes. Structural tokens (`BOS`, `EOS`, and any `CLCK//` or
+  `TIME//` tokens) are exempt and always learned.
 - `insert_spacers` — whether to insert time spacing tokens between events.
 - `insert_clocks` — whether to insert clock tokens at specified times.
 - `ordering` — the priority order of code prefixes when sorting events within the

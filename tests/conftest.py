@@ -71,6 +71,11 @@ class Processed:
         return dict(self.tokenizer_yaml.lookup)
 
     @functools.cached_property
+    def counts(self) -> dict:
+        """vocabulary word -> training-set occurrences, as recorded in tokenizer.yaml"""
+        return dict(self.tokenizer_yaml.counts)
+
+    @functools.cached_property
     def decoder(self) -> dict:
         """integer token -> vocabulary word"""
         return {v: k for k, v in self.vocab.items()}

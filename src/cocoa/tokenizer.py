@@ -227,7 +227,7 @@ class Tokenizer(Configurable):
                 lookup = lookup.filter(
                     (pl.col("count") >= mn_ct)
                     | pl.col("to_tokenize").str.contains(
-                        r"^(?:BOS|EOS|CLCK//|TIME//)"
+                        r"^(?:BOS$|EOS$|CLCK//|TIME//)"
                     )  # don't drop these even if scant
                 )
             lookup = (

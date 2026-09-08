@@ -73,6 +73,7 @@ the reference + entries that define which events to extract.
 subject_id: hospitalization_id # the atomic unit of interest
 group_id: patient_id # multiple subjects can belong to a group
 default_timezone: UTC # or, e.g. America/Chicago; times are stored in this zone
+drop_duplicate_events: false # collapse rows an entry repeats verbatim
 
 subject_splits:
     train_frac: 0.7
@@ -100,6 +101,13 @@ tokens are different — `CLCK//HH` marks an hour of the _local_ day in
 `default_timezone` (see [Tokenization](#2-tokenization)). And because processed
 timestamps keep their timezone, `cocoa combine-datasets` cannot merge processed
 directories that were collated with different `default_timezone` values.
+
+`drop_duplicate_events` collapses duplicate events as each entry is collated. Raw
+tables can carry the same event more than once — a result posted by two systems,
+a vital charted twice, a row multiplied by a join — and each copy would otherwise
+become another token at the same timestamp. Rows are compared on the whole
+collated event, so two copies are dropped to one only when their `subject_id`,
+`time`, `code`, `numeric_value`, and `text_value` all agree.
 
 ### Reference table
 
@@ -333,9 +341,9 @@ that specifies:
   tokens in the output (`false` by default).
 - `include_hours_to_end_time` — whether to include, alongside tokens, the
   fractional hours from each token to its subject's `end_time` as recorded in
-  `subject_splits.parquet` (`false` by default). Values count down toward the
-  end time and go negative for tokens beyond it, which the `EOS` and time
-  spacing tokens of a timeline running past `end_time` can be.
+  `subject_splits.parquet` (`false` by default). Values count down toward the end
+  time and go negative for tokens beyond it, which the `EOS` and time spacing
+  tokens of a timeline running past `end_time` can be.
 - `min_training_ct` — minimum number of times a word must occur in the training
   split to earn a place in the vocabulary. `0` (the default) disables the
   threshold and keeps every word seen while training. Raise it to prune the long
@@ -361,8 +369,8 @@ that specifies:
     - `times` — a parallel list of timestamps, one per token, indicating when
       each event occurred.
 
-    A `numeric_values` column, holding the corresponding values for numeric
-    value tokens, is added only when `include_numeric_values` is set, and an
+    A `numeric_values` column, holding the corresponding values for numeric value
+    tokens, is added only when `include_numeric_values` is set, and an
     `hours_to_end_time` column only when `include_hours_to_end_time` is.
 
     The table will look something like this:

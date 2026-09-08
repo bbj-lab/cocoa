@@ -213,7 +213,7 @@ class Collator(Configurable):
                 )
             )
 
-        return df.select(
+        df = df.select(
             pl.col(self.cfg["subject_id"]).cast(pl.String).alias("subject_id"),
             # `time` was normalized to the default timezone when loaded above
             pl.col(time).alias("time"),
@@ -243,6 +243,11 @@ class Collator(Configurable):
             .cast(pl.String)
             .alias("text_value"),
         ).drop_nulls(subset=["subject_id", "time", "code"])
+
+        if self.cfg.get("drop_duplicate_events", False):
+            df = df.unique()
+
+        return df
 
     def get_all(self) -> pl.LazyFrame:
         """get all tokens for all events as configured"""

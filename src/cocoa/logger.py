@@ -146,7 +146,7 @@ class Logger(logging.Logger):
                     df.filter(pl.col("subject_id") == sbj_id)
                     .explode("tokens", "times")
                     .join(
-                        lookup.lazy(),
+                        lookup.lazy().select("to_tokenize", "token"),
                         left_on="tokens",
                         right_on="token",
                         how="left",

@@ -2,6 +2,7 @@
 
 """configurable tokenization options: fusion, bins, numerics, spacers, clocks"""
 
+import collections
 import datetime
 import math
 import re
@@ -298,6 +299,79 @@ def test_numeric_values_align_with_the_collated_events(runner):
         key = (row["subject_id"], row["time"], round(float(row["numeric_value"]), 4))
         expected[key] = expected.get(key, 0) + 1
     assert seen == expected
+
+
+# --- min_training_ct -------------------------------------------------------
+
+STRUCTURAL = ("BOS", "EOS", "CLCK//", "TIME//")
+
+
+def training_counts(p) -> dict:
+    """word -> occurrences over the training split, counted in plain python"""
+    train = set(p.subjects_in_split("train"))
+    seen = collections.Counter(
+        int(t)
+        for sbj, tokens in zip(p.tokens_times["subject_id"], p.tokens_times["tokens"])
+        if sbj in train
+        for t in tokens
+    )
+    return {w: seen[t] for w, t in p.vocab.items()}
+
+
+def test_min_training_ct_zero_keeps_every_word_seen_in_training(runner):
+    """the threshold is off at 0, so every training word earns a token"""
+    tkzr, p = tokenized(runner, min_training_ct=0)
+    counts = training_counts(p)
+    assert min(c for w, c in counts.items() if w != "UNK") == 1
+    assert tkzr.lookup.filter(pl.col("count") == 1).height > 0
+
+
+@pytest.mark.parametrize("min_ct", [2, 25])
+def test_min_training_ct_drops_words_below_the_threshold(runner, min_ct):
+    """learned words clear the threshold; structural tokens are exempt"""
+    tkzr, p = tokenized(runner, min_training_ct=min_ct)
+    scant = tkzr.lookup.filter(pl.col("count") < min_ct).drop_nulls("count")
+    assert all(w.startswith(STRUCTURAL) for w in scant["to_tokenize"])
+    # nothing the tokenizer emits contradicts the counts it recorded
+    for word, count in training_counts(p).items():
+        if word == "UNK":
+            continue
+        assert count >= min_ct or word.startswith(STRUCTURAL), word
+
+
+def test_min_training_ct_maps_the_words_it_drops_to_unk(runner):
+    """a word pruned from the vocabulary tokenizes to UNK, not to nothing"""
+    kept, _ = tokenized(runner, min_training_ct=0)
+    pruned, p = tokenized(runner, min_training_ct=25)
+    dropped = set(kept.lookup["to_tokenize"]) - set(pruned.lookup["to_tokenize"])
+    assert dropped and not any(w.startswith(STRUCTURAL) for w in dropped)
+    assert set(p.vocab) & dropped == set()
+    # the events themselves survive: timelines keep their length, as UNK
+    assert p.tokens_times.select(pl.col("tokens").list.len().sum()).item() == (
+        Processed(kept.processed_data_home, runner.raw)
+        .tokens_times.select(pl.col("tokens").list.len().sum())
+        .item()
+    )
+    unks = [sum(1 for t in tokens if t == 0) for tokens in p.tokens_times["tokens"]]
+    assert sum(unks) > 0
+
+
+def test_min_training_ct_keeps_scant_structural_tokens(runner):
+    """BOS/EOS and inserted clock/spacer tokens survive a threshold above them"""
+    p = runner.minimal(
+        hospitalizations=stay(24),
+        vitals=vitals([JAN1 + h * HOUR for h in (1, 5, 9)], category="hr"),
+        tokenization=tok_cfg(
+            min_training_ct=1000, insert_clocks=True, insert_spacers=True
+        ),
+    )
+    words = read(p)[0]
+    assert words[0] == "BOS" and words[-1] == "EOS"
+    assert any(w.startswith("CLCK//") for w in words)
+    assert any(w.startswith("TIME//") for w in words)
+    # the lone vital is far below the threshold and so is unked
+    assert "VTL//hr" not in p.vocab
+    assert 0 in p.tokens_times["tokens"].item().to_list()
 
 
 # --- time spacers ----------------------------------------------------------

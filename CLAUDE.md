@@ -93,6 +93,15 @@ behavior, add/update a pytest case first.
   a learned tokenizer across datasets with
   `cocoa tokenize --tokenizer-home <path>/tokenizer.yaml` (see
   [recipes/tokenizer-transfer.md](recipes/tokenizer-transfer.md)).
+- **`min_training_ct` prunes the vocabulary's long tail.** Words seen fewer than
+  that many times in the training split get no token and fall through to `UNK`;
+  `BOS`/`EOS`/`CLCK//`/`TIME//` are exempt so structure survives on small data.
+  `lookup` carries a `count` column (null for `UNK`), serialized as a separate
+  `counts` block in `tokenizer.yaml` — `from_yaml` tolerates its absence in
+  tokenizers written before it existed. The shipped default is `0` (off), because
+  the threshold is an absolute count: any value large enough to be useful on a
+  hospital-scale corpus unks nearly everything in the few-subject datasets the
+  tests build, so tests exercising it pin the value themselves.
 - **Codes** are `PREFIX//value` (lowercased, whitespace→`_`). The `ordering` list
   in the tokenization config breaks ties between events at the same timestamp; a
   prefix missing from `ordering` sorts last. When adding a new event prefix, add

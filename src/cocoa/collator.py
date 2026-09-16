@@ -213,7 +213,7 @@ class Collator(Configurable):
                 )
             )
 
-        return df.select(
+        df = df.select(
             pl.col(self.cfg["subject_id"]).cast(pl.String).alias("subject_id"),
             # `time` was normalized to the default timezone when loaded above
             pl.col(time).alias("time"),
@@ -243,6 +243,11 @@ class Collator(Configurable):
             .cast(pl.String)
             .alias("text_value"),
         ).drop_nulls(subset=["subject_id", "time", "code"])
+
+        if self.cfg.get("drop_duplicate_events", False):
+            df = df.unique()
+
+        return df
 
     def get_all(self) -> pl.LazyFrame:
         """get all tokens for all events as configured"""
@@ -279,17 +284,18 @@ class Collator(Configurable):
             .then(pl.lit(self.splits[1]))
             .otherwise(pl.lit(self.splits[2]))
         )
+        ref = self.get_reference_frame().collect()
         return (
-            partition
+            partition.join(ref, on=self.cfg["subject_id"], validate="1:1")
             if "group_id" not in self.cfg
-            else self.get_reference_frame()
-            .collect()
-            .join(partition, on=self.cfg["group_id"])
+            else ref.join(partition, on=self.cfg["group_id"])
         ).select(
             # cast to match get_entry, so meds.parquet and subject_splits.parquet
             # share a key dtype and the downstream joins hold
             pl.col(self.cfg["subject_id"]).cast(pl.String).alias("subject_id"),
             "split",
+            pl.col(self.cfg["reference"]["start_time"]).alias("start_time"),
+            pl.col(self.cfg["reference"]["end_time"]).alias("end_time"),
         )
 
     def save_all(self, verbose: bool = False):

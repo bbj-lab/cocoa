@@ -479,7 +479,14 @@ def test_no_group_id_splits_one_patients_stays_apart(runner):
 
 def test_pass_through_columns_carry_raw_values(pipeline):
     df = pipeline.splits
-    assert df.columns == ["subject_id", "split", *FROM_HOSPITALIZATION, *FROM_PATIENT]
+    assert df.columns == [
+        "subject_id",
+        "split",
+        "start_time",
+        "end_time",
+        *FROM_HOSPITALIZATION,
+        *FROM_PATIENT,
+    ]
     assert df.schema["age_at_admission"] == pl.Float64
     raw = _raw_pass_through(pipeline.manifest)
     assert len(raw) == df.height == 48
@@ -501,7 +508,7 @@ def test_no_pass_through_columns_yields_only_subject_and_split(runner):
     cfg = default_cfg("collation")
     del cfg["pass_through_columns"]
     df = _splits_of(runner.collate(cfg=cfg))
-    assert df.columns == ["subject_id", "split"]
+    assert df.columns == ["subject_id", "split", "start_time", "end_time"]
     assert df.height == 48
 
 
@@ -544,7 +551,13 @@ def test_pass_through_may_repeat_the_subject_id_column(runner):
     cfg = synth.minimal_collation_cfg(pass_through_columns=["hospitalization_id"])
     spec = (("HA", "PA", 0, 1), ("HB", "PB", 10, 11))
     df = _splits_of(runner.collate(cfg=cfg, raw=_spec_raw(runner, spec)))
-    assert df.columns == ["subject_id", "split", "hospitalization_id"]
+    assert df.columns == [
+        "subject_id",
+        "split",
+        "start_time",
+        "end_time",
+        "hospitalization_id",
+    ]
     assert df["subject_id"].to_list() == df["hospitalization_id"].to_list()
 
 
@@ -591,9 +604,11 @@ def test_duplicate_reference_row_duplicates_a_grouped_subject(runner):
         runner.tokenize(processed=dest)
 
 
-def test_duplicate_reference_row_is_deduplicated_without_group_id(runner):
-    """current behavior: the group_by on subject_id silently collapses the pair"""
+def test_duplicate_reference_row_fails_the_split_join_without_group_id(runner):
+    """
+    the group_by on subject_id collapses the pair, but joining the start/end
+    times back on gets the repeat again, so the 1:1 validation catches it
+    """
     cfg = synth.minimal_collation_cfg()
-    df = _splits_of(runner.collate(cfg=cfg, raw=_stays_raw(runner, duplicate="H0")))
-    assert df.height == 4
-    assert set(df["subject_id"]) == {"H0", "H1", "H2", "H3"}
+    with pytest.raises(pl.exceptions.ComputeError, match="1:1"):
+        runner.collate(cfg=cfg, raw=_stays_raw(runner, duplicate="H0"))

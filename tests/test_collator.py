@@ -607,6 +607,59 @@ def test_row_with_a_null_code_is_dropped(pipeline):
         assert not {"ASMT", "ASMT//"} & set(asmt["code"])
 
 
+# --- drop_duplicate_events ---------------------------------------------------
+
+
+REPEATED = {"clif_vitals": [vital(1), vital(1), vital(2)]}
+
+
+def test_duplicate_events_collapse_to_one(runner):
+    meds = hand_collate(
+        runner,
+        REPEATED,
+        shipped_entries("clif_vitals", "VTL"),
+        drop_duplicate_events=True,
+    )
+    assert events(meds) == [
+        (utc(ADM + HOUR), "VTL//heart_rate", 90.0, None),
+        (utc(ADM + 2 * HOUR), "VTL//heart_rate", 90.0, None),
+    ]
+
+
+@pytest.mark.parametrize("cfg", [{}, {"drop_duplicate_events": False}])
+def test_duplicate_events_survive_unless_dropping_is_asked_for(runner, cfg):
+    """the shipped default is off, so an unset key keeps duplicates too"""
+    meds = hand_collate(runner, REPEATED, shipped_entries("clif_vitals", "VTL"), **cfg)
+    assert events(meds) == [
+        (utc(ADM + HOUR), "VTL//heart_rate", 90.0, None),
+        (utc(ADM + HOUR), "VTL//heart_rate", 90.0, None),
+        (utc(ADM + 2 * HOUR), "VTL//heart_rate", 90.0, None),
+    ]
+
+
+def test_contemporaneous_events_differing_in_value_are_not_duplicates(runner):
+    """same subject, time, and code, but distinct measurements"""
+    meds = hand_collate(
+        runner,
+        {"clif_vitals": [vital(1), vital(1, value=110.0)]},
+        shipped_entries("clif_vitals", "VTL"),
+        drop_duplicate_events=True,
+    )
+    assert meds.height == 2
+    assert sorted(meds["numeric_value"]) == [90.0, 110.0]
+
+
+def test_duplicates_are_dropped_per_subject_not_across_subjects(runner):
+    meds = hand_collate(
+        runner,
+        with_second_stay({"clif_vitals": [vital(1), vital(1), vital(1, hid="H1")]}),
+        shipped_entries("clif_vitals", "VTL"),
+        drop_duplicate_events=True,
+    )
+    assert meds.height == 2
+    assert set(meds["subject_id"]) == {"H0", "H1"}
+
+
 # --- numeric_value / text_value ---------------------------------------------
 
 

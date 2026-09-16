@@ -91,7 +91,7 @@ class Tokenizer(Configurable):
                             pl.element().dt.strftime("%H").is_in(list(self.cfg.clocks))
                         )
                     )
-                    .explode("time", keep_nulls=False)
+                    .explode("time", keep_nulls=False, empty_as_null=False)
                     .drop_nulls(subset=["time"])
                     .with_columns(HH=pl.col("time").dt.strftime("%H"))
                     .select(

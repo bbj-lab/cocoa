@@ -3,6 +3,7 @@
 """timezone handling: localization, instant preservation, local-hour clocks"""
 
 import datetime
+import pathlib
 import zoneinfo
 
 import polars as pl
@@ -47,6 +48,18 @@ def instants(processed, zone: str = "UTC") -> list:
         .sort("time")["time"]
         .to_list()
     )
+
+
+def recast_time_unit(root: pathlib.Path, unit: str) -> pathlib.Path:
+    """rewrite every datetime column of a raw dataset at `unit` precision"""
+    for f in sorted(root.glob("*.parquet")):
+        df = pl.read_parquet(f)
+        df.with_columns(
+            pl.col(c).dt.cast_time_unit(unit)
+            for c, t in df.schema.items()
+            if isinstance(t, pl.Datetime)
+        ).write_parquet(f)
+    return root
 
 
 def with_prefix(words, prefix: str) -> list:
@@ -142,6 +155,47 @@ def test_tz_aware_input_is_instant_preserving(runner):
     assert meds_utc.schema["time"] == pl.Datetime("us", "UTC")
     assert meds_chi.schema["time"] == pl.Datetime("us", CHICAGO)
     assert canonical(meds_utc).equals(canonical(meds_chi))
+
+
+@pytest.mark.parametrize("unit", ["ms", "ns"])
+def test_source_time_unit_is_repinned_to_the_configured_one(runner, unit):
+    """
+    convert_time_zone keeps the source unit, so the collator repins it:
+    raw tables at any precision land on the configured default_time_unit
+    """
+    aware = synth.write_raw_dataset(runner.dir(f"raw_{unit}"), tz=CHICAGO, n_patients=8)
+    cfg = default_cfg("collation")
+    cfg["default_timezone"] = CHICAGO
+    dest_us, dest_unit = runner.dir(), runner.dir()
+    runner.collate(cfg=cfg, raw=aware.root, dest=dest_us)  # synth writes "us"
+    recast_time_unit(aware.root, unit)  # the same instants, coarser or finer
+    runner.collate(cfg=cfg, raw=aware.root, dest=dest_unit)
+    meds_us = pl.read_parquet(dest_us / "meds.parquet")
+    meds_unit = pl.read_parquet(dest_unit / "meds.parquet")
+    assert meds_us.height > 100
+    assert meds_us.schema["time"] == pl.Datetime("us", CHICAGO)
+    assert meds_unit.schema["time"] == pl.Datetime("us", CHICAGO)
+    assert canonical(meds_us).equals(canonical(meds_unit))
+
+
+@pytest.mark.parametrize("unit", ["ms", "us", "ns"])
+def test_configured_time_unit_travels_through_the_pipeline(runner, unit):
+    """default_time_unit sets the precision of every stored timestamp"""
+    cfg = default_cfg("collation")
+    cfg["default_time_unit"] = unit
+    processed = runner.full(collation=cfg)
+    stored = pl.Datetime(unit, "UTC")
+    assert processed.meds.schema["time"] == stored
+    assert processed.tokens_times.schema["times"].inner == stored
+    assert processed.inference().schema["times"].inner == stored
+
+
+def test_an_unsupported_time_unit_is_rejected(runner):
+    """polars only has three units; a typo should not reach an expression"""
+    cfg = default_cfg("collation")
+    cfg["default_time_unit"] = "s"
+    with pytest.raises(AssertionError, match="default_time_unit"):
+        runner.collate(cfg=cfg)
 
 
 def test_ambiguous_naive_local_time_takes_the_later_instant(runner):
@@ -400,11 +454,11 @@ def test_clock_tokens_follow_local_hours_across_a_dst_shift(runner):
     assert second - first == datetime.timedelta(hours=23)
 
 
-def test_tz_aware_csv_input_silently_drops_the_offset(runner):
+def test_tz_aware_csv_input_keeps_its_offset(runner):
     """
-    BUG (asserting current behaviour): scan_csv reads offset-bearing datetimes
-    as strings, so `to_default_tz` misses the tz-aware branch and localizes the
-    already-local reading -- new-york times land 5h early with no warning
+    scan_csv reads offset-bearing datetimes as strings, so the collator parses
+    rather than casts them: the offset is honored and csv-sourced events land on
+    the same instants as the parquet-sourced ones
     """
     raw = synth.write_raw_dataset(
         runner.dir("raw_csv"),
@@ -417,17 +471,30 @@ def test_tz_aware_csv_input_silently_drops_the_offset(runner):
     meds = pl.read_parquet(dest / "meds.parquet")
     vtl = meds.filter(pl.col("code").str.starts_with("VTL//"))
     assert vtl.height > 10
-    observed = first_times(vtl)
-    # the first vital of each stay is recorded at admission
     true_instants = {hid: a.replace(tzinfo=UTC) for hid, a in raw.admission.items()}
-    dropped_offset = {
-        hid: t.astimezone(zoneinfo.ZoneInfo("America/New_York")).replace(tzinfo=UTC)
-        for hid, t in true_instants.items()
-    }
-    assert observed == dropped_offset
-    assert observed != true_instants
-    # the parquet-sourced reference times keep their offset, so a stay's own
-    # vitals now start five hours before its admission event
+    # the first vital of each stay is recorded at admission
+    assert first_times(vtl) == true_instants
+    # as is the parquet-sourced reference event, which never lost its offset
     race = meds.filter(pl.col("code").str.starts_with("RACE//"))
     assert race.height == len(true_instants)
     assert first_times(race) == true_instants
+
+
+@pytest.mark.parametrize("zone", ["UTC", CHICAGO])
+def test_naive_csv_input_is_localized_like_its_parquet_counterpart(runner, zone):
+    """a csv datetime without an offset is a local time in `default_timezone`"""
+    raw = synth.write_raw_dataset(
+        runner.dir("raw_csv"), n_patients=4, csv_tables=("clif_vitals",)
+    )
+    cfg = default_cfg("collation")
+    cfg["default_timezone"] = zone
+    dest = runner.dir()
+    runner.collate(cfg=cfg, raw=raw.root, dest=dest)
+    meds = pl.read_parquet(dest / "meds.parquet")
+    vtl = meds.filter(pl.col("code").str.starts_with("VTL//"))
+    assert vtl.height > 10
+    # the first vital of each stay is recorded at admission, whose wall clock
+    # the parquet-sourced reference event reads in the very same zone
+    assert first_times(vtl) == {
+        hid: localized(admit, zone) for hid, admit in raw.admission.items()
+    }

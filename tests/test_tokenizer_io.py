@@ -61,7 +61,7 @@ def _by_time(path: pathlib.Path) -> pl.DataFrame:
     """
     return (
         pl.read_parquet(path)
-        .explode("tokens", "times")
+        .explode("tokens", "times", empty_as_null=False)
         .group_by("subject_id", "times")
         .agg(pl.col("tokens").sort())
         .sort("subject_id", "times")
@@ -369,7 +369,7 @@ def test_transferred_timelines_are_well_formed(runner, second, src_yaml, src_voc
         line = out.timeline(sid)
         assert line[0] == "BOS" and line[-1] == "EOS"
         assert len(line) > 2
-    every = out.tokens_times["tokens"].explode()
+    every = out.tokens_times["tokens"].explode(empty_as_null=False)
     assert every.max() < len(src_vocab)
 
 
@@ -392,7 +392,9 @@ def test_transfer_unks_codes_absent_from_the_source_vocabulary(
         pl.col("code").is_in(unseen_codes)
     )
     assert events.height > 0
-    flat = pl.read_parquet(dest / "tokens_times.parquet").explode("tokens", "times")
+    flat = pl.read_parquet(dest / "tokens_times.parquet").explode(
+        "tokens", "times", empty_as_null=False
+    )
     for row in events.iter_rows(named=True):
         at = flat.filter(
             (pl.col("subject_id") == row["subject_id"])

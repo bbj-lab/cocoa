@@ -32,6 +32,10 @@ class Collator(Configurable):
         self.reference_frame = None
         self.splits: tuple = ("train", "tuning", "held_out")
         self.tz = self.cfg.get("default_timezone", None) or "UTC"
+        self.time_unit = self.cfg.get("default_time_unit", None) or "us"  # pl default
+        assert self.time_unit in (units := ("ms", "us", "ns")), (
+            f"default_time_unit={self.time_unit!r} must be one of {units}"
+        )
 
         self.logger.info("Collator initialized...")
         self.logger.info(f"{self.raw_data_home=}")
@@ -58,20 +62,44 @@ class Collator(Configurable):
             and dtype.time_zone is not None
         )
 
+    def parse_datetime(self, df: pl.LazyFrame, column: str) -> pl.LazyFrame:
+        """
+        parse a String `column` into a Datetime in `default_timezone`;
+        a csv carries no schema, so its datetimes arrive as strings, and an
+        offset-bearing one denotes an instant that has to be converted rather
+        than localized -- str.to_datetime does both, but needs the target zone
+        up front since a lazy plan cannot tell which kind it will read;
+        any other dtype passes through untouched
+        """
+        if df.collect_schema().get(column) == pl.String:
+            df = df.with_columns(
+                pl.col(column)
+                .str.to_datetime(
+                    time_unit=self.time_unit, time_zone=self.tz, ambiguous="latest"
+                )
+                .alias(column)
+            )
+        return df
+
     def to_default_tz(self, df: pl.LazyFrame, column: str) -> pl.Expr:
         """
         expression converting `column` to the configured default_timezone;
         tz-aware columns are converted instant-preserving,
         tz-naive columns are localized to `default_timezone` (UTC if unset);
         an ambiguous local time takes the later instant and
-        a local time skipped by a daylight-saving shift raises
+        a local time skipped by a daylight-saving shift raises;
+        either way the result carries `default_time_unit` precision ("us" if unset)
         """
         return (
-            pl.col(column).dt.convert_time_zone(self.tz)
+            # convert_time_zone keeps whatever unit the source carried, so pin
+            # it here; the naive branch pins it in the cast below
+            pl.col(column)
+            .dt.convert_time_zone(self.tz)
+            .dt.cast_time_unit(self.time_unit)
             if self.is_tz_aware(df.collect_schema(), column)
             else (
                 pl.col(column)
-                .cast(pl.Datetime)
+                .cast(pl.Datetime(time_unit=self.time_unit))
                 .dt.replace_time_zone(time_zone=self.tz, ambiguous="latest")
             )
         )
@@ -145,6 +173,7 @@ class Collator(Configurable):
                 maintain_order="left",
             )
         for col in (cfg["start_time"], cfg["end_time"]):
+            df = self.parse_datetime(df, col)
             df = df.with_columns(self.to_default_tz(df, col).alias(col))
         self.reference_frame = df  # cache result
         return self.reference_frame
@@ -182,6 +211,8 @@ class Collator(Configurable):
         )
         schema = df.collect_schema()
         if time in schema.names():
+            df = self.parse_datetime(df, time)
+            schema = df.collect_schema()
             if fix_date_to_time:
                 # a date cast to a time lands at 00:00 in whatever zone it was
                 # cast in: the zone a tz-aware column carries, or the wall clock
@@ -191,7 +222,7 @@ class Collator(Configurable):
                 t = (
                     pl.col(time)
                     if self.is_tz_aware(schema, time)
-                    else pl.col(time).cast(pl.Datetime)
+                    else pl.col(time).cast(pl.Datetime(time_unit=self.time_unit))
                 )
                 # 00:00 would place the event at the start of its day and leak
                 # it early; the end of the day is the conservative reading
@@ -204,12 +235,15 @@ class Collator(Configurable):
             df = df.with_columns(self.to_default_tz(df, time).alias(time))
         # otherwise `time` arrives normalized via the reference_key join below
         if reference_key is not None:
+            # a bare Datetime drops the timezone, putting all three columns on
+            # the same wall clock (and the same unit) for the comparison
+            naive = pl.Datetime(time_unit=self.time_unit)
             df = df.join(self.reference_frame, on=reference_key, how="inner").filter(
                 pl.col(time)
-                .cast(pl.Datetime)
+                .cast(naive)
                 .is_between(
-                    pl.col(self.cfg["reference"]["start_time"]).cast(pl.Datetime),
-                    pl.col(self.cfg["reference"]["end_time"]).cast(pl.Datetime),
+                    pl.col(self.cfg["reference"]["start_time"]).cast(naive),
+                    pl.col(self.cfg["reference"]["end_time"]).cast(naive),
                 )
             )
 

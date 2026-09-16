@@ -72,7 +72,7 @@ def combine_processed_data(
                 .sink_parquet(processed_data_home / f)
             )
         except (
-            pl.SchemaError
+            pl.exceptions.SchemaError
         ):  # versions <=26.4.0 of tokenizer created Int64 tokens when loaded from json
             schema = dict(pl.scan_parquet(input_dirs[0] / f).collect_schema())
             tk_cols = [k for k in schema if "tokens" in k]

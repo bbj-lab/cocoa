@@ -153,6 +153,36 @@ def test_lookup_has_no_duplicate_words_or_tokens(runner):
     assert tkzr.lookup.filter(pl.col("to_tokenize") == "UNK")["token"].item() == 0
 
 
+def test_lookup_counts_training_occurrences_of_each_word(pipeline):
+    """every vocabulary word carries how often it was seen while training"""
+    train = pipeline.subjects_in_split("train")
+    seen = collections.Counter(
+        int(t)
+        for tokens in pipeline.tokens_times.filter(pl.col("subject_id").is_in(train))[
+            "tokens"
+        ]
+        for t in tokens
+    )
+    counts = pipeline.counts
+    assert set(counts) == set(pipeline.vocab)
+    assert counts["UNK"] is None  # UNK is never learned, so it has no count
+    assert sum(seen.values()) > 1000
+    assert all(counts[w] == seen[t] for w, t in pipeline.vocab.items() if w != "UNK")
+
+
+def test_counts_are_learned_on_the_training_split_only(runner):
+    """held-out occurrences neither create vocabulary nor inflate counts"""
+    tkzr = runner.tokenize(processed=runner.seed_collated())
+    counted = tkzr.lookup.filter(pl.col("to_tokenize") != "UNK")
+    assert counted.height == tkzr.lookup.height - 1
+    assert counted["count"].min() >= 1
+    assert counted["count"].null_count() == 0
+    assert (
+        counted["count"].sum()
+        < tkzr.get_all().select(pl.col("tokens").list.len().sum()).collect().item()
+    )  # the whole corpus is larger than the training split
+
+
 def test_vocabulary_words_are_alphabetical_after_unk(pipeline):
     words = [w for w, _ in sorted(pipeline.vocab.items(), key=lambda kv: kv[1])]
     assert words[0] == "UNK"

@@ -43,6 +43,12 @@ In this example, we'll train a tokenizer on mimic and apply it to ucmc.
       --verbose
     ```
 
+    The vocabulary arrives frozen, so ucmc's own word frequencies never enter
+    into it: `min_training_ct` was applied once, to mimic's training split, and
+    is not reconsidered here. A code that is common in ucmc but was too rare in
+    mimic to be learned tokenizes to `UNK`, the same as a code mimic never saw at
+    all. The `counts` in `tokenizer.yaml` likewise stay as mimic recorded them.
+
 4. Proceed as usual:
 
     ```sh

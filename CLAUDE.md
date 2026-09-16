@@ -89,10 +89,34 @@ behavior, add/update a pytest case first.
   `Collator.slightly_safer_eval`. This is intentionally powerful and **not a
   security boundary** — a config is as trusted as Python. Never run an untrusted
   config.
+- **`drop_duplicate_events` dedupes within an entry, not across entries.** The
+  `df.unique()` sits at the end of `Collator.get_entry`, so it collapses copies
+  one entry emits of the same event — a result posted by two systems, a row
+  multiplied by a join — comparing the whole collated event (`subject_id`,
+  `time`, `code`, `numeric_value`, `text_value`). Two _entries_ that emit the
+  same event still contribute a row each to `get_all`'s concat. Off by default.
 - **Vocabulary/bins are frozen after training.** `UNK` is always token `0`. Reuse
   a learned tokenizer across datasets with
   `cocoa tokenize --tokenizer-home <path>/tokenizer.yaml` (see
   [recipes/tokenizer-transfer.md](recipes/tokenizer-transfer.md)).
+- **`min_training_ct` prunes the vocabulary's long tail.** Words seen fewer than
+  that many times in the training split get no token and fall through to `UNK`;
+  `BOS`/`EOS`/`CLCK//`/`TIME//` are exempt so structure survives on small data.
+  `lookup` carries a `count` column (null for `UNK`), serialized as a separate
+  `counts` block in `tokenizer.yaml` — `from_yaml` tolerates its absence in
+  tokenizers written before it existed. The shipped default is `0` (off), because
+  the threshold is an absolute count: any value large enough to be useful on a
+  hospital-scale corpus unks nearly everything in the few-subject datasets the
+  tests build, so tests exercising it pin the value themselves.
+- **`include_hours_to_end_time` writes a per-token column** of fractional hours
+  from each token to its subject's `end_time`, joined from
+  `subject_splits.parquet` (so it is the collation config's
+  `reference.end_time`). It counts down toward that time and goes negative
+  beyond it, which `EOS` and trailing spacers can be; being a duration, it is
+  tz- and unit-invariant. `Winnower.add_outcome_flags` splits it into
+  `_past`/`_future` through its `optional` list — a new per-token column the
+  tokenizer writes conditionally has to be named there too, or it rides along
+  unsplit the way `numeric_values` does.
 - **Codes** are `PREFIX//value` (lowercased, whitespace→`_`). The `ordering` list
   in the tokenization config breaks ties between events at the same timestamp; a
   prefix missing from `ordering` sorts last. When adding a new event prefix, add

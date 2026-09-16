@@ -74,6 +74,7 @@ subject_id: hospitalization_id # the atomic unit of interest
 group_id: patient_id # multiple subjects can belong to a group
 default_timezone: UTC # or, e.g. America/Chicago; times are stored in this zone
 default_time_unit: us # precision of stored times: 'ms', 'us', or 'ns'
+drop_duplicate_events: false # collapse rows an entry repeats verbatim
 
 subject_splits:
     train_frac: 0.7
@@ -104,15 +105,21 @@ tokens are different — `CLCK//HH` marks an hour of the _local_ day in
 timestamps keep their timezone, `cocoa combine-datasets` cannot merge processed
 directories that were collated with different `default_timezone` values.
 
-Timestamps are stored at `default_time_unit` precision, one of the three
-polars datetime units — `ms`, `us` (the default), or `ns`. Raw columns are
-repinned to it on load whatever precision they arrive at, so a single unit holds
-across tables; set it to match an upstream table or a downstream consumer. As
-with the timezone, the unit is part of the stored dtype and travels with the
-data, so `combine-datasets` likewise cannot merge directories collated at
-different units. Durations are derived from the stored instants, so the choice
-changes no token or label — but note that `ns` cannot represent times outside
-1677–2262.
+Timestamps are stored at `default_time_unit` precision, one of the three polars
+datetime units — `ms`, `us` (the default), or `ns`. Raw columns are repinned to
+it on load whatever precision they arrive at, so a single unit holds across
+tables; set it to match an upstream table or a downstream consumer. As with the
+timezone, the unit is part of the stored dtype and travels with the data, so
+`combine-datasets` likewise cannot merge directories collated at different units.
+Durations are derived from the stored instants, so the choice changes no token or
+label — but note that `ns` cannot represent times outside 1677–2262.
+
+`drop_duplicate_events` collapses duplicate events as each entry is collated. Raw
+tables can carry the same event more than once — a result posted by two systems,
+a vital charted twice, a row multiplied by a join — and each copy would otherwise
+become another token at the same timestamp. Rows are compared on the whole
+collated event, so two copies are dropped to one only when their `subject_id`,
+`time`, `code`, `numeric_value`, and `text_value` all agree.
 
 ### Reference table
 
@@ -344,6 +351,16 @@ that specifies:
   token (`true`) or keep them as separate tokens (`false`).
 - `include_numeric_values` — whether to include raw numeric values alongside
   tokens in the output (`false` by default).
+- `include_hours_to_end_time` — whether to include, alongside tokens, the
+  fractional hours from each token to its subject's `end_time` as recorded in
+  `subject_splits.parquet` (`false` by default). Values count down toward the end
+  time and go negative for tokens beyond it, which the `EOS` and time spacing
+  tokens of a timeline running past `end_time` can be.
+- `min_training_ct` — minimum number of times a word must occur in the training
+  split to earn a place in the vocabulary. `0` (the default) disables the
+  threshold and keeps every word seen while training. Raise it to prune the long
+  tail of one-off codes. Structural tokens (`BOS`, `EOS`, and any `CLCK//` or
+  `TIME//` tokens) are exempt and always learned.
 - `insert_spacers` — whether to insert time spacing tokens between events.
 - `insert_clocks` — whether to insert clock tokens at specified times.
 - `ordering` — the priority order of code prefixes when sorting events within the
@@ -364,8 +381,9 @@ that specifies:
     - `times` — a parallel list of timestamps, one per token, indicating when
       each event occurred.
 
-    A fourth column, `numeric_values`, holding the corresponding values for
-    numeric value tokens, is added only when `include_numeric_values` is set.
+    A `numeric_values` column, holding the corresponding values for numeric value
+    tokens, is added only when `include_numeric_values` is set, and an
+    `hours_to_end_time` column only when `include_hours_to_end_time` is.
 
     The table will look something like this:
 

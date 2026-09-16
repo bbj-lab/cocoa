@@ -203,7 +203,7 @@ def test_tokenize_writes_artifacts_and_prints_the_vocabulary_size(runner):
     assert squashed(f"Vocabulary size: {len(vocab)} tokens") in out
     tokens_times = pl.read_parquet(dest / "tokens_times.parquet")
     assert tokens_times.height == len(runner.raw.subject_ids)
-    assert tokens_times["tokens"].explode().max() < len(vocab)
+    assert tokens_times["tokens"].explode(empty_as_null=False).max() < len(vocab)
 
 
 def test_winnow_writes_one_file_per_configured_split_and_prints_paths(

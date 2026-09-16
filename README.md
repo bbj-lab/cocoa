@@ -73,6 +73,7 @@ the reference + entries that define which events to extract.
 subject_id: hospitalization_id # the atomic unit of interest
 group_id: patient_id # multiple subjects can belong to a group
 default_timezone: UTC # or, e.g. America/Chicago; times are stored in this zone
+default_time_unit: us # precision of stored times: 'ms', 'us', or 'ns'
 
 subject_splits:
     train_frac: 0.7
@@ -90,7 +91,9 @@ IANA name like `America/Chicago`, defaulting to `UTC` if unset). Columns that
 already carry a timezone are converted instant-preserving; columns without one
 are assumed to be local times in `default_timezone` and labeled as such. Where a
 daylight-saving shift makes such a local time ambiguous, the later instant is
-used; a local time that a shift skips over is an error.
+used; a local time that a shift skips over is an error. A csv carries no schema,
+so its datetimes arrive as strings and are parsed under the same two rules: one
+written with a UTC offset is converted, one without is localized.
 
 The timezone is part of the stored dtype, so it travels with the data through the
 rest of the pipeline. Durations are computed from instants and are therefore
@@ -100,6 +103,16 @@ tokens are different — `CLCK//HH` marks an hour of the _local_ day in
 `default_timezone` (see [Tokenization](#2-tokenization)). And because processed
 timestamps keep their timezone, `cocoa combine-datasets` cannot merge processed
 directories that were collated with different `default_timezone` values.
+
+Timestamps are stored at `default_time_unit` precision, one of the three
+polars datetime units — `ms`, `us` (the default), or `ns`. Raw columns are
+repinned to it on load whatever precision they arrive at, so a single unit holds
+across tables; set it to match an upstream table or a downstream consumer. As
+with the timezone, the unit is part of the stored dtype and travels with the
+data, so `combine-datasets` likewise cannot merge directories collated at
+different units. Durations are derived from the stored instants, so the choice
+changes no token or label — but note that `ns` cannot represent times outside
+1677–2262.
 
 ### Reference table
 

@@ -91,7 +91,7 @@ class Tokenizer(Configurable):
                             pl.element().dt.strftime("%H").is_in(list(self.cfg.clocks))
                         )
                     )
-                    .explode("time", keep_nulls=False)
+                    .explode("time", keep_nulls=False, empty_as_null=False)
                     .drop_nulls(subset=["time"])
                     .with_columns(HH=pl.col("time").dt.strftime("%H"))
                     .select(
@@ -218,7 +218,7 @@ class Tokenizer(Configurable):
                     on="subject_id",
                     validate="m:1",
                 )
-                .explode("to_tokenize")
+                .explode("to_tokenize", empty_as_null=False)
                 .select(pl.col("to_tokenize").unique().sort())
                 .filter(pl.col("to_tokenize") != "UNK")  # UNK is 0
                 .with_row_index("token", offset=1)
@@ -247,7 +247,7 @@ class Tokenizer(Configurable):
             )
             .with_columns(pl.col("priority").fill_null(len(self.cfg.ordering)))
             .sort("time", "priority", "to_tokenize")  # thanks, @lukesolo-ml!
-            .explode("to_tokenize")
+            .explode("to_tokenize", empty_as_null=False)
             .join(
                 self.get_lookup(pt).lazy(), on="to_tokenize", validate="m:1", how="left"
             )

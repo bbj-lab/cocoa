@@ -101,12 +101,22 @@ behavior, add/update a pytest case first.
   (`Collator.to_default_tz`; `UTC` if unset) and stay **tz-aware** for the rest
   of the pipeline: tz-aware columns are instant-preserved, tz-naive columns are
   assumed to be local times in that zone (ambiguous DST times take the later
-  instant; nonexistent ones raise `ComputeError`). Downstream duration math
-  (spacers, winnowing thresholds/horizons) works on instants and is therefore
-  tz-invariant, but `CLCK//HH` tokens carry the _local_ hour — the zone is part
-  of what that vocabulary means, and `tokenizer.yaml` does not record it, so a
-  transferred tokenizer only agrees with a new dataset if both were collated in
-  the same zone.
+  instant; nonexistent ones raise `ComputeError`). A csv has no schema, so its
+  datetimes arrive as `String` and `Collator.parse_datetime` resolves them with
+  `str.to_datetime(time_zone=...)` before that branch — one call covers both
+  rules, since an offset-bearing string converts and a bare one localizes.
+  Downstream duration math (spacers, winnowing thresholds/horizons) works on
+  instants and is therefore tz-invariant, but `CLCK//HH` tokens carry the
+  _local_ hour — the zone is part of what that vocabulary means, and
+  `tokenizer.yaml` does not record it, so a transferred tokenizer only agrees
+  with a new dataset if both were collated in the same zone.
+- **Time precision** is the collation config's `default_time_unit` (`ms` / `us` /
+  `ns`; polars' default `us` if unset, validated in `Collator.__init__`). Each
+  raw datetime column is repinned to it in `to_default_tz` — `convert_time_zone`
+  keeps the source unit, so the tz-aware branch casts explicitly while the
+  tz-naive branch pins the unit in its cast. Downstream stages take their times
+  and durations from that column, so the unit propagates to
+  `tokens_times.parquet` and the inference frames without further configuration.
 
 ## Conventions
 
@@ -138,6 +148,7 @@ behavior, add/update a pytest case first.
 - `combine-datasets` refuses to merge processed dirs whose tokenizer configs
   differ (it diffs the yamls, ignoring `created_dttm`); it also handles a legacy
   Int64-token schema from tokenizers `<= 26.4.0`. Only `tokenizer.yaml` is
-  written to the processed dir, so a `default_timezone` mismatch escapes that
-  config diff and instead surfaces as a polars `SchemaError` on the datetime
-  columns. </content>
+  written to the processed dir, so a `default_timezone` or `default_time_unit`
+  mismatch escapes that config diff and instead surfaces as a polars
+  `SchemaError` on the datetime columns — which the legacy-schema fallback does
+  not repair, since it only recasts token columns.

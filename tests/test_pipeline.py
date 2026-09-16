@@ -284,18 +284,31 @@ def test_csv_tables_collate_like_parquet(runner):
     assert frames[0].equals(frames[1])
 
 
-def test_csv_datetimes_must_be_iso8601(runner):
+def test_csv_datetimes_may_be_space_separated(runner):
     """
-    the csv path leaves times as strings for cast(pl.Datetime), which accepts
-    "2024-01-01T09:00:00" but not the space-separated form many exports emit
+    the csv path leaves times as strings for str.to_datetime, which reads both
+    "2024-01-01T09:00:00" and the space-separated form many exports emit
     """
-    raw = synth.write_raw_dataset(
+    iso = synth.write_raw_dataset(
+        runner.dir("raw_csv_iso"), n_patients=4, csv_tables=("clif_position",)
+    )
+    spaced = synth.write_raw_dataset(
         runner.dir("raw_csv_space"), n_patients=4, csv_tables=("clif_position",)
     )
-    csv = raw.root / "clif_position.csv"
+    csv = spaced.root / "clif_position.csv"
     csv.write_text(csv.read_text().replace("T", " ").replace(".000000", ""))
-    with pytest.raises(pl.exceptions.InvalidOperationError, match="failed in column"):
-        runner.collate(raw=raw.root, dest=runner.dir())
+
+    frames = []
+    for raw in (iso, spaced):
+        dest = runner.dir()
+        runner.collate(raw=raw.root, dest=dest)
+        frames.append(
+            pl.read_parquet(dest / "meds.parquet")
+            .filter(pl.col("code").str.starts_with("POSN//"))
+            .sort("subject_id", "time", "code")
+        )
+    assert frames[0].height > 0
+    assert frames[0].equals(frames[1])
 
 
 # --- identifier dtypes ----------------------------------------------------

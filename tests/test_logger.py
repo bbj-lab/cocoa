@@ -234,6 +234,29 @@ def test_summarize_meds_like_category_breakdown_matches_prefix_counts(
         )
 
 
+def test_summarize_meds_like_coverage_is_the_share_of_subjects_with_each_prefix(
+    pipeline, logger, capsys
+):
+    out = captured(
+        capsys, logger.summarize_meds_like, pipeline.meds.lazy(), pipeline.splits
+    )
+    seen = collections.defaultdict(set)
+    for sbj, code in pipeline.meds.select("subject_id", "code").iter_rows():
+        seen[code.split("//")[0]].add(sbj)
+    n_subjects = pipeline.meds["subject_id"].n_unique()
+    rows = table(message(out, "coverage by category:"))
+    assert len(rows) == len(seen) > 1
+    assert {r["code"] for r in rows} == set(seen)
+    rates = [float(r["proportion"]) for r in rows]
+    assert rates == sorted(rates, reverse=True)
+    assert rates[0] == 1.0  # every timeline has an admission
+    for r in rows:
+        assert int(r["subjects"]) == len(seen[r["code"]])
+        assert float(r["proportion"]) == pytest.approx(
+            len(seen[r["code"]]) / n_subjects, abs=1e-6
+        )
+
+
 def test_summarize_meds_like_example_rows_come_from_the_frame(pipeline, logger, capsys):
     out = captured(
         capsys, logger.summarize_meds_like, pipeline.meds.lazy(), pipeline.splits
@@ -557,7 +580,12 @@ def test_collator_save_all_verbose_reports_the_collated_frame(runner, capsys):
     out = capsys.readouterr().out
     height = pl.read_parquet(dest / "meds.parquet").height
     assert message(out, "total rows:") == f"total rows: {height}"
-    for label in ("unique subjects:", "by category:", "example rows:"):
+    for label in (
+        "unique subjects:",
+        "by category:",
+        "coverage by category:",
+        "example rows:",
+    ):
         assert message(out, label)
     assert len(table(message(out, "subjects by split:"))) == 3
     assert len(table(message(out, "rows by split:"))) == 3

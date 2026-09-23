@@ -58,6 +58,20 @@ class Logger(logging.Logger):
                 .collect()
             )
         )
+        self.info(
+            "coverage by category: {}".format(
+                df.select("subject_id", self.code_type)
+                .unique()
+                .group_by("code")
+                .agg(pl.len().alias("subjects"))
+                .with_columns(
+                    proportion=pl.col("subjects")
+                    / df.select(pl.col("subject_id").n_unique()).collect().item()
+                )
+                .sort("proportion", descending=True)
+                .collect()
+            )
+        )
         self.info("example rows: {}".format(df.unique().head(10).collect()))
         sbj_id = (
             df.group_by("subject_id")

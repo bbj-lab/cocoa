@@ -144,7 +144,10 @@ class Logger(logging.Logger):
                 "example timeline ({}): {}".format(
                     sbj_id,
                     df.filter(pl.col("subject_id") == sbj_id)
-                    .explode("tokens", "times", empty_as_null=False)
+                    .explode(
+                        *[c for c in df.collect_schema().names() if c != "subject_id"],
+                        empty_as_null=False,
+                    )
                     .join(
                         lookup.lazy().select("to_tokenize", "token"),
                         left_on="tokens",

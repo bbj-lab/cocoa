@@ -259,7 +259,9 @@ class Collator(Configurable):
                         pl.col(code)
                         .cast(pl.String)
                         .str.to_lowercase()
-                        .str.replace_all(r"\s+", "_"),
+                        .str.replace_all(r"\s+", "_")
+                        .str.replace_all(",", "_")
+                        .str.replace_all(r"_+", "_"),
                     ],
                     separator="//",
                     ignore_nulls=True,  # prefix is optional

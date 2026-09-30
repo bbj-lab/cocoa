@@ -640,6 +640,38 @@ with commands:
     ╰─────────────────────────────────────────────────────────────────────────╯
     ```
 
+- `cocoa visualize`
+
+    ```
+    Usage: cocoa visualize [OPTIONS] {subject_id}
+
+    Visualize a subject's timeline as an interactive html page.
+
+    Serves the page on localhost until interrupted, or saves it as a
+    self-contained html file with --export-html.
+
+    ╭─ Arguments ─────────────────────────────────────────────────────────────╮
+    │ *    subject_id      <str>  Subject whose timeline to show [required]   │
+    ╰─────────────────────────────────────────────────────────────────────────╯
+    ╭─ Options ───────────────────────────────────────────────────────────────╮
+    │ *  --processed-data-home   -p      <str>   Processed data directory     │
+    │                                            [required]                   │
+    │    --visualization-config  -c      <path>  Visualization configuration  │
+    │                                            file (overrides default)     │
+    │    --export-html           -e      <path>  Save the timeline to this    │
+    │                                            self-contained html file     │
+    │                                            instead of serving it        │
+    │    --host                          <str>   Address to serve the page on │
+    │                                            [default: 127.0.0.1]         │
+    │    --port                          <int>   Port to serve the page on; 0 │
+    │                                            picks any                    │
+    │                                            [default: 8765]              │
+    │    --open                                  Open the page in a web       │
+    │                                            browser                      │
+    │    --help                  -h              Show this message and exit.  │
+    ╰─────────────────────────────────────────────────────────────────────────╯
+    ```
+
 <!-- prettier-ignore-start -->
 > [!TIP]
 > For common use cases, check out the [recipes](https://github.com/bbj-lab/cocoa/blob/master/recipes/README.md) section!

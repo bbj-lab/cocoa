@@ -4,6 +4,7 @@
 
 import collections
 import importlib.metadata
+import importlib.resources as resources
 import pathlib
 import re
 import shutil
@@ -20,7 +21,14 @@ from typer.testing import CliRunner
 import cocoa.cli
 from cocoa.cli import app
 
-COMMANDS = ("collate", "tokenize", "winnow", "pipeline", "combine-datasets")
+COMMANDS = (
+    "collate",
+    "tokenize",
+    "winnow",
+    "pipeline",
+    "combine-datasets",
+    "visualize",
+)
 
 ARTIFACTS = (
     "meds.parquet",
@@ -155,6 +163,10 @@ HELP_TEXT = {
     "combine-datasets": (
         ("Combine multiple processed datasets", "--output-data-dir", "-o"),
         ("--processed-data-home", "--raw-data-home"),
+    ),
+    "visualize": (
+        ("Visualize a subject's timeline", "--export-html", "--visualization-config"),
+        ("--raw-data-home", "--tokenizer-home"),
     ),
 }
 
@@ -565,3 +577,34 @@ def test_out_of_process_invocation_runs_the_pipeline(tmp_path, raw_data, argv):
     assert squashed("Pipeline completed") in squashed(proc.stdout)
     tokens_times = pl.read_parquet(dest / "tokens_times.parquet")
     assert set(tokens_times["subject_id"].to_list()) == set(raw_data.subject_ids)
+
+
+def test_visualize_exports_a_page_for_a_subject(pipeline, tmp_path):
+    sid = pipeline.tokens_times["subject_id"][0]
+    out = tmp_path / "page" / "timeline.html"
+    result = run("visualize", sid, "-p", pipeline.path, "-e", out)
+    assert result.exit_code == 0, result.output
+    assert out.exists() and f"Subject {sid}" in out.read_text()
+    assert "timeline.html" in squashed(result.output)
+    assert "without a configured lane" not in result.output  # shipped lanes claim all
+
+
+def test_visualize_names_the_prefixes_no_lane_claims(pipeline, tmp_path):
+    cfg = OmegaConf.load(resources.files("cocoa.config") / "visualization.yaml")
+    cfg.lanes = [lane for lane in cfg.lanes if lane.name != "Vitals"]
+    path = tmp_path / "visualization.yaml"
+    path.write_text(OmegaConf.to_yaml(cfg))
+    sid = pipeline.tokens_times["subject_id"][0]
+    result = run(
+        "visualize", sid, "-p", pipeline.path, "-c", path, "-e", tmp_path / "t.html"
+    )
+    assert result.exit_code == 0, result.output
+    assert "1 code prefix without a configured lane: VTL." in " ".join(
+        result.output.split()
+    )
+
+
+def test_visualize_an_unknown_subject_exits_nonzero(pipeline, tmp_path):
+    result = run("visualize", "nobody", "-p", pipeline.path, "-e", tmp_path / "x.html")
+    assert result.exit_code == 1
+    assert "No timeline" in result.output

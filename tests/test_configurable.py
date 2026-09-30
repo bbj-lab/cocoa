@@ -15,10 +15,16 @@ from cocoa.collator import Collator
 from cocoa.configurable import Configurable
 from cocoa.logger import Logger
 from cocoa.tokenizer import Tokenizer
+from cocoa.visualizer import Visualizer
 from cocoa.winnower import Winnower
 
 REPO = pathlib.Path(__file__).resolve().parents[1]
-SHIPPED = {"collation.yaml", "tokenization.yaml", "winnowing.yaml"}
+SHIPPED = {
+    "collation.yaml",
+    "tokenization.yaml",
+    "winnowing.yaml",
+    "visualization.yaml",
+}
 
 # keys the shipped defaults define, and that a user config is therefore able
 # to *lose* by omitting them; see the "config resolution" note in CLAUDE.md
@@ -122,7 +128,7 @@ def test_every_shipped_yaml_is_packaged_and_claimed_by_a_stage():
     }
     assert on_disc == SHIPPED
     assert packaged == SHIPPED
-    claimed = {c.default_file for c in (Collator, Tokenizer, Winnower)}
+    claimed = {c.default_file for c in (Collator, Tokenizer, Winnower, Visualizer)}
     assert claimed == SHIPPED
 
 

@@ -348,7 +348,7 @@ that specifies:
 
 - `n_bins` — number of quantile bins for numeric values.
 - `fused` — whether to fuse the code, binned value, and text value into a single
-  token (`true`) or keep them as separate tokens (`false`).
+  token (`true`, the default) or keep them as separate tokens (`false`).
 - `include_numeric_values` — whether to include raw numeric values alongside
   tokens in the output (`false` by default).
 - `include_hours_to_end_time` — whether to include, alongside tokens, the

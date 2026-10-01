@@ -63,7 +63,9 @@ class Visualizer(Configurable):
         self.tkzr_cfg = self.tkzr.get("cfg") or {}
         self.decoder = {int(t): w for w, t in (self.tkzr.get("lookup") or {}).items()}
         self.bins = {k: list(v) for k, v in (self.tkzr.get("bins") or {}).items()}
-        self.fused = bool(self.tkzr_cfg.get("fused", True))
+        # the tokenizer records `fused`; a yaml without it predates that, when a
+        # config omitting it tokenized unfused
+        self.fused = bool(self.tkzr_cfg.get("fused", False))
         # every section of the config is optional, and an empty one (a yaml null,
         # as when all its entries are commented out) means none
         self.other_color = str(self.cfg.get("other_color") or "#737373")

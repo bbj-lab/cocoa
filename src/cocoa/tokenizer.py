@@ -45,6 +45,11 @@ class Tokenizer(Configurable):
             .isoformat()
         )
 
+    @property
+    def fused(self) -> bool:
+        """whether code, bin, and text value fuse into one word; fused if unset"""
+        return bool(self.cfg.get("fused", True))
+
     def get_data(self) -> pl.LazyFrame:
         self.logger.info(f"Loading collated data with {self.processed_data_home=}")
         self.subject_splits = pl.scan_parquet(
@@ -201,7 +206,7 @@ class Tokenizer(Configurable):
                     separator="_",
                     ignore_nulls=True,
                 )
-                if self.cfg.get("fused", False)
+                if self.fused
                 else pl.concat_list("code", "binned_value", "text_value"),
             )
             .list.drop_nulls()
@@ -362,7 +367,8 @@ class Tokenizer(Configurable):
                 if self.bins is not None
                 else None,
                 "is_training": self.is_training,
-                "cfg": OmegaConf.to_container(self.cfg),
+                # resolved, so a reader need not know this version's fallback
+                "cfg": {**OmegaConf.to_container(self.cfg), "fused": self.fused},
                 "created_dttm": self.created_dttm,
                 "cocoa_version": meta.version("cocoa-tokenizer"),
             }
@@ -375,6 +381,9 @@ class Tokenizer(Configurable):
         """
         data = OmegaConf.create(yaml_str)
         cfg = OmegaConf.to_container(data.cfg)
+        # to_yaml records `fused`; a yaml without it predates that, when a config
+        # omitting it tokenized unfused
+        cfg.setdefault("fused", False)
         tkzr = self.__class__(
             self.config_file,
             processed_data_home=self.processed_data_home,

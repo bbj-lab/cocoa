@@ -97,6 +97,28 @@ def test_unfused_bins_attach_to_the_code_before_them(runner):
     assert n_binned > 0
 
 
+def test_a_tokenizer_cfg_without_fused_is_read_as_the_tokenizer_ran(runner):
+    """the visualizer's fallback for `fused` agrees with the tokenizer's"""
+    cfg = default_cfg("tokenization")
+    del cfg["fused"]
+    dest = runner.seed_collated()
+    runner.tokenize(cfg=cfg, processed=dest)
+    v = Visualizer(processed_data_home=dest)
+    assert v.tkzr_cfg["fused"] is True
+    assert v.fused
+    assert any(re.search(r"_Q\d+$", w) for w in v.decoder.values())
+
+
+def test_a_legacy_tokenizer_yaml_without_fused_is_read_as_unfused(runner):
+    """a tokenizer.yaml lacking `fused` predates recording it, and ran unfused"""
+    dest = runner.seed_collated()
+    runner.tokenize(cfg={**default_cfg("tokenization"), "fused": False}, processed=dest)
+    y = OmegaConf.load(dest / "tokenizer.yaml")
+    del y.cfg.fused
+    (dest / "tokenizer.yaml").write_text(OmegaConf.to_yaml(y))
+    assert not Visualizer(processed_data_home=dest).fused
+
+
 def test_values_come_from_meds_when_tokens_lack_them(pipeline):
     assert "numeric_values" not in pipeline.tokens_times.columns  # shipped default
     v = Visualizer(processed_data_home=pipeline.path)

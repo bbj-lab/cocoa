@@ -31,6 +31,15 @@ default config in [src/cocoa/config/](src/cocoa/config/):
 
 Data flows strictly stage-to-stage through files in `--processed-data-home`.
 
+Alongside the stages, **Visualize** ([visualizer.py](src/cocoa/visualizer.py))
+renders one subject's timeline from a processed dir as a self-contained,
+interactive html page, either served on localhost or written to a file with
+`--export-html`. It is a `Configurable` too (default
+[visualization.yaml](src/cocoa/config/visualization.yaml): lanes, palette, prefix
+names, code descriptions), but it only reads the stages' outputs. Its page
+template, css, js, icon, and fonts live in
+[src/cocoa/assets/](src/cocoa/assets/).
+
 ## Commands
 
 ```sh
@@ -42,6 +51,10 @@ pip install -e '.[all]'          # all = dev + docs + test extras
 cocoa pipeline -r <raw-data-home> -p <processed-data-home> [--verbose]
 cocoa <stage> -c <config.yaml> ... # -c overrides the shipped default for that stage
 cocoa <stage> -h                   # help; --verbose prints summary stats
+cocoa combine-datasets <dir> <dir> ... -o <output-dir>
+
+# View one subject's timeline (serves on 127.0.0.1:8765 until Ctrl-C)
+cocoa visualize <subject-id> -p <processed-data-home> [--open | -e out.html]
 
 # Format + lint (run before committing)
 ruff format .
@@ -67,20 +80,22 @@ core behavior (`test_tokenizer.py`), serialization/transfer
 plus cross-cutting suites for subject splits, timezones, and full pipeline
 integration.
 
-Each module also keeps an `if __name__ == "__main__"` block that self-tests
+Most modules also keep an `if __name__ == "__main__"` block that self-tests
 against a local processed dataset (e.g. `./processed/mimic/`); run a module
 directly (`python -m cocoa.tokenizer`) to exercise it against real data — the
-tokenizer block also asserts round-trip save/load equality. When you change
-behavior, add/update a pytest case first.
+tokenizer block also asserts round-trip save/load equality, and the visualizer
+block asserts the page references no external URLs. When you change behavior,
+add/update a pytest case first.
 
 ## Architecture notes
 
 - **Config resolution** ([configurable.py](src/cocoa/configurable.py)): every
-  stage merges, in increasing precedence, the shipped default YAML → a user `-c`
-  config → non-`None` kwargs. A user config that omits a key does **not** inherit
-  that key from the default when passed explicitly — read `Configurable.__init__`
-  before changing merge logic. Config access is OmegaConf; use `.get(k, default)`
-  for optional keys.
+  stage loads a user `-c` config if given, otherwise the shipped default YAML,
+  and then merges non-`None` kwargs on top. The two YAMLs are never merged, so a
+  user config that omits a key does **not** inherit that key from the default
+  (this is why the backward-compatibility rule under Conventions matters). Read
+  `Configurable.__init__` before changing merge logic. Config access is
+  OmegaConf; use `.get(k, default)` for optional keys.
 - **Polars everywhere**, lazy by default. Frames are built as `LazyFrame` and
   written with `sink_parquet(..., engine="streaming")` to stay memory-bounded;
   `--verbose` forces collection for stats and can OOM on large data.
@@ -111,16 +126,32 @@ behavior, add/update a pytest case first.
 - **`include_hours_to_end_time` writes a per-token column** of fractional hours
   from each token to its subject's `end_time`, joined from
   `subject_splits.parquet` (so it is the collation config's
-  `reference.end_time`). It counts down toward that time and goes negative
-  beyond it, which `EOS` and trailing spacers can be; being a duration, it is
-  tz- and unit-invariant. `Winnower.add_outcome_flags` splits it into
-  `_past`/`_future` through its `optional` list — a new per-token column the
-  tokenizer writes conditionally has to be named there too, or it rides along
-  unsplit the way `numeric_values` does.
-- **Codes** are `PREFIX//value` (lowercased, whitespace→`_`). The `ordering` list
-  in the tokenization config breaks ties between events at the same timestamp; a
-  prefix missing from `ordering` sorts last. When adding a new event prefix, add
-  it to `ordering` too.
+  `reference.end_time`). It counts down toward that time and goes negative beyond
+  it, which `EOS` and trailing spacers can be; being a duration, it is tz- and
+  unit-invariant. `Winnower.add_outcome_flags` splits it into `_past`/`_future`
+  through its `optional` list — a new per-token column the tokenizer writes
+  conditionally has to be named there too, or it rides along unsplit the way
+  `numeric_values` does. The visualizer also reads such columns by name, so it
+  only displays the ones it knows about.
+- **Codes** are `PREFIX//value`. The value is lowercased, whitespace and commas
+  become `_`, and runs of `_` collapse to one; the prefix is left as written, and
+  `text_value` is only lowercased with whitespace→`_`. The `ordering` list in the
+  tokenization config breaks ties between events at the same timestamp; a prefix
+  missing from `ordering` sorts last. When adding a new event prefix, add it to
+  `ordering` too, and give it a lane and a name in `visualization.yaml`.
+  Otherwise it gets its own unnamed lane, and for a prefix in the shipped
+  collation config `test_shipped_lanes_claim_every_known_prefix` fails.
+- **The visualizer only reads; it is coupled to the stages' formats.** It loads
+  `tokenizer.yaml` with PyYAML's C loader rather than OmegaConf, for speed on
+  large vocabularies. It reads `tokens_times.parquet`, plus
+  `subject_splits.parquet` (pass-through columns become subject fields) and
+  `{split}_for_inference.parquet` when present. When tokens were written without
+  `include_numeric_values`, it recovers values from `meds.parquet` by re-binning
+  them the way `Tokenizer.bin_data` does. It spots a fused bin as an uppercase
+  `_Q<n>`, which only works because code values are lowercased. So a change to
+  binning or to code normalization needs a matching change in
+  `Visualizer.get_values` / `FUSED_BIN`. The page has to stay self-contained:
+  fonts and icon are inlined as base64, with no external URLs.
 - **Times** are normalized on load to the collation config's `default_timezone`
   (`Collator.to_default_tz`; `UTC` if unset) and stay **tz-aware** for the rest
   of the pipeline: tz-aware columns are instant-preserved, tz-naive columns are
@@ -130,10 +161,10 @@ behavior, add/update a pytest case first.
   `str.to_datetime(time_zone=...)` before that branch — one call covers both
   rules, since an offset-bearing string converts and a bare one localizes.
   Downstream duration math (spacers, winnowing thresholds/horizons) works on
-  instants and is therefore tz-invariant, but `CLCK//HH` tokens carry the
-  _local_ hour — the zone is part of what that vocabulary means, and
-  `tokenizer.yaml` does not record it, so a transferred tokenizer only agrees
-  with a new dataset if both were collated in the same zone.
+  instants and is therefore tz-invariant, but `CLCK//HH` tokens carry the _local_
+  hour — the zone is part of what that vocabulary means, and `tokenizer.yaml`
+  does not record it, so a transferred tokenizer only agrees with a new dataset
+  if both were collated in the same zone.
 - **Time precision** is the collation config's `default_time_unit` (`ms` / `us` /
   `ns`; polars' default `us` if unset, validated in `Collator.__init__`). Each
   raw datetime column is repinned to it in `to_default_tz` — `convert_time_zone`
@@ -150,18 +181,44 @@ behavior, add/update a pytest case first.
 - Files open with `#!/usr/bin/env python3` and a short lowercase module
   docstring; method docstrings are terse and lowercase. Match the surrounding
   terseness.
+- **Config changes stay backward compatible** as far as possible. An older config
+  that lacks a newly added key must keep working exactly as it did before the key
+  existed. A `-c` config replaces the shipped default instead of merging with it,
+  so an old config never picks up the new key from there. That means:
+    - read a new key with `cfg.get(key, fallback)`, where the fallback reproduces
+      the previous behavior, whatever the shipped default sets. Never use
+      `cfg.key` / `cfg["key"]`, which raise on a missing key.
+      `drop_duplicate_events`, `default_time_unit`, `min_training_ct`, and
+      `include_hours_to_end_time` all follow this pattern.
+    - don't rename a key, repurpose it, or change what an existing value means.
+      If a key has to change, keep accepting the old spelling.
+    - the `cfg` block saved in `tokenizer.yaml` is a config too, and old copies
+      of it outlive the code that wrote them. Code that reads one (`from_yaml`,
+      the winnower, the visualizer) must fall back to what the tokenizer did when
+      it wrote that file, which need not be today's fallback. For example,
+      `to_yaml` now records the resolved `fused`, so a yaml without it was
+      tokenized unfused, even though a config without `fused` now fuses. When a
+      new key changes tokenization, record its resolved value the same way.
+    - add a pytest case showing that a config without the new key produces the
+      old output.
 - New pipeline stages subclass `Configurable`, set `default_file`, ship a default
   YAML under `src/cocoa/config/` (packaged via `package-data` in
-  [pyproject.toml](pyproject.toml)), and expose `save_all(verbose)`.
+  [pyproject.toml](pyproject.toml)), and expose `save_all(verbose)`. Add the YAML
+  and the class to `SHIPPED` and the `claimed` set in
+  [tests/test_configurable.py](tests/test_configurable.py), which checks that
+  every shipped YAML is packaged and claimed by a stage. Non-YAML package files,
+  like the visualizer's under `src/cocoa/assets/`, need their own `package-data`
+  globs.
 - New CLI commands go in [cli.py](src/cocoa/cli.py) as typer commands using
   `rich` for output, mirroring the existing timing/output-path print pattern.
 - **Versioning is CalVer** `YY.M.patch` (e.g. `26.6.1`); releases are signed git
   tags `vYY.M.patch`. `__version__` comes from installed package metadata, not a
   literal.
 - Keep [README.md](README.md), the [recipes/](recipes/) (mirrored into
-  [docs/recipes/](docs/recipes/)), and the shipped default configs in sync when
-  behavior changes — the README is the PyPI long description and the recipes are
-  the primary user-facing docs.
+  [docs/recipes/](docs/recipes/)), the per-module pages in
+  [docs/api/](docs/api/), and the shipped default configs in sync when behavior
+  changes. The README is the PyPI long description, and the recipes are the
+  primary user-facing docs.
 
 ## Gotchas
 
@@ -169,10 +226,12 @@ behavior, add/update a pytest case first.
   gitignored and symlinked to shared storage on HPC).
 - Editing a shipped `src/cocoa/config/*.yaml` changes the default behavior for
   every user — usually you want a separate config passed with `-c` instead.
-- `combine-datasets` refuses to merge processed dirs whose tokenizer configs
-  differ (it diffs the yamls, ignoring `created_dttm`); it also handles a legacy
-  Int64-token schema from tokenizers `<= 26.4.0`. Only `tokenizer.yaml` is
-  written to the processed dir, so a `default_timezone` or `default_time_unit`
-  mismatch escapes that config diff and instead surfaces as a polars
-  `SchemaError` on the datetime columns — which the legacy-schema fallback does
-  not repair, since it only recasts token columns.
+- `combine-datasets` does **not** refuse to merge processed dirs whose tokenizer
+  configs differ. It diffs the yamls (ignoring `created_dttm`) and logs a warning
+  with the diff, but still combines the parquets and writes the _first_ input's
+  `tokenizer.yaml`, so check its output for `Configuration mismatch`. It also
+  handles a legacy Int64-token schema from tokenizers `<= 26.4.0`. Only
+  `tokenizer.yaml` is written to the processed dir, so a `default_timezone` or
+  `default_time_unit` mismatch escapes that config diff and instead surfaces as a
+  polars `SchemaError` on the datetime columns — which the legacy-schema fallback
+  does not repair, since it only recasts token columns.

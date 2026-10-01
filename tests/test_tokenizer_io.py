@@ -144,6 +144,34 @@ def test_from_yaml_tolerates_a_legacy_yaml_without_counts(trained):
     assert cp("EOS") == trained("EOS")
 
 
+def test_from_yaml_keeps_the_fusion_a_tokenizer_was_trained_with(runner):
+    """a config omitting `fused` fuses, and loading under an unfused one keeps that"""
+    cfg = default_cfg("tokenization")
+    del cfg["fused"]
+    saved = Tokenizer(
+        tokenization_cfg=runner.cfg_path("tokenization", cfg),
+        processed_data_home=runner.dir(),
+    ).to_yaml()
+    assert OmegaConf.create(saved).cfg.fused is True
+    unfused = {**default_cfg("tokenization"), "fused": False}
+    loader = Tokenizer(
+        tokenization_cfg=runner.cfg_path("tokenization", unfused),
+        processed_data_home=runner.dir(),
+    )
+    loaded = loader.from_yaml(saved)
+    assert loaded.cfg.fused is True and loaded.fused
+
+
+def test_from_yaml_reads_a_legacy_yaml_without_fused_as_unfused(tmp_path):
+    """yamls lacking `fused` predate recording it, and were tokenized unfused"""
+    y = OmegaConf.create(Tokenizer(processed_data_home=tmp_path).to_yaml())
+    del y.cfg.fused
+    loader = Tokenizer(processed_data_home=tmp_path)
+    assert loader.fused  # the shipped default fuses, yet the saved yaml wins
+    loaded = loader.from_yaml(OmegaConf.to_yaml(y))
+    assert loaded.cfg.fused is False and not loaded.fused
+
+
 @pytest.mark.parametrize(
     "done_training,expected", [(True, False), (False, True)], ids=["frozen", "training"]
 )

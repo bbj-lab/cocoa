@@ -7,6 +7,7 @@ visualization: rendering one subject's timeline as a self-contained html page
 import copy
 import importlib.resources as resources
 import json
+import pathlib
 import re
 
 import polars as pl
@@ -170,6 +171,58 @@ def test_a_legacy_tokenizer_yaml_without_fused_is_read_as_unfused(runner):
     del y.cfg.fused
     (dest / "tokenizer.yaml").write_text(OmegaConf.to_yaml(y))
     assert not Visualizer(processed_data_home=dest).fused
+
+
+def naive_utc(e: pl.Expr) -> pl.Expr:
+    return e.dt.convert_time_zone("UTC").dt.replace_time_zone(None)
+
+
+def as_written_by_26_6(src: pathlib.Path, dest: pathlib.Path) -> pathlib.Path:
+    """
+    a copy of processed directory `src` as 26.6.x wrote it: times naive utc, no
+    subject start_time or end_time, and a tokenizer.yaml without counts
+    """
+    for f in src.glob("*.parquet"):
+        df = pl.read_parquet(f).drop("start_time", "end_time", strict=False)
+        df.with_columns(
+            naive_utc(pl.col(c))
+            if isinstance(t, pl.Datetime)
+            else pl.col(c).list.eval(naive_utc(pl.element()))
+            for c, t in df.schema.items()
+            if isinstance(t, pl.Datetime)
+            or (isinstance(t, pl.List) and isinstance(t.inner, pl.Datetime))
+        ).write_parquet(dest / f.name)
+    y = OmegaConf.load(src / "tokenizer.yaml")
+    del y.counts
+    (dest / "tokenizer.yaml").write_text(OmegaConf.to_yaml(y))
+    return dest
+
+
+def test_a_timeline_from_26_6_draws_as_it_does_today(pipeline, tmp_path):
+    """before 26.9.0, times were stored naive and meant utc"""
+    legacy = as_written_by_26_6(pipeline.path, tmp_path)
+    times = pl.read_parquet_schema(legacy / "tokens_times.parquet")["times"]
+    assert times.inner.time_zone is None
+    sid = pipeline.subjects_in_split("held_out")[0]
+    now = Visualizer(processed_data_home=pipeline.path, show_winnowing=True)
+    then = Visualizer(processed_data_home=legacy, show_winnowing=True)
+    a, b = now.get_payload(sid), then.get_payload(sid)
+    assert a["meta"]["timezone"] == "UTC"  # shipped default, so labels agree too
+    for k in ("times", "codes", "events", "tokens", "winnowed"):
+        assert b[k] == a[k], k
+    assert b["meta"]["timezone"] == "UTC"
+    assert b["meta"]["value_source"] == a["meta"]["value_source"] == "meds"
+    assert b["subject"]["start_time"] is None and b["subject"]["end_time"] is None
+    assert b["subject"]["fields"] == a["subject"]["fields"]
+    assert DATA.search(then.render(sid))
+    assert then.render_pdf(sid).startswith(b"%PDF")
+
+
+def test_an_empty_tokenizer_yaml_says_why(tmp_path):
+    """26.6.0 and 26.6.1 crash writing tokenizer.yaml, leaving it empty"""
+    (tmp_path / "tokenizer.yaml").write_text("")
+    with pytest.raises(ValueError, match="26.6.0 and 26.6.1"):
+        Visualizer(processed_data_home=tmp_path)
 
 
 def test_values_come_from_meds_when_tokens_lack_them(pipeline):

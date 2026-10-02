@@ -61,6 +61,12 @@ class Visualizer(Configurable):
             self.tkzr = yaml.load(
                 f, Loader=getattr(yaml, "CSafeLoader", yaml.SafeLoader)
             )
+        if not isinstance(self.tkzr, dict):  # 26.6.0 and 26.6.1 crash writing it
+            raise ValueError(
+                f"{self.processed_data_home / 'tokenizer.yaml'} holds no tokenizer; "
+                "cocoa-tokenizer 26.6.0 and 26.6.1 fail before writing it, so "
+                "retokenize with a later version"
+            )
         self.tkzr_cfg = self.tkzr.get("cfg") or {}
         self.decoder = {int(t): w for w, t in (self.tkzr.get("lookup") or {}).items()}
         self.bins = {k: list(v) for k, v in (self.tkzr.get("bins") or {}).items()}
@@ -105,7 +111,10 @@ class Visualizer(Configurable):
                 f"{self.processed_data_home / 'tokens_times.parquet'}; "
                 f"subjects there include {', '.join(map(repr, examples))}"
             )
-        return df.head(1).explode(pl.exclude("subject_id"), empty_as_null=False)
+        df = df.head(1).explode(pl.exclude("subject_id"), empty_as_null=False)
+        if df.schema["times"].time_zone is None:  # before 26.9.0, times were naive utc
+            df = df.with_columns(pl.col("times").dt.replace_time_zone("UTC"))
+        return df
 
     def get_subject(self, subject_id: str) -> dict | None:
         """the subject's row of subject_splits.parquet, if it has one"""
@@ -261,7 +270,7 @@ class Visualizer(Configurable):
         """everything the page draws, as plain json-able data"""
         tl = self.get_timeline(subject_id)
         subject = self.get_subject(subject_id) or {}
-        tz = tl.schema["times"].time_zone or "UTC"
+        tz = tl.schema["times"].time_zone
 
         # consecutive tokens at one instant share an entry in `times`
         times = tl.select(

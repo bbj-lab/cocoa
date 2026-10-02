@@ -149,9 +149,12 @@ add/update a pytest case first.
   `tokenizer.yaml` with PyYAML's C loader rather than OmegaConf, for speed on
   large vocabularies. It reads `tokens_times.parquet`, plus
   `subject_splits.parquet` (pass-through columns become subject fields) and
-  `{split}_for_inference.parquet` when present. When tokens were written without
-  `include_numeric_values`, it recovers values from `meds.parquet` by re-binning
-  them the way `Tokenizer.bin_data` does. It spots a fused bin as an uppercase
+  `{split}_for_inference.parquet` when present. It also reads what released
+  versions wrote (anything since 26.6.2). Before 26.9.0, times were naive UTC,
+  which `get_timeline` localizes; a test rewrites today's output into that format
+  (`as_written_by_26_6`) and checks it draws the same. When tokens were written
+  without `include_numeric_values`, it recovers values from `meds.parquet` by
+  re-binning them the way `Tokenizer.bin_data` does. It spots a fused bin as an uppercase
   `_Q<n>`, which only works because code values are lowercased. So a change to
   binning or to code normalization needs a matching change in
   `Visualizer.get_values` / `FUSED_BIN`. The page has to stay self-contained:

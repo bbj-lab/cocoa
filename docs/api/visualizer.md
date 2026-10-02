@@ -23,6 +23,13 @@ From the processed-data directory:
   on) — where the [Winnower](winnower.md) split the timeline into past and
   future, and its outcome flags.
 
+It reads a processed directory from any release since 26.6.2; 26.6.0 and 26.6.1
+fail before writing `tokenizer.yaml`. The page leaves out whatever an older
+release didn't write. Before 26.9.1, `subject_splits.parquet` has no start or
+end times, and `tokenizer.yaml` has no training counts, so the prefixes with the
+most vocabulary words take the first palette colors. Before 26.9.0, times were
+stored without a time zone, meaning UTC, and the page shows them in UTC.
+
 ## What it produces
 
 [`render`][cocoa.visualizer.Visualizer.render] returns the page as one html

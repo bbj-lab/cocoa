@@ -348,7 +348,7 @@ that specifies:
 
 - `n_bins` — number of quantile bins for numeric values.
 - `fused` — whether to fuse the code, binned value, and text value into a single
-  token (`true`) or keep them as separate tokens (`false`).
+  token (`true`, the default) or keep them as separate tokens (`false`).
 - `include_numeric_values` — whether to include raw numeric values alongside
   tokens in the output (`false` by default).
 - `include_hours_to_end_time` — whether to include, alongside tokens, the
@@ -364,7 +364,8 @@ that specifies:
 - `insert_spacers` — whether to insert time spacing tokens between events.
 - `insert_clocks` — whether to insert clock tokens at specified times.
 - `ordering` — the priority order of code prefixes when sorting events within the
-  same timestamp.
+  same timestamp. A prefix missing from it sorts after the listed ones, though
+  still before `EOS`, which always ends the timeline.
 - `spacers` — mapping of time intervals (e.g., `5m-15m`, `1h-2h`) to their lower
   bounds in minutes, used for time spacing tokens.
 - `clocks` — list of hour strings (e.g., `00`, `04`, ...) at which to insert
@@ -637,6 +638,46 @@ with commands:
     │    --verbose              -v            Verbose logging for pipeline    │
     │                                         steps                           │
     │    --help                 -h            Show this message and exit.     │
+    ╰─────────────────────────────────────────────────────────────────────────╯
+    ```
+
+- `cocoa visualize`
+
+    ```
+    Usage: cocoa visualize [OPTIONS] {subject_id}
+
+    Visualize a subject's timeline as an interactive html page.
+
+    Serves the page on localhost until interrupted, or saves it as a
+    self-contained html file with --export-html, a static pdf with
+    --export-pdf, or both.
+
+    ╭─ Arguments ─────────────────────────────────────────────────────────────╮
+    │ *    subject_id      <str>  Subject whose timeline to show [required]   │
+    ╰─────────────────────────────────────────────────────────────────────────╯
+    ╭─ Options ───────────────────────────────────────────────────────────────╮
+    │ *  --processed-data-home   -p      <str>   Processed data directory     │
+    │                                            [required]                   │
+    │    --visualization-config  -c      <path>  Visualization configuration  │
+    │                                            file (overrides default)     │
+    │    --export-html           -e      <path>  Save the timeline to this    │
+    │                                            self-contained html file     │
+    │                                            instead of serving it        │
+    │    --export-pdf                    <path>  Save a static pdf of the     │
+    │                                            timeline to this file        │
+    │                                            instead of serving it; with  │
+    │                                            --export-html, save both     │
+    │    --host                          <str>   Address to serve the page on │
+    │                                            [default: 127.0.0.1]         │
+    │    --port                          <int>   Port to serve the page on; 0 │
+    │                                            picks any                    │
+    │                                            [default: 8765]              │
+    │    --open                                  Open the page in a web       │
+    │                                            browser                      │
+    │    --show-winnowing                        Show the winnowing split     │
+    │                                            into past and future, and    │
+    │                                            its outcome flags            │
+    │    --help                  -h              Show this message and exit.  │
     ╰─────────────────────────────────────────────────────────────────────────╯
     ```
 

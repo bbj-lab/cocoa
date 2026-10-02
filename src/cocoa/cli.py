@@ -4,18 +4,22 @@
 CLI for cocoa - configurable collation and tokenization
 """
 
+import errno
 import pathlib
 import time
+import webbrowser
 from importlib.metadata import version
 from typing import Annotated, Optional
 
 import typer
 from rich import print
 from rich.console import Console
+from rich.markup import escape
 
 from cocoa.collator import Collator
 from cocoa.tokenizer import Tokenizer
 from cocoa.util import combine_processed_data
+from cocoa.visualizer import SubjectNotFoundError, Visualizer, make_server
 from cocoa.winnower import Winnower
 
 __version__ = version("cocoa-tokenizer")
@@ -275,6 +279,124 @@ def combine_datasets(
         t1 = time.perf_counter()
         print(f"\n[green]✓[/green] Combine completed in {t1 - t0:.2f}s.")
         print(f"  Output at: [cyan]{output}[/cyan]")
+
+
+@app.command()
+def visualize(
+    subject_id: Annotated[
+        str, typer.Argument(help="Subject whose timeline to show", show_default=False)
+    ],
+    processed_data_home: Annotated[
+        str,
+        typer.Option("--processed-data-home", "-p", help="Processed data directory"),
+    ] = ...,
+    visualization_config: Annotated[
+        Optional[pathlib.Path],
+        typer.Option(
+            "--visualization-config",
+            "-c",
+            help="Visualization configuration file (overrides default)",
+            show_default=False,
+        ),
+    ] = None,
+    export_html: Annotated[
+        Optional[pathlib.Path],
+        typer.Option(
+            "--export-html",
+            "-e",
+            help="Save the timeline to this self-contained html file "
+            "instead of serving it",
+            show_default=False,
+        ),
+    ] = None,
+    export_pdf: Annotated[
+        Optional[pathlib.Path],
+        typer.Option(
+            "--export-pdf",
+            help="Save a static pdf of the timeline to this file instead of "
+            "serving it; with --export-html, save both",
+            show_default=False,
+        ),
+    ] = None,
+    host: Annotated[
+        str, typer.Option("--host", help="Address to serve the page on")
+    ] = "127.0.0.1",
+    port: Annotated[
+        int, typer.Option("--port", help="Port to serve the page on; 0 picks any")
+    ] = 8765,
+    open_browser: Annotated[
+        bool,
+        typer.Option("--open", help="Open the page in a web browser", is_flag=True),
+    ] = False,
+    show_winnowing: Annotated[
+        bool,
+        typer.Option(
+            "--show-winnowing",
+            help="Show the winnowing split into past and future, and its outcome flags",
+            is_flag=True,
+        ),
+    ] = False,
+):
+    """
+    Visualize a subject's timeline as an interactive html page.
+
+    Serves the page on localhost until interrupted, or saves it as a
+    self-contained html file with --export-html, a static pdf with
+    --export-pdf, or both.
+    """
+    with console.status("[bold green]Rendering timeline..."):
+        t0 = time.perf_counter()
+        visualizer = Visualizer(
+            visualization_cfg=visualization_config,
+            processed_data_home=processed_data_home,
+            # without the flag, the config decides
+            show_winnowing=True if show_winnowing else None,
+        )
+        out_paths = []
+        try:
+            if export_html is not None:
+                out_paths.append(visualizer.save(subject_id, export_html))
+            if export_pdf is not None:
+                out_paths.append(visualizer.save_pdf(subject_id, export_pdf))
+            if not out_paths:
+                page = visualizer.render(subject_id)
+        except SubjectNotFoundError as e:
+            print(f"[red]✗[/red] {escape(str(e))}")
+            raise typer.Exit(code=1)
+        t1 = time.perf_counter()
+        print(
+            f"\n[green]✓[/green] Rendered the timeline of subject "
+            f"{escape(subject_id)} in {t1 - t0:.2f}s."
+        )
+        if unclaimed := visualizer.unclaimed_prefixes():
+            n = len(unclaimed)
+            print(
+                f"  {n} code prefix{'es' if n > 1 else ''} without a configured lane: "
+                f"{escape(', '.join(unclaimed))}. To name and color their lanes, "
+                "list them under `lanes` in a config passed with -c."
+            )
+    if out_paths:
+        for out_path in out_paths:
+            print(f"  Output: [cyan]{out_path}[/cyan]")
+        return
+    try:
+        server = make_server(page, host=host, port=port)
+    except OSError as e:
+        if e.errno != errno.EADDRINUSE:
+            raise
+        print(f"  Port {port} is in use; serving on a free one instead.")
+        server = make_server(page, host=host, port=0)
+    url = f"http://{host}:{server.server_port}/"
+    print(f"  Serving: [cyan]{url}[/cyan] (press Ctrl-C to stop)")
+    if open_browser:
+        webbrowser.open(url)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.server_close()
+    print("  Stopped serving.")
 
 
 def main():

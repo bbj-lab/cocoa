@@ -73,6 +73,7 @@ nav:
       - Collator: api/collator.md
       - Tokenizer: api/tokenizer.md
       - Winnower: api/winnower.md
+      - Visualizer: api/visualizer.md
   - Recipes:
       - Overview: recipes/index.md
       - Configure New Token: recipes/configure-new-token.md

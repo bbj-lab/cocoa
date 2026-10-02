@@ -30,7 +30,7 @@ ordering:
   - SOFA
   - DSCG
   - LABEL
-  - EOS
+  - EOS # always last, even after prefixes missing from this list
 
 insert_spacers: !!bool false
 spacers:

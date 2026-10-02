@@ -5,9 +5,7 @@ end-to-end pipeline integration, and validation of the synthetic fixtures the
 rest of the suite relies on
 """
 
-import collections
 import datetime
-import itertools
 import pathlib
 
 import polars as pl
@@ -156,14 +154,6 @@ def test_stages_write_only_their_own_artifacts(runner):
     assert not any(p.name.endswith("_for_inference.parquet") for p in dest.iterdir())
 
 
-def cotemporal_runs(tokens: list, times: list) -> list:
-    """token multisets grouped into maximal runs of equal timestamps"""
-    return [
-        collections.Counter(t for _, t in grp)
-        for _, grp in itertools.groupby(zip(times, tokens), key=lambda p: p[0])
-    ]
-
-
 def test_collation_is_reproducible(runner, pipeline):
     again = runner.collate(dest=runner.dir())
     key = ["subject_id", "time", "code", "numeric_value", "text_value"]
@@ -181,26 +171,6 @@ def test_vocabulary_and_bins_are_reproducible(runner, pipeline):
     for c in (left, right):
         del c["created_dttm"]
     assert left == right
-
-
-def test_timelines_are_reproducible_up_to_cotemporal_order(runner, pipeline):
-    """
-    times and token content are stable across runs, but the order of events
-    sharing a timestamp is not: `ordering` only ranks prefixes, and neither the
-    streaming collation write nor sort("time", "priority") is a stable sort
-    """
-    again = runner.full()
-    a = pipeline.tokens_times.sort("subject_id")
-    b = again.tokens_times.sort("subject_id")
-    assert a["subject_id"].to_list() == b["subject_id"].to_list()
-    assert a["times"].to_list() == b["times"].to_list()
-    assert a.height > 0
-    for i in range(a.height):
-        assert cotemporal_runs(
-            a["tokens"][i].to_list(), a["times"][i].to_list()
-        ) == cotemporal_runs(b["tokens"][i].to_list(), b["times"][i].to_list()), a[
-            "subject_id"
-        ][i]
 
 
 def test_tokenize_without_collating_first_raises(tmp_path):

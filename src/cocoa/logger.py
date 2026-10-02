@@ -18,6 +18,8 @@ log = logging.getLogger("rich")
 pl.Config.set_tbl_rows(100)
 pl.Config.set_tbl_width_chars(500)
 
+TL_TGT_DISP_LEN = 1000  # example subjects are those with lengths nearest this
+
 
 class Logger(logging.Logger):
     """provides simple logging functionality and summary statistics"""
@@ -58,11 +60,25 @@ class Logger(logging.Logger):
                 .collect()
             )
         )
+        self.info(
+            "coverage by category: {}".format(
+                df.select("subject_id", self.code_type)
+                .unique()
+                .group_by("code")
+                .agg(pl.len().alias("subjects"))
+                .with_columns(
+                    proportion=pl.col("subjects")
+                    / df.select(pl.col("subject_id").n_unique()).collect().item()
+                )
+                .sort("proportion", descending=True)
+                .collect()
+            )
+        )
         self.info("example rows: {}".format(df.unique().head(10).collect()))
         sbj_id = (
             df.group_by("subject_id")
             .agg(pl.len())
-            .sort((pl.col("len") - pl.lit(25)).abs(), descending=False)
+            .sort((pl.col("len").cast(pl.Int64) - TL_TGT_DISP_LEN).abs())
             .collect()
             .head(1)
             .select("subject_id")
@@ -131,7 +147,7 @@ class Logger(logging.Logger):
 
         sbj_ids = (
             df.with_columns(pl.col("tokens").list.len().alias("len"))
-            .sort((pl.col("len") - pl.lit(25)).abs(), descending=False)
+            .sort((pl.col("len").cast(pl.Int64) - TL_TGT_DISP_LEN).abs())
             .collect()
             .head(3)
             .select("subject_id")

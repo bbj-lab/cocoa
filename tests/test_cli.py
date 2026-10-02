@@ -20,7 +20,14 @@ from typer.testing import CliRunner
 import cocoa.cli
 from cocoa.cli import app
 
-COMMANDS = ("collate", "tokenize", "winnow", "pipeline", "combine-datasets")
+COMMANDS = (
+    "collate",
+    "tokenize",
+    "winnow",
+    "pipeline",
+    "combine-datasets",
+    "visualize",
+)
 
 ARTIFACTS = (
     "meds.parquet",
@@ -32,7 +39,6 @@ ARTIFACTS = (
     "held_out_for_inference.parquet",
 )
 TOKENIZED = ARTIFACTS[:4]
-TOKEN_COLS = ("tokens", "tokens_past", "tokens_future")
 
 COCOA_EXE = pathlib.Path(sys.executable).parent / "cocoa"
 
@@ -70,14 +76,6 @@ def bins_of(processed) -> dict:
     """the bin break points recorded in a processed dir's tokenizer.yaml"""
     cfg = OmegaConf.load(pathlib.Path(processed) / "tokenizer.yaml").bins
     return {k: list(v) for k, v in dict(cfg).items()}
-
-
-def multisets(df: pl.DataFrame, col: str) -> dict:
-    """subject_id -> sorted token multiset of a list-of-token column"""
-    return {
-        s: (None if t is None else sorted(t))
-        for s, t in zip(df["subject_id"].to_list(), df[col].to_list())
-    }
 
 
 @pytest.fixture(scope="module")
@@ -155,6 +153,16 @@ HELP_TEXT = {
     "combine-datasets": (
         ("Combine multiple processed datasets", "--output-data-dir", "-o"),
         ("--processed-data-home", "--raw-data-home"),
+    ),
+    "visualize": (
+        (
+            "Visualize a subject's timeline",
+            "--export-html",
+            "--export-pdf",
+            "--visualization-config",
+            "--show-winnowing",
+        ),
+        ("--raw-data-home", "--tokenizer-home"),
     ),
 }
 
@@ -254,12 +262,7 @@ def test_pipeline_matches_three_separate_invocations(pipeline_run, stages_run):
         for d in (one, three)
     ]
     assert tt[0].height > 0
-    assert tt[0]["subject_id"].to_list() == tt[1]["subject_id"].to_list()
-    assert tt[0]["times"].to_list() == tt[1]["times"].to_list()
-    # token *order* only agrees up to permutation within a (time, priority) tie:
-    # Tokenizer.tokenize_data sorts unstably, so two runs over identical input
-    # emit different sequences (reported as a bug, not asserted as desirable)
-    assert multisets(tt[0], "tokens") == multisets(tt[1], "tokens")
+    assert_frame_equal(*tt)
 
     for split in ("train", "tuning", "held_out"):
         inf = [
@@ -267,9 +270,7 @@ def test_pipeline_matches_three_separate_invocations(pipeline_run, stages_run):
             for d in (one, three)
         ]
         assert inf[0].height > 0
-        assert_frame_equal(*(i.drop(TOKEN_COLS) for i in inf))
-        for col in TOKEN_COLS:
-            assert multisets(inf[0], col) == multisets(inf[1], col)
+        assert_frame_equal(*inf)
 
 
 @pytest.mark.parametrize("flag", ["-c", "--collation-config"])
@@ -565,3 +566,79 @@ def test_out_of_process_invocation_runs_the_pipeline(tmp_path, raw_data, argv):
     assert squashed("Pipeline completed") in squashed(proc.stdout)
     tokens_times = pl.read_parquet(dest / "tokens_times.parquet")
     assert set(tokens_times["subject_id"].to_list()) == set(raw_data.subject_ids)
+
+
+def test_visualize_exports_a_page_for_a_subject(pipeline, tmp_path):
+    sid = pipeline.tokens_times["subject_id"][0]
+    out = tmp_path / "page" / "timeline.html"
+    result = run("visualize", sid, "-p", pipeline.path, "-e", out)
+    assert result.exit_code == 0, result.output
+    assert out.exists() and f"Subject {sid}" in out.read_text()
+    assert "timeline.html" in squashed(result.output)
+
+
+def test_visualize_exports_a_pdf_for_a_subject(pipeline, tmp_path):
+    sid = pipeline.tokens_times["subject_id"][0]
+    out = tmp_path / "page" / "timeline.pdf"
+    result = run("visualize", sid, "-p", pipeline.path, "--export-pdf", out)
+    assert result.exit_code == 0, result.output
+    assert out.read_bytes().startswith(b"%PDF-")
+    assert "timeline.pdf" in squashed(result.output)
+    assert "Serving" not in result.output
+
+
+def test_visualize_exports_html_and_pdf_together(pipeline, tmp_path):
+    sid = pipeline.tokens_times["subject_id"][0]
+    html, pdf = tmp_path / "t.html", tmp_path / "t.pdf"
+    result = run("visualize", sid, "-p", pipeline.path, "-e", html, "--export-pdf", pdf)
+    assert result.exit_code == 0, result.output
+    assert f"Subject {sid}" in html.read_text()
+    assert pdf.read_bytes().startswith(b"%PDF-")
+    out = squashed(result.output)
+    assert str(html.resolve()).replace(" ", "") in out
+    assert str(pdf.resolve()).replace(" ", "") in out
+
+
+@pytest.mark.parametrize(
+    "unclaimed, said",
+    [
+        ((), None),
+        (("VTL",), "1 code prefix without a configured lane: VTL."),
+        (("SEX", "VTL"), "2 code prefixes without a configured lane: SEX, VTL."),
+    ],
+)
+def test_visualize_names_the_prefixes_no_lane_claims(
+    pipeline, tmp_path, unclaimed, said
+):
+    vocab = {w.partition("//")[0] for w in pipeline.vocab if "//" in w}
+    assert set(unclaimed) < vocab
+    lanes = [{"prefixes": sorted(vocab - set(unclaimed))}]
+    path = write_cfg(tmp_path / "visualization.yaml", {"lanes": lanes})
+    sid = pipeline.tokens_times["subject_id"][0]
+    result = run(
+        "visualize", sid, "-p", pipeline.path, "-c", path, "-e", tmp_path / "t.html"
+    )
+    assert result.exit_code == 0, result.output
+    output = " ".join(result.output.split())
+    if said is None:
+        assert "without a configured lane" not in output
+    else:
+        assert said in output
+
+
+def test_visualize_shows_winnowing_only_when_asked(pipeline, tmp_path):
+    sid = pipeline.inference()["subject_id"][0]
+    for args, winnowed in (
+        ((), '"winnowed":null'),
+        (("--show-winnowing",), '"winnowed":{'),
+    ):
+        out = tmp_path / f"{bool(args)}.html"
+        result = run("visualize", sid, "-p", pipeline.path, "-e", out, *args)
+        assert result.exit_code == 0, result.output
+        assert winnowed in out.read_text()
+
+
+def test_visualize_an_unknown_subject_exits_nonzero(pipeline, tmp_path):
+    result = run("visualize", "nobody", "-p", pipeline.path, "-e", tmp_path / "x.html")
+    assert result.exit_code == 1
+    assert "No timeline" in result.output

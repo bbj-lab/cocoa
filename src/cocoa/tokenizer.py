@@ -45,6 +45,11 @@ class Tokenizer(Configurable):
             .isoformat()
         )
 
+    @property
+    def fused(self) -> bool:
+        """whether code, bin, and text value fuse into one word; fused if unset"""
+        return bool(self.cfg.get("fused", True))
+
     def get_data(self) -> pl.LazyFrame:
         self.logger.info(f"Loading collated data with {self.processed_data_home=}")
         self.subject_splits = pl.scan_parquet(
@@ -201,7 +206,7 @@ class Tokenizer(Configurable):
                     separator="_",
                     ignore_nulls=True,
                 )
-                if self.cfg.get("fused", False)
+                if self.fused
                 else pl.concat_list("code", "binned_value", "text_value"),
             )
             .list.drop_nulls()
@@ -256,16 +261,27 @@ class Tokenizer(Configurable):
 
     def tokenize_data(self, pt: pl.LazyFrame) -> pl.LazyFrame:
         """apply lookup table to pretokenized data"""
+        n = len(self.cfg.ordering)
         t = (
             pt.with_columns(code_type=pl.col("code").str.split("//").list[0])
             .join(
                 self.get_priority().lazy(), on="code_type", how="left", validate="m:1"
             )
-            .with_columns(pl.col("priority").fill_null(len(self.cfg.ordering)))
-            .sort("time", "priority", "to_tokenize")  # thanks, @lukesolo-ml!
+            .with_columns(
+                priority=pl.when(pl.col("code") == "EOS")
+                .then(n + 1)  # EOS ends the timeline, after any prefix not in ordering
+                .otherwise(pl.col("priority").fill_null(n))
+            )
+            # thanks, @lukesolo-ml! numeric_value only breaks ties between otherwise
+            # identical tokens, so that numeric_values is the same every run
+            .sort("time", "priority", "to_tokenize", "numeric_value")
             .explode("to_tokenize", empty_as_null=False)
             .join(
-                self.get_lookup(pt).lazy(), on="to_tokenize", validate="m:1", how="left"
+                self.get_lookup(pt).lazy(),
+                on="to_tokenize",
+                validate="m:1",
+                how="left",
+                maintain_order="left",  # the sort above is the timeline order
             )
             .with_columns(pl.col("token").fill_null(pl.lit(0, dtype=pl.UInt32)))
         )  # UNK is 0
@@ -275,6 +291,7 @@ class Tokenizer(Configurable):
                 on="subject_id",
                 validate="m:1",
                 how="left",
+                maintain_order="left",
             ).with_columns(
                 hours_to_end_time=(pl.col("end_time") - pl.col("time"))
                 .dt.total_seconds()
@@ -362,7 +379,8 @@ class Tokenizer(Configurable):
                 if self.bins is not None
                 else None,
                 "is_training": self.is_training,
-                "cfg": OmegaConf.to_container(self.cfg),
+                # resolved, so a reader need not know this version's fallback
+                "cfg": {**OmegaConf.to_container(self.cfg), "fused": self.fused},
                 "created_dttm": self.created_dttm,
                 "cocoa_version": meta.version("cocoa-tokenizer"),
             }
@@ -375,6 +393,9 @@ class Tokenizer(Configurable):
         """
         data = OmegaConf.create(yaml_str)
         cfg = OmegaConf.to_container(data.cfg)
+        # to_yaml records `fused`; a yaml without it predates that, when a config
+        # omitting it tokenized unfused
+        cfg.setdefault("fused", False)
         tkzr = self.__class__(
             self.config_file,
             processed_data_home=self.processed_data_home,

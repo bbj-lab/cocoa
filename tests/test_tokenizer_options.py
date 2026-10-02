@@ -189,6 +189,20 @@ def test_unfused_timelines_longer_than_fused(runner, pipeline):
     assert (both["n_unfused"] > both["n_fused"]).all()
 
 
+def test_config_without_fused_tokenizes_fused(runner, pipeline):
+    """a config omitting `fused` falls back to fusion, as the shipped default sets"""
+    cfg = tok_cfg()
+    del cfg["fused"]
+    dest = runner.seed_collated()
+    runner.tokenize(processed=dest, cfg=cfg)
+    p = Processed(dest, runner.raw)
+    assert p.tokenizer_yaml.cfg.fused is True  # recorded, though the config omits it
+    assert p.vocab == pipeline.vocab
+    assert p.tokens_times.sort("subject_id").equals(
+        pipeline.tokens_times.sort("subject_id")
+    )
+
+
 def test_fused_joins_code_bin_and_text_into_one_token(runner):
     p = fusion_dataset(runner, fused=True)
     words, times, nums = read(p)
@@ -674,13 +688,13 @@ def test_inserted_tokens_leave_the_event_tokens_and_their_times_intact(
 
 
 def test_prefix_missing_from_ordering_sorts_last(runner):
-    # AAA is absent, so it takes priority len(ordering) and follows even EOS
+    # AAA is absent, so it follows every listed prefix but EOS
     assert two_prefix_timeline(runner, ["BOS", "ZZZ", "EOS"]) == [
         "BOS",
         "ZZZ//z",
         "AAA//a",
-        "EOS",
         "AAA//a",
+        "EOS",
     ]
 
 

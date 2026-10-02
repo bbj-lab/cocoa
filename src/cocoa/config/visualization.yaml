@@ -1,0 +1,54 @@
+%YAML 1.2
+---
+# every section is optional, and one left empty means none: a lane needs only
+# its prefixes (name defaults to them, color to `other_color`), and a code
+# without a description just shows none
+
+# whether to show where the winnower split the timeline into past and future: the
+# threshold and future in the plot, the future tokens, and a summary near the
+# bottom of the page of the outcomes it flagged in each
+show_winnowing: !!bool false
+
+# lanes group code prefixes into the rows of a timeline, drawn top to bottom,
+# covering the prefixes of the shipped collation config and of marabou's nicu
+# config; a lane whose prefixes a dataset lacks is simply not drawn. colors are
+# from the university's color system and are embellishment only, since every
+# lane is labeled. grey is kept for the structural lanes: time spacers and
+# clocks, and words out of the vocabulary. maroon is kept for the page's title
+# and footer, so no lane wears it
+lanes: []
+
+# a prefix missing from every lane gets a lane of its own, after the lanes above,
+# colored from this list: the tokenizer's vocabulary prefixes that no lane claims
+# take, from most to least frequent in training, the colors that no lane present
+# in that vocabulary already wears, so a prefix keeps its color across a
+# dataset's subjects. this is every chromatic color of the university's system
+# but maroon; the faintest and darkest come last, for the rarest prefixes. light
+# greystone is left out, as a tick in it barely shows. any prefix past the end,
+# and UNK, is drawn in `other_color`
+palette:
+  - "#59315F" # violet
+  - "#007396" # lake
+  - "#A4343A" # brick
+  - "#CC8A00" # dark goldenrod
+  - "#275D38" # forest
+  - "#3EB1C8" # light lake
+  - "#789D4A" # ivy
+  - "#A9431E" # dark terracotta
+  - "#86647A" # light violet
+  - "#DE7C00" # terracotta
+  - "#9CAF88" # light forest
+  - "#643335" # dark brick
+  - "#B46A55" # light brick
+  - "#284734" # dark forest
+  - "#EAAA00" # goldenrod
+  - "#41273B" # dark violet
+  - "#A9C47F" # light ivy
+  - "#002A3A" # dark lake
+  - "#ECA154" # light terracotta
+  - "#13301C" # dark ivy
+  - "#F3D03E" # light goldenrod
+other_color: "#737373" # dark greystone
+
+# what each prefix denotes; shown on hover alongside the code
+prefixes: []

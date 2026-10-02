@@ -13,6 +13,7 @@
         "numpy",
         "omegaconf",
         "polars",
+        "pyyaml",
         "rich",
         "typer",
     ]
@@ -76,6 +77,7 @@
         where = [ "src" ]
 
     [tool.setuptools.package-data]
+        "cocoa.assets" = [ "*.css", "*.html", "*.js", "*.svg", "fonts/*.otf" ]
         "cocoa.config" = [ "*.yaml" ]
 
 [tool.pytest.ini_options]

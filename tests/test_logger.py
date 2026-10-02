@@ -18,7 +18,7 @@ import synth
 from conftest import default_cfg
 from rich.logging import RichHandler
 
-from cocoa.logger import Logger
+from cocoa.logger import TL_TGT_DISP_LEN, Logger
 from cocoa.winnower import Winnower
 
 # rich renders each record as "LEVEL <emoji> [time] message", continuation
@@ -27,13 +27,14 @@ HEAD = re.compile(r"^(?:DEBUG|INFO|WARNING|ERROR|CRITICAL)\s+\S+\s+\[[^\]]*\]\s*
 EDGE = "│"  # the box-drawing char bounding a polars table row
 CELL = "┆"  # the box-drawing char between cells of a row
 ELLIPSIS = "…"  # polars elides long strings with this
+TBL_ROWS = 100  # the table height logger.py sets at import
 WINNOWER_INPUTS = ("tokens_times.parquet", "subject_splits.parquet", "tokenizer.yaml")
 
 
 @pytest.fixture(autouse=True)
 def _stable_tables():
     """pin the table rendering logger.py sets at import, in case a sibling changed it"""
-    with pl.Config(tbl_rows=100, tbl_width_chars=500):
+    with pl.Config(tbl_rows=TBL_ROWS, tbl_width_chars=500):
         yield
 
 
@@ -95,6 +96,14 @@ def shape(msg: str) -> tuple:
     hit = re.search(r"shape: \(([\d_]+), ([\d_]+)\)", msg)
     assert hit is not None, f"no shape in {msg!r}"
     return tuple(int(g.replace("_", "")) for g in hit.groups())
+
+
+def visible(rows: list) -> list:
+    """what a table of `rows` shows: past TBL_ROWS, a head and tail around a … row"""
+    if len(rows) <= TBL_ROWS:
+        return list(rows)
+    half = TBL_ROWS // 2
+    return [*rows[:half], ELLIPSIS, *rows[-half:]]
 
 
 def displayed_as(shown: str, actual: str) -> bool:
@@ -234,6 +243,29 @@ def test_summarize_meds_like_category_breakdown_matches_prefix_counts(
         )
 
 
+def test_summarize_meds_like_coverage_is_the_share_of_subjects_with_each_prefix(
+    pipeline, logger, capsys
+):
+    out = captured(
+        capsys, logger.summarize_meds_like, pipeline.meds.lazy(), pipeline.splits
+    )
+    seen = collections.defaultdict(set)
+    for sbj, code in pipeline.meds.select("subject_id", "code").iter_rows():
+        seen[code.split("//")[0]].add(sbj)
+    n_subjects = pipeline.meds["subject_id"].n_unique()
+    rows = table(message(out, "coverage by category:"))
+    assert len(rows) == len(seen) > 1
+    assert {r["code"] for r in rows} == set(seen)
+    rates = [float(r["proportion"]) for r in rows]
+    assert rates == sorted(rates, reverse=True)
+    assert rates[0] == 1.0  # every timeline has an admission
+    for r in rows:
+        assert int(r["subjects"]) == len(seen[r["code"]])
+        assert float(r["proportion"]) == pytest.approx(
+            len(seen[r["code"]]) / n_subjects, abs=1e-6
+        )
+
+
 def test_summarize_meds_like_example_rows_come_from_the_frame(pipeline, logger, capsys):
     out = captured(
         capsys, logger.summarize_meds_like, pipeline.meds.lazy(), pipeline.splits
@@ -249,7 +281,7 @@ def test_summarize_meds_like_example_rows_come_from_the_frame(pipeline, logger, 
         assert any(displayed_as(r["code"], c) for c in real[r["subject_id"]])
 
 
-def test_summarize_meds_like_example_subject_is_nearest_to_25_rows(
+def test_summarize_meds_like_example_subject_is_nearest_the_target_length(
     pipeline, logger, capsys
 ):
     out = captured(
@@ -259,10 +291,15 @@ def test_summarize_meds_like_example_subject_is_nearest_to_25_rows(
     sbj = re.match(r"example subject \((\S+)\):", msg).group(1)
     counts = collections.Counter(pipeline.meds["subject_id"].to_list())
     assert sbj in counts
-    assert abs(counts[sbj] - 25) == min(abs(n - 25) for n in counts.values())
+    # a subject shorter than the target is where an unsigned length would wrap
+    assert min(counts.values()) < TL_TGT_DISP_LEN
+    assert abs(counts[sbj] - TL_TGT_DISP_LEN) == min(
+        abs(n - TL_TGT_DISP_LEN) for n in counts.values()
+    )
     assert shape(msg) == (counts[sbj], pipeline.meds.width)
     times = [r["time"] for r in table(msg)]
-    assert len(times) == counts[sbj]
+    assert len(times) == len(visible(range(counts[sbj])))
+    times = [t for t in times if t != ELLIPSIS]
     assert times == sorted(times)  # the example is sorted by time
 
 
@@ -422,15 +459,17 @@ def test_summarize_tokens_times_example_timelines_are_decoded_in_order(
             "subject_id", "tokens"
         ).iter_rows()
     }
-    cutoff = sorted(abs(n - 25) for n in lengths.values())[2]
+    assert min(lengths.values()) < TL_TGT_DISP_LEN
+    cutoff = sorted(abs(n - TL_TGT_DISP_LEN) for n in lengths.values())[2]
     for msg in msgs:
         sbj = re.match(r"example timeline \((\S+)\):", msg).group(1)
-        assert abs(lengths[sbj] - 25) <= cutoff
+        assert abs(lengths[sbj] - TL_TGT_DISP_LEN) <= cutoff
         assert shape(msg) == (lengths[sbj], 4)  # subject_id, tokens, times, word
         words = [r["to_tokenize"] for r in table(msg)]
         expected = pipeline.timeline(sbj)
-        assert len(words) == len(expected) == lengths[sbj]
-        assert all(displayed_as(w, e) for w, e in zip(words, expected))
+        assert len(expected) == lengths[sbj]
+        assert len(words) == len(visible(expected))
+        assert all(displayed_as(w, e) for w, e in zip(words, visible(expected)))
 
 
 def test_summarize_tokens_times_handles_a_single_subject_frame(
@@ -557,7 +596,12 @@ def test_collator_save_all_verbose_reports_the_collated_frame(runner, capsys):
     out = capsys.readouterr().out
     height = pl.read_parquet(dest / "meds.parquet").height
     assert message(out, "total rows:") == f"total rows: {height}"
-    for label in ("unique subjects:", "by category:", "example rows:"):
+    for label in (
+        "unique subjects:",
+        "by category:",
+        "coverage by category:",
+        "example rows:",
+    ):
         assert message(out, label)
     assert len(table(message(out, "subjects by split:"))) == 3
     assert len(table(message(out, "rows by split:"))) == 3

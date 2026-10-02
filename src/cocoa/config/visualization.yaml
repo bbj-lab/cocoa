@@ -51,40 +51,4 @@ palette:
 other_color: "#737373" # dark greystone
 
 # what each prefix denotes; shown on hover alongside the code
-prefixes:
-  BOS: Beginning of sequence
-  EOS: End of sequence
-  UNK: Out of vocabulary
-  TIME: Time spacer
-  CLCK: Clock
-  AGE: Age
-  SEX: Sex
-  RACE: Race
-  ETHN: Ethnicity
-  ADMN: Admission
-  XFR-OUT: Transfer out
-  XFR-IN: Transfer in
-  CODE: Code status
-  DSCG: Discharge
-  LAB-ORD: Lab ordered
-  LAB-RES: Lab result
-  VTL: Vital sign
-  ASMT: Assessment
-  SOFA: SOFA subscore
-  MED-CTS: Continuous medication
-  MED-INT: Intermittent medication
-  RESP: Respiratory support
-  POSN: Position
-  CRRT: Continuous renal replacement therapy
-  LABEL: Outcome label
-  STORK: Birth record
-  ICD: Diagnosis
-  LAB: Lab result
-  VIT: Vital sign
-  BRADEN: Braden scale
-  PAIN: Pain assessment
-  LVL: NICU leveling
-  BLOOD: Blood product
-  IO: Intake and output
-  LDA: Line, drain, or airway
-  OR: Operating room
+prefixes: []

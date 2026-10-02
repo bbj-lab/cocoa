@@ -688,13 +688,13 @@ def test_inserted_tokens_leave_the_event_tokens_and_their_times_intact(
 
 
 def test_prefix_missing_from_ordering_sorts_last(runner):
-    # AAA is absent, so it takes priority len(ordering) and follows even EOS
+    # AAA is absent, so it follows every listed prefix but EOS
     assert two_prefix_timeline(runner, ["BOS", "ZZZ", "EOS"]) == [
         "BOS",
         "ZZZ//z",
         "AAA//a",
-        "EOS",
         "AAA//a",
+        "EOS",
     ]
 
 

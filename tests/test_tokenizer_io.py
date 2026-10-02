@@ -55,10 +55,7 @@ def _seed(src: pathlib.Path, dest: pathlib.Path) -> pathlib.Path:
 
 
 def _by_time(path: pathlib.Path) -> pl.DataFrame:
-    """
-    tokenized timelines as (subject, timestamp) -> sorted tokens; the order of
-    tokens sharing a timestamp is not reproducible run to run, this view is
-    """
+    """tokenized timelines as (subject, timestamp) -> sorted tokens"""
     return (
         pl.read_parquet(path)
         .explode("tokens", "times", empty_as_null=False)
@@ -490,8 +487,8 @@ def test_without_transfer_the_minimal_dataset_learns_its_own_bins(runner):
     ]
 
 
-def test_unseen_prefix_tokenizes_to_unk_and_sorts_after_eos(runner, src_yaml):
-    """a prefix missing from `ordering` sorts last, so it can follow EOS"""
+def test_unseen_prefix_tokenizes_to_unk_and_sorts_before_eos(runner, src_yaml):
+    """a prefix missing from `ordering` sorts last, though still before EOS"""
     dest = _collate_minimal(runner, prefix="ZZZ")
     runner.tokenize(processed=dest, tokenizer_home=src_yaml)
     out = Processed(dest, None)
@@ -499,7 +496,7 @@ def test_unseen_prefix_tokenizes_to_unk_and_sorts_after_eos(runner, src_yaml):
         "ZZZ//heart_rate",
         "ZZZ//quokka_vital",
     ]
-    assert out.timeline("H0") == ["BOS", "UNK", "EOS", "UNK"]
+    assert out.timeline("H0") == ["BOS", "UNK", "UNK", "EOS"]
 
 
 def test_transfer_is_idempotent(runner, second, src_yaml):
@@ -514,27 +511,20 @@ def test_transfer_is_idempotent(runner, second, src_yaml):
     assert (first / "tokenizer.yaml").read_text() == (
         chained / "tokenizer.yaml"
     ).read_text()
-    left = _by_time(first / "tokens_times.parquet")
-    right = _by_time(chained / "tokens_times.parquet")
-    assert left.height > 100
+    left, right = (
+        pl.read_parquet(d / "tokens_times.parquet").sort("subject_id")
+        for d in (first, chained)
+    )
+    assert left["tokens"].list.len().sum() > 100
     assert left.equals(right)
 
 
 def test_loaded_tokenizer_reproduces_the_original_tokens(runner, trained, src_yaml):
-    """
-    same collated data in, same tokens out -- but only up to the order of
-    tokens sharing a timestamp, which cocoa does not reproduce run to run
-    (tokenize_data sorts on ("time", "priority") and leaves ties unordered)
-    """
+    """same collated data in, same tokens out"""
     dest = _seed(trained.processed_data_home, runner.dir())
     runner.tokenize(processed=dest, tokenizer_home=src_yaml)
     src = trained.processed_data_home / "tokens_times.parquet"
     original = pl.read_parquet(src).sort("subject_id")
     again = pl.read_parquet(dest / "tokens_times.parquet").sort("subject_id")
     assert original.height > 0
-    assert original["subject_id"].to_list() == again["subject_id"].to_list()
-    assert original["times"].to_list() == again["times"].to_list()
-    assert [sorted(t) for t in original["tokens"].to_list()] == [
-        sorted(t) for t in again["tokens"].to_list()
-    ]
-    assert _by_time(src).equals(_by_time(dest / "tokens_times.parquet"))
+    assert original.equals(again)

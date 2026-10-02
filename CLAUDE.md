@@ -141,7 +141,8 @@ add/update a pytest case first.
   become `_`, and runs of `_` collapse to one; the prefix is left as written, and
   `text_value` is only lowercased with whitespace→`_`. The `ordering` list in the
   tokenization config breaks ties between events at the same timestamp; a prefix
-  missing from `ordering` sorts last. When adding a new event prefix, add it to
+  missing from `ordering` sorts after the listed ones but still before `EOS`, which
+  `tokenize_data` always puts last. When adding a new event prefix, add it to
   `ordering` too, and give it a name under `prefixes` in `visualization.yaml`;
   otherwise its lane is labeled with the bare prefix.
 - **The visualizer only reads; it is coupled to the stages' formats.** It loads

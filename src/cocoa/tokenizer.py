@@ -261,16 +261,27 @@ class Tokenizer(Configurable):
 
     def tokenize_data(self, pt: pl.LazyFrame) -> pl.LazyFrame:
         """apply lookup table to pretokenized data"""
+        n = len(self.cfg.ordering)
         t = (
             pt.with_columns(code_type=pl.col("code").str.split("//").list[0])
             .join(
                 self.get_priority().lazy(), on="code_type", how="left", validate="m:1"
             )
-            .with_columns(pl.col("priority").fill_null(len(self.cfg.ordering)))
-            .sort("time", "priority", "to_tokenize")  # thanks, @lukesolo-ml!
+            .with_columns(
+                priority=pl.when(pl.col("code") == "EOS")
+                .then(n + 1)  # EOS ends the timeline, after any prefix not in ordering
+                .otherwise(pl.col("priority").fill_null(n))
+            )
+            # thanks, @lukesolo-ml! numeric_value only breaks ties between otherwise
+            # identical tokens, so that numeric_values is the same every run
+            .sort("time", "priority", "to_tokenize", "numeric_value")
             .explode("to_tokenize", empty_as_null=False)
             .join(
-                self.get_lookup(pt).lazy(), on="to_tokenize", validate="m:1", how="left"
+                self.get_lookup(pt).lazy(),
+                on="to_tokenize",
+                validate="m:1",
+                how="left",
+                maintain_order="left",  # the sort above is the timeline order
             )
             .with_columns(pl.col("token").fill_null(pl.lit(0, dtype=pl.UInt32)))
         )  # UNK is 0
@@ -280,6 +291,7 @@ class Tokenizer(Configurable):
                 on="subject_id",
                 validate="m:1",
                 how="left",
+                maintain_order="left",
             ).with_columns(
                 hours_to_end_time=(pl.col("end_time") - pl.col("time"))
                 .dt.total_seconds()

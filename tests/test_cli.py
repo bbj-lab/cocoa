@@ -39,7 +39,6 @@ ARTIFACTS = (
     "held_out_for_inference.parquet",
 )
 TOKENIZED = ARTIFACTS[:4]
-TOKEN_COLS = ("tokens", "tokens_past", "tokens_future")
 
 COCOA_EXE = pathlib.Path(sys.executable).parent / "cocoa"
 
@@ -77,14 +76,6 @@ def bins_of(processed) -> dict:
     """the bin break points recorded in a processed dir's tokenizer.yaml"""
     cfg = OmegaConf.load(pathlib.Path(processed) / "tokenizer.yaml").bins
     return {k: list(v) for k, v in dict(cfg).items()}
-
-
-def multisets(df: pl.DataFrame, col: str) -> dict:
-    """subject_id -> sorted token multiset of a list-of-token column"""
-    return {
-        s: (None if t is None else sorted(t))
-        for s, t in zip(df["subject_id"].to_list(), df[col].to_list())
-    }
 
 
 @pytest.fixture(scope="module")
@@ -271,12 +262,7 @@ def test_pipeline_matches_three_separate_invocations(pipeline_run, stages_run):
         for d in (one, three)
     ]
     assert tt[0].height > 0
-    assert tt[0]["subject_id"].to_list() == tt[1]["subject_id"].to_list()
-    assert tt[0]["times"].to_list() == tt[1]["times"].to_list()
-    # token *order* only agrees up to permutation within a (time, priority) tie:
-    # Tokenizer.tokenize_data sorts unstably, so two runs over identical input
-    # emit different sequences (reported as a bug, not asserted as desirable)
-    assert multisets(tt[0], "tokens") == multisets(tt[1], "tokens")
+    assert_frame_equal(*tt)
 
     for split in ("train", "tuning", "held_out"):
         inf = [
@@ -284,9 +270,7 @@ def test_pipeline_matches_three_separate_invocations(pipeline_run, stages_run):
             for d in (one, three)
         ]
         assert inf[0].height > 0
-        assert_frame_equal(*(i.drop(TOKEN_COLS) for i in inf))
-        for col in TOKEN_COLS:
-            assert multisets(inf[0], col) == multisets(inf[1], col)
+        assert_frame_equal(*inf)
 
 
 @pytest.mark.parametrize("flag", ["-c", "--collation-config"])

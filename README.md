@@ -364,7 +364,8 @@ that specifies:
 - `insert_spacers` — whether to insert time spacing tokens between events.
 - `insert_clocks` — whether to insert clock tokens at specified times.
 - `ordering` — the priority order of code prefixes when sorting events within the
-  same timestamp.
+  same timestamp. A prefix missing from it sorts after the listed ones, though
+  still before `EOS`, which always ends the timeline.
 - `spacers` — mapping of time intervals (e.g., `5m-15m`, `1h-2h`) to their lower
   bounds in minutes, used for time spacing tokens.
 - `clocks` — list of hour strings (e.g., `00`, `04`, ...) at which to insert

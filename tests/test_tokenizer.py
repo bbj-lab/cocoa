@@ -539,11 +539,8 @@ def test_prefix_absent_from_ordering_sorts_last_among_cotemporaneous(runner):
     assert [prefix_of(w) for w in timeline] == ["BOS", "VTL", "ZZZ", "VTL", "EOS"]
 
 
-def test_prefix_absent_from_ordering_sorts_after_eos(runner):
-    """
-    a prefix missing from `ordering` outranks even EOS, so an event at the last
-    timestamp is emitted after the end-of-sequence token -- see bugs
-    """
+def test_prefix_absent_from_ordering_still_sorts_before_eos(runner):
+    """an event at the last timestamp precedes EOS though `ordering` omits its prefix"""
     admit = datetime.datetime(2024, 1, 1, 0, 0)
     processed = runner.minimal(
         hospitalizations=[
@@ -562,9 +559,39 @@ def test_prefix_absent_from_ordering_sorts_after_eos(runner):
     assert processed.timeline("H0") == [
         "BOS",
         "VTL//heart_rate_Q9",
-        "EOS",
         "ZZZ//spo2_Q9",
+        "EOS",
     ]
+
+
+def test_eos_ends_the_timeline_when_ordering_omits_or_misplaces_it(runner):
+    admit = datetime.datetime(2024, 1, 1, 0, 0)
+    vitals = [
+        {"recorded_dttm": admit + datetime.timedelta(hours=1), "vital_value": 60.0},
+        {
+            "recorded_dttm": admit + datetime.timedelta(hours=1),
+            "vital_category": "spo2",
+            "vital_value": 95.0,
+        },
+    ]
+    for ordering in (["BOS", "VTL"], ["BOS", "EOS", "VTL"]):
+        processed = runner.minimal(
+            hospitalizations=[
+                {
+                    "admission_dttm": admit,
+                    "discharge_dttm": admit + datetime.timedelta(1),
+                }
+            ],
+            vitals=vitals,
+            collation=minimal_two_prefix_cfg(),
+            tokenization={**default_cfg("tokenization"), "ordering": ordering},
+        )
+        assert [prefix_of(w) for w in processed.timeline("H0")] == [
+            "BOS",
+            "VTL",
+            "ZZZ",
+            "EOS",
+        ], ordering
 
 
 # --- determinism -----------------------------------------------------------
@@ -581,19 +608,3 @@ def test_retokenizing_learns_the_same_lookup_and_bins(runner, pipeline):
         saved.append(cfg)
     assert len(dict(saved[0]["lookup"])) > 100
     assert saved[0] == saved[1] == saved[2]
-
-
-def test_retokenizing_reproduces_times_and_token_counts(runner, pipeline):
-    """
-    the tokens of a timeline are reproducible as a multiset but *not* as a
-    sequence: cotemporaneous tokens of equal priority get shuffled -- see bugs
-    """
-    d = runner.seed_collated()
-    runner.tokenize(processed=d)
-    again = pl.read_parquet(d / "tokens_times.parquet").sort("subject_id")
-    first = pipeline.tokens_times.sort("subject_id")
-    assert again.height == first.height == 48
-    assert again["subject_id"].to_list() == first["subject_id"].to_list()
-    for a, b in zip(again.iter_rows(named=True), first.iter_rows(named=True)):
-        assert list(a["times"]) == list(b["times"]), a["subject_id"]
-        assert sorted(a["tokens"]) == sorted(b["tokens"]), a["subject_id"]

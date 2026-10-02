@@ -31,6 +31,23 @@ loads nothing from the network. [`save`][cocoa.visualizer.Visualizer.save] write
 it to a file. From the command line, `cocoa visualize` serves the page on
 localhost, or saves it with `--export-html`.
 
+A saved page is all anyone needs to see what you see: send the one file, and they
+can open it in any current web browser, offline, without cocoa or the processed
+data. Times show in the data's time zone, not the viewer's. Email and file
+previews often show html without running its script, so until the timeline is
+drawn the page shows a note asking to open the file in a web browser instead.
+
+[`render_pdf`][cocoa.visualizer.Visualizer.render_pdf] draws the same timeline as
+a static pdf, and [`save_pdf`][cocoa.visualizer.Visualizer.save_pdf] writes it to
+a file (`cocoa visualize --export-pdf`). A pdf opens anywhere, in a phone's
+message preview as readily as in a pdf reader, which makes it the file to send
+when the recipient may not open html in a browser; send both, and they can open
+the html to explore. Its first page shows the subject and every lane of the whole
+timeline; the pages after give every code a row of its own, with binned values at
+the height of their quantile, and then list the events, as many as the page's
+table shows at once. It is set in pdf's standard fonts, which every reader has, so
+it embeds none, and a character those fonts lack prints as `?`.
+
 ## Configuring the page
 
 Every section of `visualization.yaml` is optional, and an empty one means none:

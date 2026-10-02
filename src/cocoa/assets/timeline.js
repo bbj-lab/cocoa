@@ -3,6 +3,8 @@
 (function () {
   const D = JSON.parse(document.getElementById("cocoa-data").textContent);
   const app = document.getElementById("app");
+  // the page's note for viewers that don't run this script, cleared once drawn
+  const fallback = document.getElementById("cocoa-fallback");
   const css = getComputedStyle(document.documentElement);
   const token = (name) => css.getPropertyValue(name).trim();
   const INK = token("--ink");
@@ -53,6 +55,7 @@
   app.append(header());
   if (!nE) {
     app.append(el("p", "empty", "This subject's timeline has no events."));
+    fallback?.remove();
     return;
   }
 
@@ -1494,5 +1497,6 @@
   layout();
   setView(ext0, ext1);
   renderPanel();
+  fallback?.remove();
   document.fonts?.ready.then(() => redraw(ALL));
 })();

@@ -34,7 +34,8 @@ Data flows strictly stage-to-stage through files in `--processed-data-home`.
 Alongside the stages, **Visualize** ([visualizer.py](src/cocoa/visualizer.py))
 renders one subject's timeline from a processed dir as a self-contained,
 interactive html page, either served on localhost or written to a file with
-`--export-html`. It is a `Configurable` too (default
+`--export-html`, and as a static pdf with `--export-pdf` (drawn by
+[pdf.py](src/cocoa/pdf.py)). It is a `Configurable` too (default
 [visualization.yaml](src/cocoa/config/visualization.yaml): lanes, palette, prefix
 names, code descriptions), but it only reads the stages' outputs. Its page
 template, css, js, icon, and fonts live in
@@ -153,7 +154,15 @@ add/update a pytest case first.
   `_Q<n>`, which only works because code values are lowercased. So a change to
   binning or to code normalization needs a matching change in
   `Visualizer.get_values` / `FUSED_BIN`. The page has to stay self-contained:
-  fonts and icon are inlined as base64, with no external URLs.
+  fonts and icon are inlined as base64, with no external URLs, so an exported
+  file can be sent to someone without cocoa or the data. Its static
+  `#cocoa-fallback` note tells a viewer that doesn't run scripts (an email or
+  file preview) to open it in a browser; the script removes the note once the
+  page is drawn. The pdf is drawn in Python from the same payload, by a
+  dependency-free writer in pdf's standard fonts (WinAnsi text, so other
+  characters print as `?`). It ports the page's lanes, axis ticks, and binned
+  rows from `timeline.js`, so a change to the payload or to how the page draws
+  it needs a matching change in `TimelinePdf`.
 - **Times** are normalized on load to the collation config's `default_timezone`
   (`Collator.to_default_tz`; `UTC` if unset) and stay **tz-aware** for the rest
   of the pipeline: tz-aware columns are instant-preserved, tz-naive columns are

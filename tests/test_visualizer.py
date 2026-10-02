@@ -77,6 +77,24 @@ def test_rendered_page_embeds_parseable_payload(pipeline):
     assert payload["tokens"]["id"] == pipeline.tokens_times["tokens"][0].to_list()
 
 
+def test_page_loads_nothing_from_outside_itself(pipeline):
+    sid = pipeline.tokens_times["subject_id"][0]
+    page = Visualizer(processed_data_home=pipeline.path).render(sid)
+    assert "default-src 'none'" in page  # a browser refuses whatever isn't inlined
+    refs = re.findall(r"""(?:\s(?:src|href)=|url\()["']?([^"')\s>]+)""", page)
+    assert refs and all(r.startswith("data:") for r in refs)
+
+
+def test_page_says_how_to_open_it_where_its_script_does_not_run(pipeline):
+    """email and file previews often show html without running its script"""
+    sid = pipeline.tokens_times["subject_id"][0]
+    page = Visualizer(processed_data_home=pipeline.path).render(sid)
+    shown = re.sub(r"<script\b.*?</script>", "", page, flags=re.S)
+    (note,) = re.findall(r'<div id="cocoa-fallback".*?</div>', shown, flags=re.S)
+    assert "web browser" in note and "internet connection" in note
+    assert 'getElementById("cocoa-fallback")' in page  # the script clears it
+
+
 def payload_of(processed, n: int = 0) -> dict:
     """the page payload for the `n`th subject of a processed directory"""
     sid = processed.tokens_times["subject_id"][n]
@@ -372,6 +390,18 @@ def test_winnowing_is_shown_by_config_or_kwarg(pipeline, tmp_path):
         assert w["last_valid"] > 0 and w["outcomes"]
 
 
+def test_save_pdf_writes_the_subject_s_pdf(pipeline, tmp_path):
+    sid = pipeline.tokens_times["subject_id"][0]
+    v = Visualizer(processed_data_home=pipeline.path)
+    out = v.save_pdf(sid, tmp_path / "nested" / "t.pdf")
+    assert out == (tmp_path / "nested" / "t.pdf").resolve()
+    data = out.read_bytes()
+    assert data.startswith(b"%PDF-") and data.endswith(b"%%EOF\n")
+    assert f"Subject {sid}".encode("utf-16-be").hex().upper().encode() in data
+
+
 def test_unknown_subject_raises(pipeline):
     with pytest.raises(SubjectNotFoundError):
         Visualizer(processed_data_home=pipeline.path).render("no-such-subject")
+    with pytest.raises(SubjectNotFoundError):
+        Visualizer(processed_data_home=pipeline.path).render_pdf("no-such-subject")

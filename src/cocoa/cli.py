@@ -309,6 +309,15 @@ def visualize(
             show_default=False,
         ),
     ] = None,
+    export_pdf: Annotated[
+        Optional[pathlib.Path],
+        typer.Option(
+            "--export-pdf",
+            help="Save a static pdf of the timeline to this file instead of "
+            "serving it; with --export-html, save both",
+            show_default=False,
+        ),
+    ] = None,
     host: Annotated[
         str, typer.Option("--host", help="Address to serve the page on")
     ] = "127.0.0.1",
@@ -332,7 +341,8 @@ def visualize(
     Visualize a subject's timeline as an interactive html page.
 
     Serves the page on localhost until interrupted, or saves it as a
-    self-contained html file with --export-html.
+    self-contained html file with --export-html, a static pdf with
+    --export-pdf, or both.
     """
     with console.status("[bold green]Rendering timeline..."):
         t0 = time.perf_counter()
@@ -342,10 +352,13 @@ def visualize(
             # without the flag, the config decides
             show_winnowing=True if show_winnowing else None,
         )
+        out_paths = []
         try:
             if export_html is not None:
-                out_path = visualizer.save(subject_id, export_html)
-            else:
+                out_paths.append(visualizer.save(subject_id, export_html))
+            if export_pdf is not None:
+                out_paths.append(visualizer.save_pdf(subject_id, export_pdf))
+            if not out_paths:
                 page = visualizer.render(subject_id)
         except SubjectNotFoundError as e:
             print(f"[red]✗[/red] {escape(str(e))}")
@@ -362,8 +375,9 @@ def visualize(
                 f"{escape(', '.join(unclaimed))}. To name and color their lanes, "
                 "list them under `lanes` in a config passed with -c."
             )
-    if export_html is not None:
-        print(f"  Output: [cyan]{out_path}[/cyan]")
+    if out_paths:
+        for out_path in out_paths:
+            print(f"  Output: [cyan]{out_path}[/cyan]")
         return
     try:
         server = make_server(page, host=host, port=port)

@@ -648,7 +648,8 @@ with commands:
     Visualize a subject's timeline as an interactive html page.
 
     Serves the page on localhost until interrupted, or saves it as a
-    self-contained html file with --export-html.
+    self-contained html file with --export-html, a static pdf with
+    --export-pdf, or both.
 
     ╭─ Arguments ─────────────────────────────────────────────────────────────╮
     │ *    subject_id      <str>  Subject whose timeline to show [required]   │
@@ -661,6 +662,10 @@ with commands:
     │    --export-html           -e      <path>  Save the timeline to this    │
     │                                            self-contained html file     │
     │                                            instead of serving it        │
+    │    --export-pdf                    <path>  Save a static pdf of the     │
+    │                                            timeline to this file        │
+    │                                            instead of serving it; with  │
+    │                                            --export-html, save both     │
     │    --host                          <str>   Address to serve the page on │
     │                                            [default: 127.0.0.1]         │
     │    --port                          <int>   Port to serve the page on; 0 │

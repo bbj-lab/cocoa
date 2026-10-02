@@ -679,3 +679,9 @@ kbd {
 .empty {
   color: var(--ink-2);
 }
+
+/* shown until the script draws the page, and for good where it can't run */
+.fallback {
+  max-width: 36rem;
+  color: var(--ink-2);
+}

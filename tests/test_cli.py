@@ -167,6 +167,7 @@ HELP_TEXT = {
         (
             "Visualize a subject's timeline",
             "--export-html",
+            "--export-pdf",
             "--visualization-config",
             "--show-winnowing",
         ),
@@ -590,6 +591,28 @@ def test_visualize_exports_a_page_for_a_subject(pipeline, tmp_path):
     assert result.exit_code == 0, result.output
     assert out.exists() and f"Subject {sid}" in out.read_text()
     assert "timeline.html" in squashed(result.output)
+
+
+def test_visualize_exports_a_pdf_for_a_subject(pipeline, tmp_path):
+    sid = pipeline.tokens_times["subject_id"][0]
+    out = tmp_path / "page" / "timeline.pdf"
+    result = run("visualize", sid, "-p", pipeline.path, "--export-pdf", out)
+    assert result.exit_code == 0, result.output
+    assert out.read_bytes().startswith(b"%PDF-")
+    assert "timeline.pdf" in squashed(result.output)
+    assert "Serving" not in result.output
+
+
+def test_visualize_exports_html_and_pdf_together(pipeline, tmp_path):
+    sid = pipeline.tokens_times["subject_id"][0]
+    html, pdf = tmp_path / "t.html", tmp_path / "t.pdf"
+    result = run("visualize", sid, "-p", pipeline.path, "-e", html, "--export-pdf", pdf)
+    assert result.exit_code == 0, result.output
+    assert f"Subject {sid}" in html.read_text()
+    assert pdf.read_bytes().startswith(b"%PDF-")
+    out = squashed(result.output)
+    assert str(html.resolve()).replace(" ", "") in out
+    assert str(pdf.resolve()).replace(" ", "") in out
 
 
 @pytest.mark.parametrize(

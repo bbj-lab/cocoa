@@ -52,12 +52,15 @@ cocoa winnow    --processed-data-home ./processed/ucmc
 ```
 
 To look over a subject's timeline, serve it on localhost (Ctrl-C stops the
-server), or save it as a self-contained html file with `--export-html` / `-e`
-(see the [Visualizer](visualizer.md)):
+server), save it as a self-contained html file with `--export-html` / `-e`, or
+save a static pdf of it with `--export-pdf`; give both to save both (see the
+[Visualizer](visualizer.md)):
 
 ```sh
 cocoa visualize <subject_id> --processed-data-home ./processed/mimic --open
 cocoa visualize <subject_id> --processed-data-home ./processed/mimic -e ./timeline.html
+cocoa visualize <subject_id> --processed-data-home ./processed/mimic \
+                -e ./timeline.html --export-pdf ./timeline.pdf
 ```
 
 ---

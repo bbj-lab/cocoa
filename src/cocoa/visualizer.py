@@ -22,6 +22,7 @@ import polars as pl
 import yaml
 
 from cocoa.configurable import Configurable
+from cocoa.pdf import timeline_pdf
 
 # a quantile bin fused onto a code, e.g. the Q3 of VTL//heart_rate_Q3; codes are
 # lowercased after their prefix, so an uppercase Q can only have come from binning
@@ -423,6 +424,17 @@ class Visualizer(Configurable):
         to_file = pathlib.Path(path).expanduser().resolve()
         to_file.parent.mkdir(parents=True, exist_ok=True)
         to_file.write_text(self.render(subject_id), encoding="utf-8")
+        return to_file
+
+    def render_pdf(self, subject_id: str) -> bytes:
+        """the subject's timeline as a static, self-contained pdf"""
+        return timeline_pdf(self.get_payload(subject_id))
+
+    def save_pdf(self, subject_id: str, path: pathlib.Path | str) -> pathlib.Path:
+        """write the subject's timeline to `path` as a pdf"""
+        to_file = pathlib.Path(path).expanduser().resolve()
+        to_file.parent.mkdir(parents=True, exist_ok=True)
+        to_file.write_bytes(self.render_pdf(subject_id))
         return to_file
 
 

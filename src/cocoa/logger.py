@@ -18,6 +18,8 @@ log = logging.getLogger("rich")
 pl.Config.set_tbl_rows(100)
 pl.Config.set_tbl_width_chars(500)
 
+TL_TGT_DISP_LEN = 1000
+
 
 class Logger(logging.Logger):
     """provides simple logging functionality and summary statistics"""
@@ -76,7 +78,7 @@ class Logger(logging.Logger):
         sbj_id = (
             df.group_by("subject_id")
             .agg(pl.len())
-            .sort((pl.col("len") - pl.lit(25)).abs(), descending=False)
+            .sort((pl.col("len") - pl.lit(TL_TGT_DISP_LEN)).abs(), descending=False)
             .collect()
             .head(1)
             .select("subject_id")
@@ -145,7 +147,7 @@ class Logger(logging.Logger):
 
         sbj_ids = (
             df.with_columns(pl.col("tokens").list.len().alias("len"))
-            .sort((pl.col("len") - pl.lit(25)).abs(), descending=False)
+            .sort((pl.col("len") - pl.lit(TL_TGT_DISP_LEN)).abs(), descending=False)
             .collect()
             .head(3)
             .select("subject_id")

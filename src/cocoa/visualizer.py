@@ -89,6 +89,7 @@ class Visualizer(Configurable):
             k: v for k, v in descriptions.items() if not re.search(r"[*?[]", k)
         }
         self.patterns = [(k, v) for k, v in descriptions.items() if k not in self.exact]
+        self.show_winnowing = bool(self.cfg.get("show_winnowing") or False)
         self.prefix_weight = self.get_prefix_weight()
         self.stray_colors = self.get_stray_colors()
 
@@ -366,7 +367,6 @@ class Visualizer(Configurable):
                 "vocab_size": len(self.decoder),
                 "has_numeric_values": source is not None,
                 "value_source": source,
-                "has_hours_to_end": to_end is not None,
             },
             "subject": {
                 "subject_id": str(subject_id),
@@ -396,7 +396,9 @@ class Visualizer(Configurable):
                     str(t): self.decoder.get(t, "UNK") for t in dict.fromkeys(tokens)
                 },
             },
-            "winnowed": self.get_winnowed(subject_id, split),
+            "winnowed": self.get_winnowed(subject_id, split)
+            if self.show_winnowing
+            else None,
         }
 
     def render(self, subject_id: str) -> str:

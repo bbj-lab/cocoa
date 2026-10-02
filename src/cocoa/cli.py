@@ -319,6 +319,14 @@ def visualize(
         bool,
         typer.Option("--open", help="Open the page in a web browser", is_flag=True),
     ] = False,
+    show_winnowing: Annotated[
+        bool,
+        typer.Option(
+            "--show-winnowing",
+            help="Show the winnowing split into past and future, and its outcome flags",
+            is_flag=True,
+        ),
+    ] = False,
 ):
     """
     Visualize a subject's timeline as an interactive html page.
@@ -331,6 +339,8 @@ def visualize(
         visualizer = Visualizer(
             visualization_cfg=visualization_config,
             processed_data_home=processed_data_home,
+            # without the flag, the config decides
+            show_winnowing=True if show_winnowing else None,
         )
         try:
             if export_html is not None:

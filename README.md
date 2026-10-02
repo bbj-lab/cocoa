@@ -668,6 +668,9 @@ with commands:
     │                                            [default: 8765]              │
     │    --open                                  Open the page in a web       │
     │                                            browser                      │
+    │    --show-winnowing                        Show the winnowing split     │
+    │                                            into past and future, and    │
+    │                                            its outcome flags            │
     │    --help                  -h              Show this message and exit.  │
     ╰─────────────────────────────────────────────────────────────────────────╯
     ```

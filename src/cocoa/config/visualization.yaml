@@ -4,6 +4,11 @@
 # its prefixes (name defaults to them, color to `other_color`), and a code
 # without a description just shows none
 
+# whether to show where the winnower split the timeline into past and future: the
+# threshold and future in the plot, the future tokens, and a summary near the
+# bottom of the page of the outcomes it flagged in each
+show_winnowing: !!bool false
+
 # lanes group code prefixes into the rows of a timeline, drawn top to bottom,
 # covering the prefixes of the shipped collation config and of marabou's nicu
 # config; a lane whose prefixes a dataset lacks is simply not drawn. colors are
@@ -11,55 +16,7 @@
 # lane is labeled. grey is kept for the structural lanes: time spacers and
 # clocks, and words out of the vocabulary. maroon is kept for the page's title
 # and footer, so no lane wears it
-lanes:
-  - name: Time
-    prefixes: [TIME, CLCK]
-    color: "#A6A6A6" # greystone
-  - name: Demographics
-    prefixes: [AGE, SEX, RACE, ETHN]
-    color: "#B46A55" # light brick
-  - name: Birth & delivery
-    prefixes: [STORK]
-    color: "#EAAA00" # goldenrod
-  - name: Encounter
-    prefixes: [ADMN, XFR-OUT, XFR-IN, CODE, DSCG]
-    color: "#59315F" # violet
-  - name: Diagnoses
-    prefixes: [ICD]
-    color: "#789D4A" # ivy
-  - name: Labs
-    prefixes: [LAB-ORD, LAB-RES, LAB]
-    color: "#007396" # lake
-  - name: Vitals
-    prefixes: [VTL, VIT]
-    color: "#A4343A" # brick
-  - name: Assessments
-    prefixes: [ASMT, SOFA, BRADEN, PAIN]
-    color: "#CC8A00" # dark goldenrod
-  - name: NICU leveling
-    prefixes: [LVL]
-    color: "#86647A" # light violet
-  - name: Medications
-    prefixes: [MED-CTS, MED-INT]
-    color: "#275D38" # forest
-  - name: Blood products
-    prefixes: [BLOOD]
-    color: "#A9431E" # dark terracotta
-  - name: Intake & output
-    prefixes: [IO]
-    color: "#9CAF88" # light forest
-  - name: Lines, drains & airways
-    prefixes: [LDA]
-    color: "#DE7C00" # terracotta
-  - name: Organ support
-    prefixes: [RESP, POSN, CRRT]
-    color: "#3EB1C8" # light lake
-  - name: Operating room
-    prefixes: [OR]
-    color: "#284734" # dark forest
-  - name: Outcomes
-    prefixes: [LABEL]
-    color: "#41273B" # dark violet
+lanes: []
 
 # a prefix missing from every lane gets a lane of its own, after the lanes above,
 # colored from this list: the tokenizer's vocabulary prefixes that no lane claims
@@ -131,87 +88,3 @@ prefixes:
   IO: Intake and output
   LDA: Line, drain, or airway
   OR: Operating room
-
-# fuller descriptions of codes, keyed by the code without its bin or text value;
-# keys may be fnmatch patterns, and an exact key wins over a pattern
-descriptions:
-  BOS: Beginning of the timeline
-  EOS: End of the timeline
-  UNK: A word the tokenizer did not learn in training
-  TIME//*: Time elapsed since the previous event
-  CLCK//*: Hour of the day, in local time
-  VTL//heart_rate: Heart rate, beats per minute
-  VTL//sbp: Systolic blood pressure, mmHg
-  VTL//dbp: Diastolic blood pressure, mmHg
-  VTL//map: Mean arterial pressure, mmHg
-  VTL//spo2: Peripheral oxygen saturation, %
-  VTL//respiratory_rate: Respiratory rate, breaths per minute
-  VTL//temp_c: Body temperature, °C
-  VTL//weight_kg: Body weight, kg
-  VTL//height_cm: Height, cm
-  XFR-IN//icu: Transfer into an intensive care unit
-  XFR-OUT//icu: Transfer out of an intensive care unit
-  XFR-IN//ed: Transfer into the emergency department
-  XFR-OUT//ed: Transfer out of the emergency department
-  DSCG//expired: Death during the hospitalization
-  RESP//imv: Invasive mechanical ventilation
-  RESP//nippv: Non-invasive positive pressure ventilation
-  RESP//cpap: Continuous positive airway pressure
-  RESP//high_flow_nc: High-flow nasal cannula
-  RESP//fio2_set: Set fraction of inspired oxygen
-  RESP//peep_set: Set positive end-expiratory pressure, cmH₂O
-  RESP//tidal_volume_set: Set tidal volume, mL
-  CRRT//*: Continuous renal replacement therapy; value is blood flow rate
-  POSN//prone: Prone positioning
-  ASMT//cam_total*: Confusion Assessment Method for delirium
-  ASMT//gcs_total: Glasgow Coma Scale, total
-  ASMT//rass: Richmond Agitation-Sedation Scale
-  SOFA//cv-*: Cardiovascular SOFA subscore
-  SOFA//cns-*: Central nervous system SOFA subscore
-  SOFA//coag-*: Coagulation SOFA subscore
-  SOFA//liver-*: Liver SOFA subscore
-  SOFA//renal-*: Renal SOFA subscore
-  SOFA//resp-*: Respiratory SOFA subscore
-  LABEL//pressor_init: First vasopressor administration
-  LABEL//crrt_init: Start of continuous renal replacement therapy
-  LABEL//hyperk_init: First hyperkalemia, potassium ≥ 6.5 mEq/L
-  LABEL//hypok_init: First hypokalemia, potassium < 2.5 mEq/L
-  LABEL//anemia_init: First anemia, hemoglobin < 7.0 g/dL
-  LABEL//hypona_init: First hyponatremia, sodium < 120 mEq/L
-  LABEL//hyperna_init: First hypernatremia, sodium ≥ 160 mEq/L
-  LABEL//tachy_init: First tachycardia, heart rate ≥ 130 bpm
-  LABEL//hypertension_init: First severe hypertension, SBP ≥ 180 or DBP ≥ 120 mmHg
-  LABEL//hypotension_init: First hypotension, MAP < 65 or SBP < 90 mmHg
-  LABEL//sepsis_onset: First SOFA total of 2 or more
-  # marabou's nicu codes, as its collation config builds them
-  STORK//birth_wt: Birth weight
-  STORK//birth_len: Birth length
-  STORK//head_circum: Head circumference at birth
-  STORK//chest_circ: Chest circumference at birth
-  STORK//gest_age: Gestational age at birth
-  STORK//blood_loss: Blood loss at delivery
-  STORK//induced//*: Labor was induced
-  STORK//deliv_meth//*: Delivery method
-  STORK//epis//*: Episiotomy type
-  STORK//antibio_yn//*: Mother received antibiotics
-  STORK//forceps_del_att//*: Forceps delivery attempted
-  STORK//vacuum_del_att//*: Vacuum delivery attempted
-  STORK//ob_del_pres_*: Fetal presentation at delivery
-  STORK//pres_lr_c//*: Fetal presentation at delivery, left or right
-  STORK//APGAR//*: Apgar score at 1 minute
-  STORK//APGAR_HR//*: Apgar heart rate score at 1 minute
-  STORK//APGAR_GR//*: Apgar grimace score at 1 minute
-  STORK//APGAR_MU//*: Apgar muscle tone score at 1 minute
-  STORK//APGAR_BR//*: Apgar breathing score at 1 minute
-  STORK//APGAR_SK//*: Apgar skin color score at 1 minute
-  ICD//*: ICD-10 diagnosis, dated at discharge or when added to the problem list
-  BRADEN//*: Braden scale item, for pressure-injury risk
-  BLOOD//*: Blood product given; value is the unit's volume
-  IO//IN//*: Intake, by type
-  IO//OUT//*: Output, by type
-  LDA//IN//*: Line, drain, or airway placed
-  LDA//OUT//*: Line, drain, or airway removed
-  OR//*: Primary procedure, on entering the operating room
-  OR//open: Incision
-  OR//close: Closure
-  OR//out: Out of the operating room

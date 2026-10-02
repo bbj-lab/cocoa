@@ -41,6 +41,14 @@
   const nE = E.kind ? E.kind.length : 0;
   const nT = D.tokens.id.length;
   const sub = D.subject;
+  // an event, as counted, is an instant the data has something at; clocks are
+  // synthetic, and the other structural tokens share their neighbors' times
+  const stampIdx = [];
+  for (let e = 0; e < nE; e++)
+    if ((E.kind[e] === "event" || E.kind[e] === "unk") && E.time[e] !== stampIdx.at(-1))
+      stampIdx.push(E.time[e]);
+  const stamps = Float64Array.from(stampIdx, (i) => T[i]);
+  const nStamps = stamps.length;
 
   app.append(header());
   if (!nE) {
@@ -129,7 +137,6 @@
 
   // ---- page scaffold ----------------------------------------------------------
 
-  if (W8) app.append(winnowCard());
   const viz = el("section", "viz");
   const sticky = el("div", "sticky");
   const bar = el("div", "toolbar");
@@ -138,27 +145,33 @@
     else L.forEach((_, j) => S.open.add(j));
     layout();
   });
-  const resetBtn = button("Reset zoom", "Show the whole timeline again (0)", () =>
+  const resetBtn = button("Reset", "Show the whole timeline again (0)", () =>
     setView(ext0, ext1)
   );
   const zoomOutBtn = button("−", "Zoom out (−)", () => zoomAt(W / 2, 2));
   const zoomInBtn = button("+", "Zoom in (+)", () => zoomAt(W / 2, 0.5));
+  const zoom = el("div", "seg");
+  zoom.setAttribute("role", "group");
+  zoom.setAttribute("aria-label", "Zoom");
+  zoom.append(zoomOutBtn, resetBtn, zoomInBtn);
   const search = el("input");
   search.type = "search";
   search.placeholder = "Highlight codes, e.g. VTL//heart_rate";
   search.setAttribute("aria-label", "Highlight codes");
   const searchCount = el("span", "count num");
+  const glass = el("span", "glass");
+  // parsed as html, so the svg needs no namespace url
+  glass.innerHTML =
+    '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.75"/>' +
+    '<path d="m10.5 10.5 3.5 3.5"/></svg>';
+  const slash = el("kbd", null, "/");
+  slash.setAttribute("aria-hidden", "true");
+  const field = el("span", "field");
+  field.append(glass, search, slash);
   const searchBox = el("label", "search");
-  searchBox.append(search, searchCount);
+  searchBox.append(field, searchCount);
   const readout = el("span", "readout num");
-  bar.append(
-    resetBtn,
-    zoomOutBtn,
-    zoomInBtn,
-    expandBtn,
-    searchBox,
-    readout
-  );
+  bar.append(zoom, expandBtn, searchBox, readout);
   const ovRow = el("div", "row ov-row");
   const ovCanvas = el("canvas");
   ovCanvas.setAttribute("aria-hidden", "true");
@@ -177,20 +190,23 @@
   wrap.setAttribute("aria-roledescription", "timeline");
   wrap.setAttribute(
     "aria-label",
-    `Timeline of subject ${sub.subject_id}: ${nE} events in ${L.length} lanes. ` +
+    `Timeline of subject ${sub.subject_id}: ${nStamps} events in ${L.length} lanes. ` +
       "Arrow keys step through events; the table below lists every value."
   );
   const mainCanvas = el("canvas");
   const overCanvas = el("canvas");
   wrap.append(mainCanvas, overCanvas);
   bodyRow.append(labelsEl, wrap);
-  const hint = el(
-    "div",
-    "hint",
-    "Drag to pan · pinch or ⌘/Ctrl-scroll to zoom · double-click to zoom in · " +
-      "Reset zoom or 0 to see it all · click a lane to show each code · " +
-      "click an event, then ← → to step · / to search"
-  );
+  const hint = el("div", "hint");
+  for (const s of [
+    "Drag to pan",
+    "Pinch or [⌘]/[Ctrl]-scroll to zoom",
+    "Double-click to zoom in",
+    "Reset or [0] to see it all",
+    "Click a lane to show each code",
+    "Click an event, then [←] [→] to step",
+  ])
+    hint.append(withKeys(s));
   viz.append(sticky, bodyRow, hint);
   app.append(viz);
 
@@ -217,7 +233,9 @@
   const panelBody = el("div", "panel-body");
   panelBody.setAttribute("role", "tabpanel");
   panel.append(tabs, panelBody);
-  app.append(panel, footer());
+  app.append(panel);
+  if (W8) app.append(winnowCard());
+  app.append(footer());
 
   const tip = el("div", "tip");
   tip.setAttribute("role", "tooltip");
@@ -682,7 +700,7 @@
     redraw(ALL);
     readout.textContent =
       `${fmtWall(S.v0)} – ${fmtWall(S.v1)} · ` +
-      `${fmtInt(ub(ems, S.v1) - lb(ems, S.v0))} of ${fmtInt(nE)} events in view`;
+      `${fmtInt(ub(stamps, S.v1) - lb(stamps, S.v0))} of ${fmtInt(nStamps)} events in view`;
     schedulePanel();
   }
 
@@ -949,7 +967,11 @@
       S.match = new Uint8Array(C.length);
       hay.forEach((h, i) => (S.match[i] = h.includes(q) ? 1 : 0));
       let n = 0;
-      for (let e = 0; e < nE; e++) n += S.match[E.code[e]];
+      for (let e = 0, last = -1; e < nE; e++)
+        if (S.match[E.code[e]] && E.time[e] !== last) {
+          n++;
+          last = E.time[e];
+        }
       searchCount.textContent = `${fmtInt(n)} matching event${n === 1 ? "" : "s"}`;
     }
     redraw(MAIN | OVV);
@@ -1114,8 +1136,8 @@
     const [s, t] = capped(a, b, S.sel, ROW_CAP);
     panelNote.textContent =
       b - a > t - s
-        ? `Showing ${fmtInt(t - s)} of the ${fmtInt(b - a)} events in view; zoom in for the rest`
-        : `${fmtInt(b - a)} of ${fmtInt(nE)} events in view`;
+        ? `Showing ${fmtInt(t - s)} of the ${fmtInt(b - a)} rows in view; zoom in for the rest`
+        : `${fmtInt(b - a)} of ${fmtInt(nE)} rows in view`;
     const cols = [
       ["Token", "r", (e) => fmtInt(E.first_token[e])],
       ["Time", "num", (e) => D.times.label[E.time[e]]],
@@ -1125,9 +1147,6 @@
     ];
     if (D.meta.has_numeric_values) cols.push(["Value", "r num", (e) => fmtNum(E.value[e], 6)]);
     cols.push(["Text", null, (e) => E.text[e] ?? ""]);
-    if (D.meta.has_hours_to_end)
-      cols.push(["Hours to end", "r num", (e) => fmtNum(E.hours_to_end[e])]);
-    if (lv != null) cols.push(["Tense", null, (e) => (E.first_token[e] >= lv ? "future" : "past")]);
     cols.push([
       "Tokens",
       "mono",
@@ -1220,7 +1239,7 @@
     if (start) facts.push(["Start", start.label]);
     if (end) facts.push(["End", end.label]);
     if (start && end) facts.push(["Span", fmtDur(end.ms - start.ms)]);
-    facts.push(["Tokens", fmtInt(nT)], ["Events", fmtInt(nE)], ["Distinct codes", fmtInt(C.length)]);
+    facts.push(["Tokens", fmtInt(nT)], ["Events", fmtInt(nStamps)], ["Distinct codes", fmtInt(C.length)]);
     hd.append(definitions("facts num", facts));
     const fields = sub.fields.filter((f) => f.value != null).map((f) => [f.label, f.value]);
     if (fields.length) hd.append(definitions("fields", fields));
@@ -1229,40 +1248,52 @@
 
   function winnowCard() {
     const card = el("section", "card");
-    card.append(el("h2", null, "Winnowed for inference"));
+    const hd = el("div", "card-hd");
+    hd.append(el("h2", null, "Winnowed for inference"), el("span", "card-note", W8.file));
+    card.append(hd);
     const nPast = Math.min(lv, nT);
-    const parts = [
-      W8.file,
-      ...(nPast > 0 ? [`threshold at ${D.times.label[E.time[TE[nPast - 1]]]}`] : []),
-      `${fmtInt(nPast)} past tokens`,
-      `${fmtInt(nT - nPast)} future tokens` +
-        (W8.n_future != null && W8.n_future !== nT - nPast
-          ? `, ${fmtInt(W8.n_future)} kept within the horizon`
-          : ""),
-    ];
-    card.append(el("p", "num", parts.join(" · ")));
-    if (W8.outcomes.length) {
+    const facts = [];
+    if (nPast > 0) facts.push(["Threshold", D.times.label[E.time[TE[nPast - 1]]]]);
+    facts.push(["Past tokens", fmtInt(nPast)], ["Future tokens", fmtInt(nT - nPast)]);
+    if (W8.n_future != null && W8.n_future !== nT - nPast)
+      facts.push(["Within the horizon", fmtInt(W8.n_future)]);
+    card.append(definitions("facts num", facts));
+    // flagged outcomes get a row each; the rest share one line
+    const flagged = W8.outcomes.filter((o) => o.past || o.future);
+    const absent = W8.outcomes.filter((o) => !o.past && !o.future);
+    if (flagged.length) {
       const list = el("div", "outcomes");
-      for (const o of W8.outcomes) {
+      for (const o of flagged) {
         const item = el("div", "outcome");
-        const b = el("button", "linkish", o.code);
-        b.type = "button";
-        b.title = `Highlight ${o.code} in the timeline`;
-        b.addEventListener("click", () => {
-          search.value = o.code;
-          setQuery(o.code);
-          viz.scrollIntoView({ behavior: "smooth", block: "start" });
-        });
-        item.append(b, flag(o.past, "before"), flag(o.future, "after"));
+        item.append(outcomeBtn(o.code), flag(o.past, "past"), flag(o.future, "future"));
         list.append(item);
       }
       card.append(list);
     }
+    if (absent.length) {
+      const rest = el("p", "absent", "Absent from both: ");
+      absent.forEach((o, i) => rest.append(i ? ", " : "", outcomeBtn(o.code)));
+      card.append(rest);
+    }
     return card;
   }
 
-  function flag(v, when) {
-    return el("span", v ? "f" : "f no", `${v ? "✓" : "–"} ${when}`);
+  function outcomeBtn(code) {
+    const b = el("button", "linkish", code);
+    b.type = "button";
+    b.title = `Highlight ${code} in the timeline`;
+    b.addEventListener("click", () => {
+      search.value = code;
+      setQuery(code);
+      viz.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    return b;
+  }
+
+  function flag(v, tense) {
+    const f = el("span", v ? "flag on" : "flag", tense);
+    f.title = `${v ? "In" : "Not in"} the ${tense} tokens`;
+    return f;
   }
 
   function footer() {
@@ -1299,6 +1330,15 @@
     const n = document.createElement(tag);
     if (cls) n.className = cls;
     if (text != null) n.textContent = text;
+    return n;
+  }
+
+  // text with its [bracketed] parts set as keys
+  function withKeys(s) {
+    const n = el("span");
+    s.split(/\[([^\]]+)\]/).forEach((part, i) => {
+      if (part) n.append(i % 2 ? el("kbd", null, part) : part);
+    });
     return n;
   }
 

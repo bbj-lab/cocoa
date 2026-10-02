@@ -4,6 +4,7 @@
 visualization: rendering one subject's timeline as a self-contained html page
 """
 
+import copy
 import importlib.resources as resources
 import json
 import re
@@ -18,6 +19,37 @@ from cocoa.visualizer import SubjectNotFoundError, Visualizer, to_script_json
 DATA = re.compile(
     r'<script id="cocoa-data" type="application/json">(.*?)</script>', re.S
 )
+
+# the tests' own visualization config, so that none depends on which lanes,
+# names, or descriptions the shipped one carries; its prefixes are ones the
+# synthetic data collates to. one lane wears a palette color, and other_color
+# differs from the visualizer's built-in fallback, so that each can be told apart
+PALETTE = [f"#0000{i:02X}" for i in range(1, 33)]
+VIZ_CFG = {
+    "lanes": [
+        {"name": "Time", "prefixes": ["TIME", "CLCK"], "color": "#A6A6A6"},
+        {
+            "name": "Encounter",
+            "prefixes": ["ADMN", "XFR-OUT", "XFR-IN", "CODE", "DSCG"],
+            "color": PALETTE[0],
+        },
+        {"name": "Vitals", "prefixes": ["VTL", "VIT"], "color": "#A4343A"},
+    ],
+    "palette": PALETTE,
+    "other_color": "#565656",
+    "prefixes": {"VTL": "Vital sign"},
+    "descriptions": {
+        "BOS": "Beginning of the timeline",
+        "EOS": "End of the timeline",
+        "VTL//sbp": "Systolic blood pressure",
+    },
+}
+
+
+def viz_cfg(tmp_path, **overrides):
+    """the tests' visualization config with keys replaced, as a file"""
+    cfg = {**copy.deepcopy(VIZ_CFG), **overrides}
+    return write_cfg(tmp_path / "visualization.yaml", cfg), cfg
 
 
 @pytest.mark.parametrize(
@@ -66,8 +98,11 @@ def test_parse_splits_prefix_bin_and_text(pipeline):
         assert v.parse(word)["code"] == word
 
 
-def test_structural_words_get_their_descriptions(pipeline):
-    codes = {c["code"]: c for c in payload_of(pipeline)["codes"]}
+def test_structural_words_get_their_descriptions(pipeline, tmp_path):
+    path, _ = viz_cfg(tmp_path)
+    v = Visualizer(path, processed_data_home=pipeline.path)
+    sid = pipeline.tokens_times["subject_id"][0]
+    codes = {c["code"]: c for c in v.get_payload(sid)["codes"]}
     assert {"BOS", "EOS"} <= codes.keys()
     assert codes["BOS"]["description"] == "Beginning of the timeline"
     assert codes["EOS"]["description"] == "End of the timeline"
@@ -157,13 +192,6 @@ def test_values_from_meds_match_values_in_tokens(runner, pipeline):
     assert n > 0
 
 
-def viz_cfg(tmp_path, **overrides):
-    """the shipped visualization config with keys replaced, as a file"""
-    path = resources.files("cocoa.config") / "visualization.yaml"
-    cfg = {**OmegaConf.to_container(OmegaConf.load(path)), **overrides}
-    return write_cfg(tmp_path / "visualization.yaml", cfg), cfg
-
-
 def ranked_prefixes(pipeline, lane_order, claimed=("TIME", "CLCK")) -> list:
     """unclaimed vocabulary prefixes, most frequent in training first"""
     weight = {}
@@ -174,55 +202,54 @@ def ranked_prefixes(pipeline, lane_order, claimed=("TIME", "CLCK")) -> list:
     return sorted(weight, key=lambda p: (-weight[p], lane_order(p)))
 
 
-# the prefixes marabou's nicu collation config writes
-MARABOU_PREFIXES = (
-    "SEX", "RACE", "ETHN", "ADMN", "DSCG", "STORK", "BRADEN", "PAIN",
-    "LVL", "BLOOD", "LDA", "OR", "VIT", "LAB", "ICD", "IO",
-)  # fmt: skip
-
-
-def test_shipped_lanes_claim_every_known_prefix(tmp_path):
-    _, shipped = viz_cfg(tmp_path)
-    claimed = [p for lane in shipped["lanes"] for p in lane["prefixes"]]
-    assert len(claimed) == len(set(claimed))  # a prefix sits in one lane
-    entries = default_cfg("collation")["entries"]
-    assert {e["prefix"].partition("//")[0] for e in entries} <= set(claimed)
-    assert set(MARABOU_PREFIXES) <= set(claimed)
-    assert set(claimed) <= set(shipped["prefixes"])  # and each has a name
-
-
 @pytest.mark.parametrize(
     "word, description",
     [
-        ("STORK//APGAR//8", "Apgar score at 1 minute"),
-        ("STORK//APGAR_HR//2", "Apgar heart rate score at 1 minute"),
-        ("STORK//birth_wt_Q5", "Birth weight"),
-        ("OR//open", "Incision"),
-        ("OR//laparotomy", "Primary procedure, on entering the operating room"),
+        ("LAB//sodium_Q5", "Sodium"),  # a fused bin is not part of the code
+        ("OR//open", "Incision"),  # an exact key wins over an earlier pattern
+        ("OR//laparotomy", "Primary procedure"),
+        ("APGAR//total//8", "Apgar score"),  # a pattern spans the separator
+        ("APGAR//total_hr//2", "Apgar heart rate score"),
         ("LDA//OUT//picc", "Line, drain, or airway removed"),
+        ("LDA//IN//picc", None),
     ],
 )
-def test_marabou_codes_get_descriptions(pipeline, word, description):
-    v = Visualizer(processed_data_home=pipeline.path)
+def test_descriptions_match_exact_keys_before_patterns(
+    pipeline, tmp_path, word, description
+):
+    descriptions = {
+        "OR//*": "Primary procedure",
+        "OR//open": "Incision",
+        "LAB//sodium": "Sodium",
+        "APGAR//total//*": "Apgar score",
+        "APGAR//total_hr//*": "Apgar heart rate score",
+        "LDA//OUT//*": "Line, drain, or airway removed",
+    }
+    path, _ = viz_cfg(tmp_path, descriptions=descriptions)
+    v = Visualizer(path, processed_data_home=pipeline.path)
+    assert v.fused
     assert v.describe(v.parse(word)["code"]) == description
 
 
-def test_the_shipped_palette_is_every_chromatic_uchicago_color_but_maroon(tmp_path):
-    _, shipped = viz_cfg(tmp_path)
+def test_the_shipped_palette_is_every_chromatic_uchicago_color_but_maroon():
+    path = resources.files("cocoa.config") / "visualization.yaml"
+    shipped = OmegaConf.to_container(OmegaConf.load(path))
     palette = [c.upper() for c in shipped["palette"]]
     assert len(palette) == len(set(palette)) == 21
     assert not {"#D9D9D9", "#A6A6A6", "#737373"} & set(palette)  # the greys
-    lanes = {la["color"].upper() for la in shipped["lanes"]}
+    lanes = {
+        la["color"].upper() for la in shipped.get("lanes") or () if la.get("color")
+    }
     assert "#800000" not in set(palette) | lanes  # maroon is kept for the page
 
 
 def test_unclaimed_prefixes_take_free_palette_colors(pipeline, tmp_path):
-    _, shipped = viz_cfg(tmp_path)
-    kept = [lane for lane in shipped["lanes"] if lane["name"] in ("Time", "Encounter")]
+    kept = [lane for lane in VIZ_CFG["lanes"] if lane["name"] in ("Time", "Encounter")]
     path, cfg = viz_cfg(tmp_path, lanes=kept)
     v = Visualizer(path, processed_data_home=pipeline.path)
-    violet = next(lane["color"] for lane in kept if lane["name"] == "Encounter")
-    free = [c for c in cfg["palette"] if c != violet]  # Encounter is in the vocabulary
+    worn = next(lane["color"] for lane in kept if lane["name"] == "Encounter")
+    assert worn in cfg["palette"]
+    free = [c for c in cfg["palette"] if c != worn]  # Encounter is in the vocabulary
     claimed = [p for lane in kept for p in lane["prefixes"]]
     ranked = ranked_prefixes(pipeline, v.lane_order, claimed)
     assert len(ranked) < len(free)  # the whole system has room for every one
@@ -240,9 +267,8 @@ def test_unclaimed_prefixes_take_free_palette_colors(pipeline, tmp_path):
 
 
 def test_a_short_palette_colors_the_most_frequent_prefixes(pipeline, tmp_path):
-    _, shipped = viz_cfg(tmp_path)
-    time = [lane for lane in shipped["lanes"] if lane["name"] == "Time"]
-    palette = shipped["palette"][:3]
+    time = [lane for lane in VIZ_CFG["lanes"] if lane["name"] == "Time"]
+    palette = PALETTE[:3]
     path, _ = viz_cfg(tmp_path, lanes=time, palette=palette)
     v = Visualizer(path, processed_data_home=pipeline.path)
     top = ranked_prefixes(pipeline, v.lane_order)[:3]
@@ -250,15 +276,14 @@ def test_a_short_palette_colors_the_most_frequent_prefixes(pipeline, tmp_path):
 
 
 def test_without_a_palette_unclaimed_prefixes_are_other_color(pipeline, tmp_path):
-    _, shipped = viz_cfg(tmp_path)
-    kept = [lane for lane in shipped["lanes"] if lane["name"] != "Vitals"]
-    cfg = {k: v for k, v in shipped.items() if k != "palette"}
+    kept = [lane for lane in VIZ_CFG["lanes"] if lane["name"] != "Vitals"]
+    cfg = {k: v for k, v in VIZ_CFG.items() if k != "palette"}
     path = write_cfg(tmp_path / "no_palette.yaml", {**cfg, "lanes": kept})
     v = Visualizer(path, processed_data_home=pipeline.path)
     assert v.stray_colors == {}
     sid = pipeline.tokens_times["subject_id"][0]
     vitals = [la for la in v.get_payload(sid)["lanes"] if la["prefixes"] == ["VTL"]]
-    assert [la["color"] for la in vitals] == [shipped["other_color"]]
+    assert [la["color"] for la in vitals] == [VIZ_CFG["other_color"]]
 
 
 def drop(key):
@@ -287,16 +312,15 @@ def vitals(edit):
         (empty("prefixes"), "Vitals", "#A4343A"),
         (empty("palette"), "Vitals", "#A4343A"),
         (empty("other_color"), "Vitals", "#A4343A"),
-        (vitals(lambda la: la.pop("color")), "Vitals", "#737373"),
+        (vitals(lambda la: la.pop("color")), "Vitals", "#565656"),  # other_color
         (vitals(lambda la: la.pop("name")), "VTL, VIT", "#A4343A"),
         (vitals(lambda la: la.pop("prefixes")), "Vital sign", None),  # a stray now
         (empty("lanes"), "Vital sign", None),
-        (lambda c: c.clear(), "VTL", "#737373"),
+        (lambda c: c.clear(), "VTL", "#737373"),  # the built-in other_color
     ],
 )
 def test_every_config_section_is_optional(pipeline, tmp_path, edit, name, color):
-    path = resources.files("cocoa.config") / "visualization.yaml"
-    cfg = OmegaConf.to_container(OmegaConf.load(path))
+    cfg = copy.deepcopy(VIZ_CFG)
     edit(cfg)
     v = Visualizer(
         write_cfg(tmp_path / "v.yaml", cfg), processed_data_home=pipeline.path
@@ -313,6 +337,39 @@ def test_every_config_section_is_optional(pipeline, tmp_path, edit, name, color)
         assert all(c["description"] is None for c in codes.values())
     elif "VTL//sbp" in codes and cfg["descriptions"].get("VTL//sbp", "") is None:
         assert codes["VTL//sbp"]["description"] is None
+
+
+def test_winnowing_is_not_shown_by_default(pipeline):
+    sid = pipeline.inference()["subject_id"][0]
+    v = Visualizer(processed_data_home=pipeline.path)
+    assert v.show_winnowing is False
+    assert v.get_payload(sid)["winnowed"] is None  # no split, threshold, or flags
+
+
+@pytest.mark.parametrize("edit", [drop("show_winnowing"), empty("show_winnowing")])
+def test_a_config_without_show_winnowing_leaves_it_off(pipeline, tmp_path, edit):
+    path = resources.files("cocoa.config") / "visualization.yaml"
+    cfg = OmegaConf.to_container(OmegaConf.load(path))
+    edit(cfg)
+    v = Visualizer(
+        write_cfg(tmp_path / "v.yaml", cfg), processed_data_home=pipeline.path
+    )
+    sid = pipeline.inference()["subject_id"][0]
+    assert v.get_payload(sid)["winnowed"] is None
+
+
+def test_winnowing_is_shown_by_config_or_kwarg(pipeline, tmp_path):
+    sid = pipeline.inference()["subject_id"][0]
+    path = resources.files("cocoa.config") / "visualization.yaml"
+    cfg = OmegaConf.to_container(OmegaConf.load(path))
+    cfg["show_winnowing"] = True
+    by_cfg = Visualizer(
+        write_cfg(tmp_path / "v.yaml", cfg), processed_data_home=pipeline.path
+    )
+    by_kwarg = Visualizer(processed_data_home=pipeline.path, show_winnowing=True)
+    for v in (by_cfg, by_kwarg):
+        w = v.get_payload(sid)["winnowed"]
+        assert w["last_valid"] > 0 and w["outcomes"]
 
 
 def test_unknown_subject_raises(pipeline):

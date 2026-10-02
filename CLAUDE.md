@@ -78,7 +78,10 @@ files mostly mirror `src/cocoa` modules, except tokenizer coverage is split into
 core behavior (`test_tokenizer.py`), serialization/transfer
 (`test_tokenizer_io.py`), and configurable options (`test_tokenizer_options.py`),
 plus cross-cutting suites for subject splits, timezones, and full pipeline
-integration.
+integration. Beyond the fixtures running the shipped defaults, no test should
+depend on a shipped config carrying dataset-specific items (a lane, a prefix
+name, a code description); a test that needs them writes its own config, as
+`VIZ_CFG` in [tests/test_visualizer.py](tests/test_visualizer.py) does.
 
 Most modules also keep an `if __name__ == "__main__"` block that self-tests
 against a local processed dataset (e.g. `./processed/mimic/`); run a module
@@ -138,9 +141,8 @@ add/update a pytest case first.
   `text_value` is only lowercased with whitespace→`_`. The `ordering` list in the
   tokenization config breaks ties between events at the same timestamp; a prefix
   missing from `ordering` sorts last. When adding a new event prefix, add it to
-  `ordering` too, and give it a lane and a name in `visualization.yaml`.
-  Otherwise it gets its own unnamed lane, and for a prefix in the shipped
-  collation config `test_shipped_lanes_claim_every_known_prefix` fails.
+  `ordering` too, and give it a name under `prefixes` in `visualization.yaml`;
+  otherwise its lane is labeled with the bare prefix.
 - **The visualizer only reads; it is coupled to the stages' formats.** It loads
   `tokenizer.yaml` with PyYAML's C loader rather than OmegaConf, for speed on
   large vocabularies. It reads `tokens_times.parquet`, plus
@@ -181,10 +183,16 @@ add/update a pytest case first.
 - Files open with `#!/usr/bin/env python3` and a short lowercase module
   docstring; method docstrings are terse and lowercase. Match the surrounding
   terseness.
-- **Config changes stay backward compatible** as far as possible. An older config
-  that lacks a newly added key must keep working exactly as it did before the key
-  existed. A `-c` config replaces the shipped default instead of merging with it,
-  so an old config never picks up the new key from there. That means:
+- **Config changes stay backward compatible with what's on PyPI** as far as
+  possible. A config that worked with a released version, and lacks a key added
+  since, must keep working exactly as it did under that release. A `-c` config
+  replaces the shipped default instead of merging with it, so an old config never
+  picks up the new key from there. Anything not yet released (a key, a fallback,
+  a file format that so far exists only on a branch or in an unpublished tag) can
+  change without concern, and there's no need to stay compatible with it. To
+  check, `pip index versions cocoa-tokenizer` lists the releases, and
+  `git grep <key> v<version> -- src/` shows whether one had a key. For anything
+  released, that means:
     - read a new key with `cfg.get(key, fallback)`, where the fallback reproduces
       the previous behavior, whatever the shipped default sets. Never use
       `cfg.key` / `cfg["key"]`, which raise on a missing key.
@@ -192,13 +200,14 @@ add/update a pytest case first.
       `include_hours_to_end_time` all follow this pattern.
     - don't rename a key, repurpose it, or change what an existing value means.
       If a key has to change, keep accepting the old spelling.
-    - the `cfg` block saved in `tokenizer.yaml` is a config too, and old copies
-      of it outlive the code that wrote them. Code that reads one (`from_yaml`,
-      the winnower, the visualizer) must fall back to what the tokenizer did when
-      it wrote that file, which need not be today's fallback. For example,
-      `to_yaml` now records the resolved `fused`, so a yaml without it was
-      tokenized unfused, even though a config without `fused` now fuses. When a
-      new key changes tokenization, record its resolved value the same way.
+    - the `cfg` block saved in `tokenizer.yaml` is a config too, and copies
+      written by released versions outlive the code that wrote them. Code that
+      reads one (`from_yaml`, the winnower, the visualizer) must fall back to
+      what the tokenizer did when it wrote that file, which need not be today's
+      fallback. For example, `to_yaml` now records the resolved `fused`, so a
+      yaml without it was tokenized unfused, even though a config without `fused`
+      now fuses. When a new key changes tokenization, record its resolved value
+      the same way.
     - add a pytest case showing that a config without the new key produces the
       old output.
 - New pipeline stages subclass `Configurable`, set `default_file`, ship a default
@@ -212,8 +221,9 @@ add/update a pytest case first.
 - New CLI commands go in [cli.py](src/cocoa/cli.py) as typer commands using
   `rich` for output, mirroring the existing timing/output-path print pattern.
 - **Versioning is CalVer** `YY.M.patch` (e.g. `26.6.1`); releases are signed git
-  tags `vYY.M.patch`. `__version__` comes from installed package metadata, not a
-  literal.
+  tags `vYY.M.patch`, published to PyPI. Not every tag was published: 26.6.0 was
+  the first PyPI release, and `v26.4.0` and `v26.6.3` never shipped.
+  `__version__` comes from installed package metadata, not a literal.
 - Keep [README.md](README.md), the [recipes/](recipes/) (mirrored into
   [docs/recipes/](docs/recipes/)), the per-module pages in
   [docs/api/](docs/api/), and the shipped default configs in sync when behavior

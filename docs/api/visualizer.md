@@ -19,9 +19,9 @@ From the processed-data directory:
   times, and any pass-through columns, shown as subject details.
 - `meds.parquet` (if present) — numeric values, matched back to their tokens when
   the timeline was tokenized without `include_numeric_values`.
-- `{split}_for_inference.parquet` (if present) — where the
-  [Winnower](winnower.md) split the timeline into past and future, and its
-  outcome flags.
+- `{split}_for_inference.parquet` (if present, and only when `show_winnowing` is
+  on) — where the [Winnower](winnower.md) split the timeline into past and
+  future, and its outcome flags.
 
 ## What it produces
 
@@ -35,6 +35,11 @@ localhost, or saves it with `--export-html`.
 
 Every section of `visualization.yaml` is optional, and an empty one means none:
 
+- `show_winnowing` — whether to show where the winnower split the timeline: the
+  threshold and the shaded future in the plot, the future tokens, and a summary
+  near the bottom of the page of which outcomes it flagged in the past and the
+  future. Off by default, so the page shows none of it;
+  `cocoa visualize --show-winnowing` turns it on without a config of your own.
 - `lanes` — the rows of the timeline, top to bottom, each grouping one or more
   code prefixes under a name and a color.
 - `palette` — colors for prefixes that no lane claims. Each such prefix gets a

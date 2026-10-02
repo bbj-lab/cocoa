@@ -111,21 +111,34 @@ dd {
   border: 1px solid var(--hair);
   border-radius: 8px;
   padding: 0.9rem 1rem;
-  margin-bottom: 1.25rem;
+  margin-top: 1.25rem;
 }
-.card p {
-  margin: 0 0 0.6rem;
+.card-hd {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+}
+.card-hd h2 {
+  margin: 0;
+}
+.card-note {
+  margin-left: auto;
   color: var(--ink-2);
+  font-size: 0.78rem;
+}
+.card .facts {
+  margin-top: 0.6rem;
 }
 .outcomes {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(22rem, 1fr));
-  gap: 0.1rem 2rem;
+  gap: 0.35rem 2rem;
+  margin-top: 0.9rem;
 }
 .outcome {
   display: flex;
-  align-items: baseline;
-  gap: 0.9rem;
+  align-items: center;
+  gap: 0.4rem;
 }
 .outcome .linkish {
   flex: 1;
@@ -135,11 +148,25 @@ dd {
   white-space: nowrap;
   text-align: left;
 }
-.f {
-  width: 4.6rem;
+.flag {
   flex: none;
+  border: 1px solid var(--grid);
+  border-radius: 999px;
+  padding: 0 0.5rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.35rem;
 }
-.f.no {
+.flag.on {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--surface);
+}
+.absent {
+  margin: 0.9rem 0 0;
+  color: var(--ink-2);
+}
+.absent .linkish {
   color: var(--ink-2);
 }
 .linkish {
@@ -194,19 +221,72 @@ dd {
   border-color: var(--grid);
   cursor: default;
 }
+/* zoom out, reset, and zoom in, as one control */
+.seg {
+  display: inline-flex;
+  border: 1px solid var(--axis);
+  border-radius: 6px;
+}
+.seg .btn,
+.seg .btn:disabled {
+  border: 0;
+  border-radius: 0;
+}
+.seg .btn + .btn {
+  border-left: 1px solid var(--grid);
+}
+.seg .btn:first-child {
+  border-radius: 5px 0 0 5px;
+}
+.seg .btn:last-child {
+  border-radius: 0 5px 5px 0;
+}
+.seg .btn:focus-visible {
+  position: relative;
+  z-index: 1;
+}
 .search {
   display: flex;
   align-items: center;
   gap: 0.5rem;
   margin-left: 0.5rem;
 }
+.field {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.glass {
+  position: absolute;
+  left: 0.55rem;
+  display: flex;
+  color: var(--ink-2);
+  pointer-events: none;
+}
+.glass svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
 .search input {
   font: inherit;
-  width: 20rem;
-  padding: 0.25rem 0.55rem;
+  width: 22.5rem;
+  padding: 0.25rem 1.9rem;
   border: 1px solid var(--axis);
   border-radius: 6px;
   background: var(--surface);
+}
+.field kbd {
+  position: absolute;
+  right: 0.5rem;
+  pointer-events: none;
+}
+.field:focus-within kbd,
+.search input:not(:placeholder-shown) + kbd {
+  display: none;
 }
 .search .count {
   color: var(--ink-2);
@@ -266,10 +346,28 @@ dd {
   pointer-events: none;
 }
 .hint {
-  padding: 0.45rem 0.75rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 1.4rem;
+  padding: 0.5rem 0.75rem;
   color: var(--ink-2);
   font-size: 0.78rem;
   border-top: 1px solid var(--grid);
+}
+kbd {
+  display: inline-block;
+  min-width: 1.5em;
+  margin: 0 0.1em;
+  padding: 0 0.3em;
+  border: 1px solid var(--grid);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--ink-2);
+  font-family: inherit;
+  font-size: 0.7rem;
+  line-height: 1.45;
+  text-align: center;
 }
 
 /* lane labels */

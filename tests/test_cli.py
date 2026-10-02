@@ -4,7 +4,6 @@
 
 import collections
 import importlib.metadata
-import importlib.resources as resources
 import pathlib
 import re
 import shutil
@@ -165,7 +164,12 @@ HELP_TEXT = {
         ("--processed-data-home", "--raw-data-home"),
     ),
     "visualize": (
-        ("Visualize a subject's timeline", "--export-html", "--visualization-config"),
+        (
+            "Visualize a subject's timeline",
+            "--export-html",
+            "--visualization-config",
+            "--show-winnowing",
+        ),
         ("--raw-data-home", "--tokenizer-home"),
     ),
 }
@@ -586,22 +590,45 @@ def test_visualize_exports_a_page_for_a_subject(pipeline, tmp_path):
     assert result.exit_code == 0, result.output
     assert out.exists() and f"Subject {sid}" in out.read_text()
     assert "timeline.html" in squashed(result.output)
-    assert "without a configured lane" not in result.output  # shipped lanes claim all
 
 
-def test_visualize_names_the_prefixes_no_lane_claims(pipeline, tmp_path):
-    cfg = OmegaConf.load(resources.files("cocoa.config") / "visualization.yaml")
-    cfg.lanes = [lane for lane in cfg.lanes if lane.name != "Vitals"]
-    path = tmp_path / "visualization.yaml"
-    path.write_text(OmegaConf.to_yaml(cfg))
+@pytest.mark.parametrize(
+    "unclaimed, said",
+    [
+        ((), None),
+        (("VTL",), "1 code prefix without a configured lane: VTL."),
+        (("SEX", "VTL"), "2 code prefixes without a configured lane: SEX, VTL."),
+    ],
+)
+def test_visualize_names_the_prefixes_no_lane_claims(
+    pipeline, tmp_path, unclaimed, said
+):
+    vocab = {w.partition("//")[0] for w in pipeline.vocab if "//" in w}
+    assert set(unclaimed) < vocab
+    lanes = [{"prefixes": sorted(vocab - set(unclaimed))}]
+    path = write_cfg(tmp_path / "visualization.yaml", {"lanes": lanes})
     sid = pipeline.tokens_times["subject_id"][0]
     result = run(
         "visualize", sid, "-p", pipeline.path, "-c", path, "-e", tmp_path / "t.html"
     )
     assert result.exit_code == 0, result.output
-    assert "1 code prefix without a configured lane: VTL." in " ".join(
-        result.output.split()
-    )
+    output = " ".join(result.output.split())
+    if said is None:
+        assert "without a configured lane" not in output
+    else:
+        assert said in output
+
+
+def test_visualize_shows_winnowing_only_when_asked(pipeline, tmp_path):
+    sid = pipeline.inference()["subject_id"][0]
+    for args, winnowed in (
+        ((), '"winnowed":null'),
+        (("--show-winnowing",), '"winnowed":{'),
+    ):
+        out = tmp_path / f"{bool(args)}.html"
+        result = run("visualize", sid, "-p", pipeline.path, "-e", out, *args)
+        assert result.exit_code == 0, result.output
+        assert winnowed in out.read_text()
 
 
 def test_visualize_an_unknown_subject_exits_nonzero(pipeline, tmp_path):

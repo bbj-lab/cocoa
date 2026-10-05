@@ -199,6 +199,13 @@ def test_from_yaml_prefers_saved_cfg_over_the_loading_config(runner, src_yaml):
     assert loaded.bins.width == 10  # code + 9 breaks
 
 
+def test_from_yaml_prefers_saved_cfg_over_command_line_overrides(runner, src_yaml):
+    """overrides edit the loading config, so the saved config wins over them too"""
+    loader = Tokenizer(processed_data_home=runner.dir(), overrides=["n_bins=4"])
+    assert loader.cfg.n_bins == 4
+    assert loader.load(src_yaml).cfg.n_bins == 10
+
+
 def test_saved_n_bins_drives_bins_reconstruction(runner):
     dest = runner.seed_collated()
     cfg = {**default_cfg("tokenization"), "n_bins": 4}

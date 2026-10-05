@@ -22,6 +22,11 @@ summary statistics). Each also takes an optional `-c` config file that overrides
 the packaged default for that stage. `cocoa visualize` takes `-p` and `-c` too,
 but has no `--verbose`.
 
+To change individual config keys for one run, list them after the command's
+options, as in `cocoa tokenize -p ./processed/mimic n_bins=5`; for
+`cocoa pipeline`, start each key with its stage, as in `tokenization.n_bins=5`.
+See [Overriding config keys](../index.md#overriding-config-keys) for the syntax.
+
 Run any command with `-h` / `--help` to see its full set of options:
 
 ```sh

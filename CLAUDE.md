@@ -51,6 +51,8 @@ pip install -e '.[all]'          # all = dev + docs + test extras
 # Run the pipeline (or a single stage: collate | tokenize | winnow)
 cocoa pipeline -r <raw-data-home> -p <processed-data-home> [--verbose]
 cocoa <stage> -c <config.yaml> ... # -c overrides the shipped default for that stage
+cocoa <stage> ... n_bins=5 '~key'  # trailing overrides edit single keys of it
+cocoa pipeline ... tokenization.n_bins=5  # in pipeline, each key names its stage
 cocoa <stage> -h                   # help; --verbose prints summary stats
 cocoa combine-datasets <dir> <dir> ... -o <output-dir>
 
@@ -95,11 +97,22 @@ add/update a pytest case first.
 
 - **Config resolution** ([configurable.py](src/cocoa/configurable.py)): every
   stage loads a user `-c` config if given, otherwise the shipped default YAML,
-  and then merges non-`None` kwargs on top. The two YAMLs are never merged, so a
-  user config that omits a key does **not** inherit that key from the default
-  (this is why the backward-compatibility rule under Conventions matters). Read
+  edits it with the command line's trailing `overrides`, and then merges
+  non-`None` kwargs on top. The two YAMLs are never merged, so a user config that
+  omits a key does **not** inherit that key from the default (this is why the
+  backward-compatibility rule under Conventions matters). Read
   `Configurable.__init__` before changing merge logic. Config access is
   OmegaConf; use `.get(k, default)` for optional keys.
+- **Overrides** (`apply_overrides`, the same function as cotorra's): `key=value`
+  sets a key, adding it if absent, so a typo adds a stray key rather than
+  failing; `~key` deletes one; a Hydra-style leading `+`/`++` is ignored.
+  Deletion matters where a key's presence is what counts (the winnower's
+  `threshold.duration_s` vs. `threshold.first_occurrence`), since `key=null`
+  leaves it present. `cocoa pipeline` routes each override to the stage its first
+  key names (`collation.`, `tokenization.`, `winnowing.`) and checks all three
+  through `Configurable.load_cfg` before collating. Under `--tokenizer-home`,
+  `Tokenizer.from_yaml` passes the saved config as kwargs, so it wins over
+  overrides just as it does over `-c`.
 - **Polars everywhere**, lazy by default. Frames are built as `LazyFrame` and
   written with `sink_parquet(..., engine="streaming")` to stay memory-bounded;
   `--verbose` forces collection for stats and can OOM on large data.
@@ -141,9 +154,9 @@ add/update a pytest case first.
   become `_`, and runs of `_` collapse to one; the prefix is left as written, and
   `text_value` is only lowercased with whitespace→`_`. The `ordering` list in the
   tokenization config breaks ties between events at the same timestamp; a prefix
-  missing from `ordering` sorts after the listed ones but still before `EOS`, which
-  `tokenize_data` always puts last. When adding a new event prefix, add it to
-  `ordering` too, and give it a name under `prefixes` in `visualization.yaml`;
+  missing from `ordering` sorts after the listed ones but still before `EOS`,
+  which `tokenize_data` always puts last. When adding a new event prefix, add it
+  to `ordering` too, and give it a name under `prefixes` in `visualization.yaml`;
   otherwise its lane is labeled with the bare prefix.
 - **The visualizer only reads; it is coupled to the stages' formats.** It loads
   `tokenizer.yaml` with PyYAML's C loader rather than OmegaConf, for speed on
@@ -154,9 +167,9 @@ add/update a pytest case first.
   which `get_timeline` localizes; a test rewrites today's output into that format
   (`as_written_by_26_6`) and checks it draws the same. When tokens were written
   without `include_numeric_values`, it recovers values from `meds.parquet` by
-  re-binning them the way `Tokenizer.bin_data` does. It spots a fused bin as an uppercase
-  `_Q<n>`, which only works because code values are lowercased. So a change to
-  binning or to code normalization needs a matching change in
+  re-binning them the way `Tokenizer.bin_data` does. It spots a fused bin as an
+  uppercase `_Q<n>`, which only works because code values are lowercased. So a
+  change to binning or to code normalization needs a matching change in
   `Visualizer.get_values` / `FUSED_BIN`. The page has to stay self-contained:
   fonts and icon are inlined as base64, with no external URLs, so an exported
   file can be sent to someone without cocoa or the data. Its static
@@ -165,8 +178,8 @@ add/update a pytest case first.
   page is drawn. The pdf is drawn in Python from the same payload, by a
   dependency-free writer in pdf's standard fonts (WinAnsi text, so other
   characters print as `?`). It ports the page's lanes, axis ticks, and binned
-  rows from `timeline.js`, so a change to the payload or to how the page draws
-  it needs a matching change in `TimelinePdf`.
+  rows from `timeline.js`, so a change to the payload or to how the page draws it
+  needs a matching change in `TimelinePdf`.
 - **Times** are normalized on load to the collation config's `default_timezone`
   (`Collator.to_default_tz`; `UTC` if unset) and stay **tz-aware** for the rest
   of the pipeline: tz-aware columns are instant-preserved, tz-naive columns are

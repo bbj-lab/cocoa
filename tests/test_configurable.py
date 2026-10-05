@@ -508,3 +508,92 @@ def test_logger_is_a_cocoa_logger(stage, tmp_path, tkzr_home):
 
 def test_base_class_alone_gets_a_logger():
     assert isinstance(Bare().logger, Logger)
+
+
+# ---------------------------------------------------------------------- overrides
+
+
+def test_overrides_change_existing_keys_with_values_read_as_yaml(tmp_path, tkzr_home):
+    cfg = build(
+        "collation",
+        tmp_path,
+        tkzr_home,
+        overrides=[
+            "default_timezone=America/Chicago",
+            "subject_splits={train_frac: 0.5}",
+            "pass_through_columns=[age_at_admission]",
+        ],
+    ).cfg
+    assert cfg.default_timezone == "America/Chicago"
+    # a block merges into the one there rather than replacing it
+    assert cfg.subject_splits.train_frac == pytest.approx(0.5)
+    assert cfg.subject_splits.tuning_frac == pytest.approx(0.1)
+    assert list(cfg.pass_through_columns) == ["age_at_admission"]
+
+
+def test_override_values_take_yaml_types_so_clock_hours_need_quotes():
+    cfg = Fake(overrides=["n_bins=4", "fused=false", "clocks=[00, 12]"]).cfg
+    assert cfg.n_bins == 4 and isinstance(cfg.n_bins, int)
+    assert cfg.fused is False
+    # unquoted, a clock hour is an int, which tokenizes as CLCK//0, not CLCK//00
+    assert list(cfg.clocks) == [0, 12]
+    assert list(Fake(overrides=['clocks=["00", "12"]']).cfg.clocks) == ["00", "12"]
+
+
+def test_an_override_adds_a_key_not_in_the_config(tmp_path, tkzr_home):
+    cfg = build(
+        "winnowing", tmp_path, tkzr_home, overrides=["horizon_after_threshold_s=3600"]
+    ).cfg
+    assert cfg.horizon_after_threshold_s == 3600
+    cfg = Fake(overrides=["spacers={1h-2h: 30}", "banana=1"]).cfg
+    assert cfg.spacers["1h-2h"] == 30
+    assert len(cfg.spacers) == 13
+    assert cfg.banana == 1
+
+
+def test_a_leading_plus_as_hydra_writes_an_addition_is_ignored():
+    cfg = Fake(overrides=["+n_bins=4", "++fused=false", "+banana=1"]).cfg
+    assert cfg.n_bins == 4
+    assert cfg.fused is False
+    assert cfg.banana == 1
+
+
+def test_a_tilde_override_deletes_a_key_where_null_leaves_it_present(
+    tmp_path, tkzr_home
+):
+    """
+    the winnower picks its threshold by which key is present, so switching
+    from a duration to a first occurrence takes deleting the one and adding
+    the other; setting the duration to null would leave it the one in force
+    """
+    cfg = build(
+        "winnowing",
+        tmp_path,
+        tkzr_home,
+        overrides=["~threshold.duration_s", "threshold.first_occurrence=XFR-IN//icu"],
+    ).cfg
+    assert OmegaConf.to_container(cfg.threshold) == {"first_occurrence": "XFR-IN//icu"}
+    nulled = Winnower.load_cfg(None, ["threshold.duration_s=null"])
+    assert "duration_s" in nulled.threshold
+    with pytest.raises(KeyError):
+        Winnower.load_cfg(None, ["~threshold.first_occurrence"])
+
+
+@pytest.mark.parametrize("override", ["n_bins", "+", "++n_bins"])
+def test_an_override_without_a_value_is_refused_rather_than_read_as_null(override):
+    with pytest.raises(ValueError, match="can't read the override"):
+        Fake(overrides=[override])
+
+
+def test_overrides_apply_in_order_and_kwargs_override_them():
+    assert Fake(overrides=["n_bins=4", "n_bins=5"]).cfg.n_bins == 5
+    assert Fake(overrides=["n_bins=4"], n_bins=7).cfg.n_bins == 7
+
+
+def test_load_cfg_is_the_cfg_a_stage_is_built_with(tmp_path, tkzr_home):
+    """what `cocoa pipeline` checks up front is what the stage will then use"""
+    overrides = ["n_bins=4", "~spacers"]
+    assert (
+        Tokenizer.load_cfg(None, overrides)
+        == build("tokenization", tmp_path, tkzr_home, overrides=overrides).cfg
+    )

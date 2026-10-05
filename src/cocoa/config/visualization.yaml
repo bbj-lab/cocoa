@@ -1,12 +1,5 @@
 %YAML 1.2
 ---
-# every section is optional, and one left empty means none: a lane needs only
-# its prefixes (name defaults to them, color to `other_color`), and a code
-# without a description just shows none
-
-# whether to show where the winnower split the timeline into past and future: the
-# threshold and future in the plot, the future tokens, and a summary near the
-# bottom of the page of the outcomes it flagged in each
 show_winnowing: !!bool false
 
 # lanes group code prefixes into the rows of a timeline, drawn top to bottom,
@@ -18,14 +11,6 @@ show_winnowing: !!bool false
 # and footer, so no lane wears it
 lanes: []
 
-# a prefix missing from every lane gets a lane of its own, after the lanes above,
-# colored from this list: the tokenizer's vocabulary prefixes that no lane claims
-# take, from most to least frequent in training, the colors that no lane present
-# in that vocabulary already wears, so a prefix keeps its color across a
-# dataset's subjects. this is every chromatic color of the university's system
-# but maroon; the faintest and darkest come last, for the rarest prefixes. light
-# greystone is left out, as a tick in it barely shows. any prefix past the end,
-# and UNK, is drawn in `other_color`
 palette:
   - "#59315F" # violet
   - "#007396" # lake

@@ -163,10 +163,18 @@ class Runner:
         tokenizer.save_all(**kwargs)
         return tokenizer
 
-    def winnow(self, *, cfg=None, processed: pathlib.Path = None, **kwargs) -> Winnower:
+    def winnow(
+        self,
+        *,
+        cfg=None,
+        processed: pathlib.Path = None,
+        output: pathlib.Path = None,
+        **kwargs,
+    ) -> Winnower:
         winnower = Winnower(
             winnowing_cfg=self.cfg_path("winnowing", cfg),
             processed_data_home=processed if processed is not None else self.dir(),
+            output_home=output,
         )
         winnower.save_all(**kwargs)
         return winnower

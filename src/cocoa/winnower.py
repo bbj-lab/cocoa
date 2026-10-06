@@ -7,6 +7,7 @@ adding flags to disqualify certain subjects from evaluation
 
 import fnmatch
 import pathlib
+import shutil
 
 import numpy as np
 import polars as pl
@@ -29,11 +30,19 @@ class Winnower(Configurable):
         winnowing_cfg: pathlib.Path | str = None,
         processed_data_home: pathlib.Path | str = None,
         is_training: bool = True,
+        output_home: pathlib.Path | str = None,
         **kwargs,
     ):
         super().__init__(winnowing_cfg, **kwargs)
         self.processed_data_home = (
             pathlib.Path(processed_data_home).expanduser().resolve()
+        )
+        # where the winnowed frames go, so one dataset can be winnowed many ways;
+        # copy_processed_data fills it out into a processed dir of its own
+        self.output_home = (
+            pathlib.Path(output_home).expanduser().resolve()
+            if output_home is not None
+            else self.processed_data_home
         )
         self.tkzr_cfg = OmegaConf.load(self.processed_data_home / "tokenizer.yaml")
         self.grokked_outcome_tokens = [
@@ -45,6 +54,7 @@ class Winnower(Configurable):
 
         self.logger.info("Winnower initialized...")
         self.logger.info(f"{self.processed_data_home=}")
+        self.logger.info(f"{self.output_home=}")
         self.logger.info(
             f"Processed expressions to generate {self.grokked_outcome_tokens=}"
         )
@@ -165,13 +175,30 @@ class Winnower(Configurable):
             .pipe(self.add_outcome_flags)
         )
 
+    def copy_processed_data(self) -> list[pathlib.Path]:
+        """
+        copies the files of the processed data dir into a separate output_home,
+        skipping its subdirectories and any frames winnowed there before, which
+        may come from another config; returns the copies
+        """
+        if self.output_home == self.processed_data_home:
+            return []
+        self.output_home.mkdir(parents=True, exist_ok=True)
+        copied = [
+            pathlib.Path(shutil.copy2(f, self.output_home / f.name))
+            for f in sorted(self.processed_data_home.iterdir())
+            if f.is_file() and not f.name.endswith("_for_inference.parquet")
+        ]
+        self.logger.info(f"Copied {[f.name for f in copied]} to {self.output_home}")
+        return copied
+
     def save_all(self, verbose: bool = False):
         """grabs winnowed frame, prints summary stats if requested, and saves it"""
+        self.copy_processed_data()
         for split in self.cfg.get("splits", ["held_out"]):
             df = self.prepare_winnowed_frame(split=split)
             df.sink_parquet(
-                self.processed_data_home / f"{split}_for_inference.parquet",
-                engine="streaming",
+                self.output_home / f"{split}_for_inference.parquet", engine="streaming"
             )
             if verbose:
                 self.logger.info(f"Prepared split {split} for inference:")

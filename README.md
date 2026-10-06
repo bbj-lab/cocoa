@@ -519,9 +519,26 @@ splits: # select which splits to prepare
 - `train_for_inference.parquet` and `tuning_for_inference.parquet` are also
   provided; these are required to make rep-based predictions
 
+These files are written to the processed data directory unless `cocoa winnow` is
+given `--output-home` / `-o`, which sends them to another directory (created if
+need be) and leaves the processed data directory untouched. The files of the
+processed data directory are copied there too, so that it is a complete processed
+dataset of its own (one `cocoa visualize -p` can read, say); its subdirectories
+are not, nor are any `*_for_inference.parquet` files already there, which may
+come from another configuration. That way one tokenized dataset can be winnowed
+under several configurations, each into its own directory:
+
+```sh
+cocoa winnow -p ./processed/mimic -o ./processed/mimic/winnowed-24h
+cocoa winnow -p ./processed/mimic -o ./processed/mimic/winnowed-icu \
+    '~threshold.duration_s' threshold.first_occurrence=XFR-IN//icu
+```
+
 ## Usage
 
-We provide a CLI that should be sufficient for most use cases:
+We provide a CLI that should be sufficient for most use cases (to change a few
+config keys from the command line, see
+[Overriding config keys](#overriding-config-keys)):
 
 ```
  Usage: cocoa [OPTIONS] COMMAND [ARGS]...
@@ -550,56 +567,65 @@ with commands:
 - `cocoa collate`
 
     ```
-    Usage: cocoa collate [OPTIONS]
+    Usage: cocoa collate [OPTIONS] [overrides]...
 
     Collate raw data into a denormalized format.
 
     Reads collation configuration and produces a MEDS-like parquet file
     with collated events.
 
+    ╭─ Arguments ─────────────────────────────────────────────────────────────╮
+    │   overrides      <str>  Config overrides: key=value sets a key, adding  │
+    │                         it if need be, and ~key deletes one             │
+    ╰─────────────────────────────────────────────────────────────────────────╯
     ╭─ Options ───────────────────────────────────────────────────────────────╮
-    │    --collation-config     -c      PATH  Collation configuration file    │
-    │                                         (overrides default)             │
-    │ *  --raw-data-home        -r      TEXT  Raw data directory [required]   │
-    │ *  --processed-data-home  -p      TEXT  Processed data directory        │
-    │                                         [required]                      │
-    │    --verbose              -v            Verbose logging for collate;    │
-    │                                         this may cause memory issues    │
-    │                                         with large datasets             │
-    │    --help                 -h            Show this message and exit.     │
+    │    --collation-config     -c      <path>  Collation configuration file  │
+    │                                           (overrides default)           │
+    │ *  --raw-data-home        -r      <str>   Raw data directory [required] │
+    │ *  --processed-data-home  -p      <str>   Processed data directory      │
+    │                                           [required]                    │
+    │    --verbose              -v              Verbose logging for collate;  │
+    │                                           this may cause memory issues  │
+    │                                           with large datasets           │
+    │    --help                 -h              Show this message and exit.   │
     ╰─────────────────────────────────────────────────────────────────────────╯
     ```
 
 - `cocoa tokenize`
 
     ```
-    Usage: cocoa tokenize [OPTIONS]
+    Usage: cocoa tokenize [OPTIONS] [overrides]...
 
     Tokenize collated data into integer sequences.
 
     Reads collated parquet files and produces tokenized timelines with
     vocabulary and bin information.
 
+    ╭─ Arguments ─────────────────────────────────────────────────────────────╮
+    │   overrides      <str>  Config overrides: key=value sets a key, adding  │
+    │                         it if need be, and ~key deletes one             │
+    ╰─────────────────────────────────────────────────────────────────────────╯
     ╭─ Options ───────────────────────────────────────────────────────────────╮
-    │    --tokenization-config  -c      PATH  Tokenization configuration file │
-    │                                         (overrides default)             │
-    │ *  --processed-data-home  -p      TEXT  Processed data directory        │
-    │                                         [required]                      │
-    │    --tokenizer-home       -t      TEXT  Load a previously learned       │
-    │                                         tokenizer from this             │
-    │                                         tokenizer.yaml file (reuses its │
-    │                                         frozen vocabulary and bins)     │
-    │    --verbose              -v            Verbose logging for tokenize;   │
-    │                                         this may cause memory issues    │
-    │                                         with large datasets             │
-    │    --help                 -h            Show this message and exit.     │
+    │    --tokenization-config  -c      <path>  Tokenization configuration    │
+    │                                           file (overrides default)      │
+    │ *  --processed-data-home  -p      <str>   Processed data directory      │
+    │                                           [required]                    │
+    │    --tokenizer-home       -t      <str>   Load a previously learned     │
+    │                                           tokenizer from this           │
+    │                                           tokenizer.yaml file (reuses   │
+    │                                           its frozen vocabulary and     │
+    │                                           bins)                         │
+    │    --verbose              -v              Verbose logging for tokenize; │
+    │                                           this may cause memory issues  │
+    │                                           with large datasets           │
+    │    --help                 -h              Show this message and exit.   │
     ╰─────────────────────────────────────────────────────────────────────────╯
     ```
 
 - `cocoa winnow`
 
     ```
-    Usage: cocoa winnow [OPTIONS]
+    Usage: cocoa winnow [OPTIONS] [overrides]...
 
     Winnow held-out data for evaluation.
 
@@ -607,44 +633,59 @@ with commands:
     subjects
     from evaluation based on the configured criteria.
 
+    ╭─ Arguments ─────────────────────────────────────────────────────────────╮
+    │   overrides      <str>  Config overrides: key=value sets a key, adding  │
+    │                         it if need be, and ~key deletes one             │
+    ╰─────────────────────────────────────────────────────────────────────────╯
     ╭─ Options ───────────────────────────────────────────────────────────────╮
-    │    --winnowing-config     -c      PATH  Winnowing configuration file    │
-    │                                         (overrides default)             │
-    │ *  --processed-data-home  -p      TEXT  Processed data directory        │
-    │                                         [required]                      │
-    │    --verbose              -v            Verbose logging for winnow;     │
-    │                                         prints summary statistics       │
-    │    --help                 -h            Show this message and exit.     │
+    │    --winnowing-config     -c      <path>  Winnowing configuration file  │
+    │                                           (overrides default)           │
+    │ *  --processed-data-home  -p      <str>   Processed data directory      │
+    │                                           [required]                    │
+    │    --output-home          -o      <str>   Directory to write the        │
+    │                                           winnowed files to, along with │
+    │                                           copies of the processed data  │
+    │                                           directory's files (defaults   │
+    │                                           to the processed data         │
+    │                                           directory)                    │
+    │    --verbose              -v              Verbose logging for winnow;   │
+    │                                           prints summary statistics     │
+    │    --help                 -h              Show this message and exit.   │
     ╰─────────────────────────────────────────────────────────────────────────╯
     ```
 
 - `cocoa pipeline`
 
     ```
-    Usage: cocoa pipeline [OPTIONS]
+    Usage: cocoa pipeline [OPTIONS] [overrides]...
 
     Run the full pipeline: collate, tokenize, & winnow.
 
+    ╭─ Arguments ─────────────────────────────────────────────────────────────╮
+    │   overrides      <str>  Config overrides, each key starting with the    │
+    │                         stage it's for: e.g. tokenization.n_bins=5 or   │
+    │                         ~winnowing.threshold.duration_s                 │
+    ╰─────────────────────────────────────────────────────────────────────────╯
     ╭─ Options ───────────────────────────────────────────────────────────────╮
-    │    --collation-config             PATH  Collation configuration file    │
-    │                                         (overrides default)             │
-    │    --tokenization-config          PATH  Tokenization configuration file │
-    │                                         (overrides default)             │
-    │    --winnowing-config             PATH  Winnowing configuration file    │
-    │                                         (overrides default)             │
-    │ *  --raw-data-home        -r      TEXT  Raw data directory [required]   │
-    │ *  --processed-data-home  -p      TEXT  Processed data directory        │
-    │                                         [required]                      │
-    │    --verbose              -v            Verbose logging for pipeline    │
-    │                                         steps                           │
-    │    --help                 -h            Show this message and exit.     │
+    │    --collation-config             <path>  Collation configuration file  │
+    │                                           (overrides default)           │
+    │    --tokenization-config          <path>  Tokenization configuration    │
+    │                                           file (overrides default)      │
+    │    --winnowing-config             <path>  Winnowing configuration file  │
+    │                                           (overrides default)           │
+    │ *  --raw-data-home        -r      <str>   Raw data directory [required] │
+    │ *  --processed-data-home  -p      <str>   Processed data directory      │
+    │                                           [required]                    │
+    │    --verbose              -v              Verbose logging for pipeline  │
+    │                                           steps                         │
+    │    --help                 -h              Show this message and exit.   │
     ╰─────────────────────────────────────────────────────────────────────────╯
     ```
 
 - `cocoa visualize`
 
     ```
-    Usage: cocoa visualize [OPTIONS] {subject_id}
+    Usage: cocoa visualize [OPTIONS] {subject_id} [overrides]...
 
     Visualize a subject's timeline as an interactive html page.
 
@@ -654,6 +695,8 @@ with commands:
 
     ╭─ Arguments ─────────────────────────────────────────────────────────────╮
     │ *    subject_id      <str>  Subject whose timeline to show [required]   │
+    │      overrides       <str>  Config overrides: key=value sets a key,     │
+    │                             adding it if need be, and ~key deletes one  │
     ╰─────────────────────────────────────────────────────────────────────────╯
     ╭─ Options ───────────────────────────────────────────────────────────────╮
     │ *  --processed-data-home   -p      <str>   Processed data directory     │
@@ -680,6 +723,55 @@ with commands:
     │    --help                  -h              Show this message and exit.  │
     ╰─────────────────────────────────────────────────────────────────────────╯
     ```
+
+### Overriding config keys
+
+To change a few keys without writing a new config file, list them after a
+command's options, as dotted paths into its config:
+
+```sh
+cocoa tokenize -p processed/mimic n_bins=5 insert_spacers=true
+```
+
+`cocoa pipeline` takes them too, each key starting with the stage it's for:
+
+```sh
+cocoa pipeline -r raw/mimic -p processed/mimic \
+    collation.default_timezone=America/Chicago tokenization.n_bins=5 \
+    '~winnowing.threshold.duration_s' winnowing.threshold.first_occurrence=XFR-IN//icu
+```
+
+It checks every stage's overrides before collating, so an unreadable winnowing
+override fails at once rather than after the first two stages have run.
+
+The syntax borrows from
+[Hydra's](https://hydra.cc/docs/advanced/override_grammar/basic/):
+
+- `key=value` sets a key, adding it if it isn't there, e.g. a
+  `horizon_after_threshold_s` for winnowing. Keys aren't checked against the
+  config, so a misspelled one is added quietly and does nothing. A leading `+` or
+  `++`, as Hydra marks an addition, is accepted and ignored.
+- `~key` deletes a key.
+
+Overrides apply in order to the config file passed with `-c` (or to the shipped
+default when none is). Values are read as YAML: `0.5` is a float, `[a, b]` a
+list, and `{train_frac: 0.5}` a block, merged into any block already there.
+
+A few things to know:
+
+- Setting a key to `null` doesn't switch it off where its presence is what
+  counts. The winnower uses whichever of `threshold.duration_s` and
+  `threshold.first_occurrence` is there, so switching between them takes `~` on
+  one and setting the other, as above.
+- Lists are replaced whole: `entries` can't be edited one item at a time, so a
+  change to an entry calls for a config file.
+- YAML decides each value's type, so quote what has to stay a string:
+  `'clocks=["00", "12"]'`, since an unquoted `00` is the number 0, and
+  `'other_color="#737373"'`, since an unquoted `#` starts a comment.
+- With `--tokenizer-home`, the loaded tokenizer's saved config wins over
+  overrides, as it does over `-c`.
+- Quote anything starting with `~` in zsh, which otherwise reads it as a
+  directory name and fails.
 
 <!-- prettier-ignore-start -->
 > [!TIP]

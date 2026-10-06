@@ -84,6 +84,67 @@ def test_only_configured_splits_are_written(runner, pipeline, splits):
     assert inference_files(dest) == {f"{s}_for_inference.parquet" for s in splits}
 
 
+def test_output_home_keeps_two_winnowings_of_one_dataset_apart(runner, pipeline):
+    dest = seed(runner, pipeline)
+    by_day, by_icu = (runner.root / "winnowed" / n for n in ("24h", "icu"))
+    assert not by_day.parent.exists()  # the winnower should make it
+    w = runner.winnow(cfg=cfg(splits=["held_out"]), processed=dest, output=by_day)
+    assert w.output_home == by_day.resolve() != w.processed_data_home
+    runner.winnow(
+        cfg=cfg(splits=["held_out"], threshold={"first_occurrence": "XFR-IN//icu"}),
+        processed=dest,
+        output=by_icu,
+    )
+    assert inference_files(dest) == set()  # the processed dir is only read
+    for d in (by_day, by_icu):
+        # each output is a processed dir of its own
+        assert {f.name for f in d.iterdir()} == {
+            *INPUTS,
+            "held_out_for_inference.parquet",
+        }
+        for f in INPUTS:
+            assert (d / f).read_bytes() == (dest / f).read_bytes(), f
+    # each matches winnowing that configuration in place
+    day = pl.read_parquet(by_day / "held_out_for_inference.parquet")
+    assert day.equals(pipeline.inference("held_out"))
+    icu = pl.read_parquet(by_icu / "held_out_for_inference.parquet")
+    assert icu.equals(
+        rewinnow(runner, pipeline, threshold={"first_occurrence": "XFR-IN//icu"})
+    )
+    assert set(icu["subject_id"]) != set(day["subject_id"])
+
+
+def test_output_home_skips_subdirectories_and_earlier_winnowings(runner, pipeline):
+    """
+    output dirs nested in the processed dir, as the docs suggest, aren't copied
+    into one another, nor is a frame winnowed in place, perhaps differently
+    """
+    dest = seed(runner, pipeline)
+    (dest / "notes.txt").write_text("hello")
+    stale = "train_for_inference.parquet"
+    shutil.copy(pipeline.path / stale, dest / stale)
+    for name in ("winnowed-a", "winnowed-b"):
+        runner.winnow(cfg=cfg(splits=["held_out"]), processed=dest, output=dest / name)
+    assert {f.name for f in (dest / "winnowed-b").iterdir()} == {
+        *INPUTS,
+        "notes.txt",
+        "held_out_for_inference.parquet",
+    }
+
+
+@pytest.mark.parametrize("output", (None, "same", "dotted"))
+def test_output_home_defaults_to_the_processed_dir(runner, pipeline, output):
+    dest = seed(runner, pipeline)
+    output = {"same": dest, "dotted": dest / "."}.get(output)
+    w = runner.winnow(cfg=cfg(splits=["held_out"]), processed=dest, output=output)
+    assert w.output_home == w.processed_data_home == dest.resolve()
+    assert w.copy_processed_data() == []
+    assert {f.name for f in dest.iterdir()} == {
+        *INPUTS,
+        "held_out_for_inference.parquet",
+    }
+
+
 @pytest.mark.parametrize("split", SPLITS)
 def test_each_file_holds_only_subjects_of_that_split(pipeline, split):
     d = pipeline.inference(split)

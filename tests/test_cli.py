@@ -129,15 +129,33 @@ def test_top_level_help_lists_every_command_and_the_version(flag):
 
 HELP_TEXT = {
     "collate": (
-        ("Collate raw data", "denormalized", "--collation-config", "--raw-data-home"),
+        (
+            "Collate raw data",
+            "denormalized",
+            "--collation-config",
+            "--raw-data-home",
+            "Config overrides",
+        ),
         ("--tokenizer-home", "--winnowing-config"),
     ),
     "tokenize": (
-        ("Tokenize collated data", "vocabulary", "--tokenizer-home", "-t"),
+        (
+            "Tokenize collated data",
+            "vocabulary",
+            "--tokenizer-home",
+            "-t",
+            "Config overrides",
+        ),
         ("--raw-data-home", "--collation-config"),
     ),
     "winnow": (
-        ("Winnow held-out data", "--winnowing-config", "--processed-data-home"),
+        (
+            "Winnow held-out data",
+            "--winnowing-config",
+            "--processed-data-home",
+            "--output-home",
+            "Config overrides",
+        ),
         ("--raw-data-home", "--tokenizer-home"),
     ),
     "pipeline": (
@@ -147,12 +165,13 @@ HELP_TEXT = {
             "--tokenization-config",
             "--winnowing-config",
             "--raw-data-home",
+            "Config overrides",
         ),
         ("--tokenizer-home",),
     ),
     "combine-datasets": (
         ("Combine multiple processed datasets", "--output-data-dir", "-o"),
-        ("--processed-data-home", "--raw-data-home"),
+        ("--processed-data-home", "--raw-data-home", "Config overrides"),
     ),
     "visualize": (
         (
@@ -161,6 +180,7 @@ HELP_TEXT = {
             "--export-pdf",
             "--visualization-config",
             "--show-winnowing",
+            "Config overrides",
         ),
         ("--raw-data-home", "--tokenizer-home"),
     ),
@@ -230,6 +250,33 @@ def test_winnow_writes_one_file_per_configured_split_and_prints_paths(
     assert set(held_out["subject_id"].to_list()) <= set(
         raw_data.subjects_in_split("held_out")
     )
+
+
+@pytest.mark.parametrize("flag", ["-o", "--output-home"])
+def test_winnow_output_home_writes_there_and_prints_those_paths(
+    tmp_path, tokenized, pipeline_run, flag
+):
+    out = tmp_path / "winnowed" / "held_out_only"  # the cli should make it
+    result = run("winnow", "-p", tokenized, flag, out, "splits=[held_out]")
+    assert result.exit_code == 0, result.output
+    assert not list(tokenized.glob("*_for_inference.parquet"))
+    assert {p.name for p in out.iterdir()} == {
+        *TOKENIZED,
+        "held_out_for_inference.parquet",
+    }
+    assert squashed(f"{out.resolve()}/held_out_for_inference.parquet") in squashed(
+        result.output
+    )
+    held_out = pl.read_parquet(out / "held_out_for_inference.parquet")
+    assert_frame_equal(
+        held_out, pl.read_parquet(pipeline_run.path / "held_out_for_inference.parquet")
+    )
+    # so the output dir can be viewed on its own, winnowing included
+    page = tmp_path / "timeline.html"
+    sid = held_out["subject_id"][0]
+    result = run("visualize", sid, "-p", out, "--show-winnowing", "-e", page)
+    assert result.exit_code == 0, result.output
+    assert '"winnowed":{' in page.read_text()
 
 
 def test_pipeline_produces_every_artifact(pipeline_run, raw_data):
@@ -325,6 +372,69 @@ def test_winnowing_config_override_limits_the_prepared_splits(runner, tokenized,
     assert "held_out_for_inference.parquet" in out
     assert "train_for_inference.parquet" not in out
     assert "tuning_for_inference.parquet" not in out
+
+
+@pytest.mark.parametrize(
+    "command,args",
+    [
+        ("collate", ("-r", ".", "-p", ".")),
+        ("tokenize", ("-p", ".")),
+        ("winnow", ("-p", ".")),
+        ("visualize", ("someone", "-p", ".")),
+    ],
+)
+def test_each_stage_hands_its_overrides_to_its_config(command, args):
+    """an unreadable override fails as the config loads, before any data is read"""
+    result = run(command, *args, "no_such_key")
+    assert isinstance(result.exception, ValueError), result.output
+    assert "no_such_key" in str(result.exception)
+
+
+def test_tokenize_override_changes_the_number_of_bins(tokenized):
+    result = run("tokenize", "-p", tokenized, "n_bins=4")
+    assert result.exit_code == 0, result.output
+    assert {len(breaks) for breaks in bins_of(tokenized).values()} == {3}
+    assert max(quantile_indices(lookup_of(tokenized))) == 3
+
+
+def test_pipeline_routes_each_override_to_its_stage(runner, raw_data):
+    dest = runner.dir()
+    result = run(
+        "pipeline",
+        "-r",
+        raw_data.root,
+        "-p",
+        dest,
+        "collation.subject_splits={train_frac: 0.5, tuning_frac: 0.25}",
+        "tokenization.n_bins=5",
+        "winnowing.splits=[held_out]",
+    )
+    assert result.exit_code == 0, result.output
+    splits = pl.read_parquet(dest / "subject_splits.parquet")
+    n = len(raw_data.patient_ids)
+    train = {s for p in raw_data.patient_ids[: n // 2] for s in raw_data.subjects_of[p]}
+    assert set(splits.filter(pl.col("split") == "train")["subject_id"]) == train
+    assert {len(breaks) for breaks in bins_of(dest).values()} == {4}
+    assert (dest / "held_out_for_inference.parquet").exists()
+    assert not (dest / "train_for_inference.parquet").exists()
+
+
+@pytest.mark.parametrize("override", ["n_bins=5", "tokenizer.n_bins=5", "~threshold"])
+def test_pipeline_refuses_an_override_that_names_no_stage(runner, raw_data, override):
+    dest = runner.dir()
+    result = run("pipeline", "-r", raw_data.root, "-p", dest, override)
+    assert result.exit_code == 2
+    assert squashed("doesn't say which stage it's for") in squashed(result.output)
+    assert not (dest / "meds.parquet").exists()
+
+
+def test_pipeline_checks_every_stage_before_running_any(runner, raw_data):
+    """an unreadable winnowing override mustn't wait for collation to surface"""
+    dest = runner.dir()
+    result = run("pipeline", "-r", raw_data.root, "-p", dest, "winnowing.splits")
+    assert isinstance(result.exception, ValueError), result.output
+    assert "splits" in str(result.exception)
+    assert not (dest / "meds.parquet").exists()
 
 
 def test_pipeline_honours_all_three_config_overrides(runner, raw_data):
@@ -631,8 +741,9 @@ def test_visualize_shows_winnowing_only_when_asked(pipeline, tmp_path):
     for args, winnowed in (
         ((), '"winnowed":null'),
         (("--show-winnowing",), '"winnowed":{'),
+        (("show_winnowing=true",), '"winnowed":{'),
     ):
-        out = tmp_path / f"{bool(args)}.html"
+        out = tmp_path / f"{'-'.join(args) or 'none'}.html"
         result = run("visualize", sid, "-p", pipeline.path, "-e", out, *args)
         assert result.exit_code == 0, result.output
         assert winnowed in out.read_text()

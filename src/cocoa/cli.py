@@ -31,6 +31,34 @@ app = typer.Typer(
 )
 console = Console()
 
+# trailing a stage's command: edits to its config, applied by `apply_overrides`
+Overrides = Annotated[
+    Optional[list[str]],
+    typer.Argument(
+        help="Config overrides: key=value sets a key, adding it if need be, and "
+        "~key deletes one",
+        show_default=False,
+    ),
+]
+
+# `pipeline` sends each of its overrides to the stage whose config it names first
+STAGES = {"collation": Collator, "tokenization": Tokenizer, "winnowing": Winnower}
+
+
+def route_overrides(overrides: list[str] | None) -> dict[str, list[str]]:
+    """`pipeline`'s overrides by stage, each with its stage's name dropped"""
+    routed = {stage: [] for stage in STAGES}
+    for override in overrides or ():
+        op = next((p for p in ("++", "+", "~") if override.startswith(p)), "")
+        stage, dot, rest = override.removeprefix(op).partition(".")
+        if stage not in routed or not dot:
+            raise typer.BadParameter(
+                f"{override!r} doesn't say which stage it's for; start its key "
+                "with `collation.`, `tokenization.`, or `winnowing.`"
+            )
+        routed[stage].append(op + rest)
+    return routed
+
 
 @app.command()
 def collate(
@@ -60,6 +88,7 @@ def collate(
             is_flag=True,
         ),
     ] = False,
+    overrides: Overrides = None,
 ):
     """
     Collate raw data into a denormalized format.
@@ -73,6 +102,7 @@ def collate(
             collation_cfg=collation_config,
             raw_data_home=raw_data_home,
             processed_data_home=processed_data_home,
+            overrides=overrides,
         )
         collator.save_all(verbose=verbose)
         t1 = time.perf_counter()
@@ -117,6 +147,7 @@ def tokenize(
             is_flag=True,
         ),
     ] = False,
+    overrides: Overrides = None,
 ):
     """
     Tokenize collated data into integer sequences.
@@ -131,11 +162,13 @@ def tokenize(
             tokenizer = Tokenizer(
                 tokenization_cfg=tokenization_config,
                 processed_data_home=processed_data_home,
+                overrides=overrides,
             ).load(tokenizer_home)
         else:
             tokenizer = Tokenizer(
                 tokenization_cfg=tokenization_config,
                 processed_data_home=processed_data_home,
+                overrides=overrides,
             )
         tokenizer.save_all(verbose=verbose)
         t1 = time.perf_counter()
@@ -161,6 +194,17 @@ def winnow(
         str,
         typer.Option("--processed-data-home", "-p", help="Processed data directory"),
     ] = ...,
+    output_home: Annotated[
+        Optional[str],
+        typer.Option(
+            "--output-home",
+            "-o",
+            help="Directory to write the winnowed files to, along with copies of "
+            "the processed data directory's files (defaults to the processed data "
+            "directory)",
+            show_default=False,
+        ),
+    ] = None,
     verbose: Annotated[
         bool,
         typer.Option(
@@ -170,6 +214,7 @@ def winnow(
             is_flag=True,
         ),
     ] = False,
+    overrides: Overrides = None,
 ):
     """
     Winnow held-out data for evaluation.
@@ -180,12 +225,15 @@ def winnow(
     with console.status("[bold green]Winnowing data..."):
         t0 = time.perf_counter()
         winnower = Winnower(
-            winnowing_cfg=winnowing_config, processed_data_home=processed_data_home
+            winnowing_cfg=winnowing_config,
+            processed_data_home=processed_data_home,
+            output_home=output_home,
+            overrides=overrides,
         )
         winnower.save_all(verbose=verbose)
         t1 = time.perf_counter()
         print(f"\n[green]✓[/green] Winnowing completed in {t1 - t0:.2f}s.")
-    out_path = winnower.processed_data_home
+    out_path = winnower.output_home
     for s in winnower.cfg.get("splits", ["held_out"]):
         print(f"  Output: [cyan]{out_path}/{s}_for_inference.parquet[/cyan]")
 
@@ -229,10 +277,24 @@ def pipeline(
             "--verbose", "-v", help="Verbose logging for pipeline steps", is_flag=True
         ),
     ] = False,
+    overrides: Annotated[
+        Optional[list[str]],
+        typer.Argument(
+            help="Config overrides, each key starting with the stage it's for: "
+            "e.g. tokenization.n_bins=5 or ~winnowing.threshold.duration_s",
+            show_default=False,
+        ),
+    ] = None,
 ):
     """
     Run the full pipeline: collate, tokenize, & winnow.
     """
+    routed = route_overrides(overrides)
+    # check every stage's overrides now, not after the stages before it have run
+    for (stage, cls), cfg_file in zip(
+        STAGES.items(), (collation_config, tokenization_config, winnowing_config)
+    ):
+        cls.load_cfg(cfg_file, routed[stage])
     print("[bold]Running full pipeline[/bold]\n")
     t0 = time.perf_counter()
     collate(
@@ -240,16 +302,19 @@ def pipeline(
         raw_data_home=raw_data_home,
         processed_data_home=processed_data_home,
         verbose=verbose,
+        overrides=routed["collation"],
     )
     tokenize(
         tokenization_config=tokenization_config,
         processed_data_home=processed_data_home,
         verbose=verbose,
+        overrides=routed["tokenization"],
     )
     winnow(
         winnowing_config=winnowing_config,
         processed_data_home=processed_data_home,
         verbose=verbose,
+        overrides=routed["winnowing"],
     )
     t1 = time.perf_counter()
     print(f"\n[bold green]Pipeline completed in {t1 - t0:.2f}s.[/bold green]")
@@ -336,6 +401,7 @@ def visualize(
             is_flag=True,
         ),
     ] = False,
+    overrides: Overrides = None,
 ):
     """
     Visualize a subject's timeline as an interactive html page.
@@ -351,6 +417,7 @@ def visualize(
             processed_data_home=processed_data_home,
             # without the flag, the config decides
             show_winnowing=True if show_winnowing else None,
+            overrides=overrides,
         )
         out_paths = []
         try:

@@ -22,6 +22,11 @@ summary statistics). Each also takes an optional `-c` config file that overrides
 the packaged default for that stage. `cocoa visualize` takes `-p` and `-c` too,
 but has no `--verbose`.
 
+To change individual config keys for one run, list them after the command's
+options, as in `cocoa tokenize -p ./processed/mimic n_bins=5`; for
+`cocoa pipeline`, start each key with its stage, as in `tokenization.n_bins=5`.
+See [Overriding config keys](../index.md#overriding-config-keys) for the syntax.
+
 Run any command with `-h` / `--help` to see its full set of options:
 
 ```sh
@@ -49,6 +54,17 @@ cocoa collate   --raw-data-home /path/to/raw --processed-data-home ./processed/u
 cocoa tokenize  --tokenizer-home ./processed/mimic/tokenizer.yaml \
                 --processed-data-home ./processed/ucmc
 cocoa winnow    --processed-data-home ./processed/ucmc
+```
+
+`cocoa winnow` writes into the processed-data directory unless given
+`--output-home` / `-o`, which also gets a copy of the processed-data directory's
+files (see the [Winnower](winnower.md)). So to winnow the same tokenized dataset
+under several configurations, give each run its own output directory:
+
+```sh
+cocoa winnow -p ./processed/ucmc -o ./processed/ucmc/winnowed-24h
+cocoa winnow -p ./processed/ucmc -o ./processed/ucmc/winnowed-icu \
+    '~threshold.duration_s' threshold.first_occurrence=XFR-IN//icu
 ```
 
 To look over a subject's timeline, serve it on localhost (Ctrl-C stops the

@@ -153,6 +153,7 @@ HELP_TEXT = {
             "Winnow held-out data",
             "--winnowing-config",
             "--processed-data-home",
+            "--output-home",
             "Config overrides",
         ),
         ("--raw-data-home", "--tokenizer-home"),
@@ -249,6 +250,33 @@ def test_winnow_writes_one_file_per_configured_split_and_prints_paths(
     assert set(held_out["subject_id"].to_list()) <= set(
         raw_data.subjects_in_split("held_out")
     )
+
+
+@pytest.mark.parametrize("flag", ["-o", "--output-home"])
+def test_winnow_output_home_writes_there_and_prints_those_paths(
+    tmp_path, tokenized, pipeline_run, flag
+):
+    out = tmp_path / "winnowed" / "held_out_only"  # the cli should make it
+    result = run("winnow", "-p", tokenized, flag, out, "splits=[held_out]")
+    assert result.exit_code == 0, result.output
+    assert not list(tokenized.glob("*_for_inference.parquet"))
+    assert {p.name for p in out.iterdir()} == {
+        *TOKENIZED,
+        "held_out_for_inference.parquet",
+    }
+    assert squashed(f"{out.resolve()}/held_out_for_inference.parquet") in squashed(
+        result.output
+    )
+    held_out = pl.read_parquet(out / "held_out_for_inference.parquet")
+    assert_frame_equal(
+        held_out, pl.read_parquet(pipeline_run.path / "held_out_for_inference.parquet")
+    )
+    # so the output dir can be viewed on its own, winnowing included
+    page = tmp_path / "timeline.html"
+    sid = held_out["subject_id"][0]
+    result = run("visualize", sid, "-p", out, "--show-winnowing", "-e", page)
+    assert result.exit_code == 0, result.output
+    assert '"winnowed":{' in page.read_text()
 
 
 def test_pipeline_produces_every_artifact(pipeline_run, raw_data):

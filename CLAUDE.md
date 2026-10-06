@@ -29,7 +29,15 @@ default config in [src/cocoa/config/](src/cocoa/config/):
    past/future and flag outcome tokens for evaluation. →
    `{split}_for_inference.parquet`
 
-Data flows strictly stage-to-stage through files in `--processed-data-home`.
+Data flows strictly stage-to-stage through files in `--processed-data-home`. The
+one exception is `cocoa winnow --output-home` (`-o`; `Winnower(output_home=...)`),
+which reads from the processed dir but writes its `{split}_for_inference.parquet`
+to another directory, so that one dataset can be winnowed under several configs.
+`Winnower.copy_processed_data` first copies the processed dir's top-level files
+there, so the output dir is a processed dir in its own right (`cocoa visualize`
+reads it); it skips subdirectories, since the output dir may be nested in the
+processed dir, and skips `*_for_inference.parquet`, which may come from another
+config.
 
 Alongside the stages, **Visualize** ([visualizer.py](src/cocoa/visualizer.py))
 renders one subject's timeline from a processed dir as a self-contained,
@@ -53,6 +61,7 @@ cocoa pipeline -r <raw-data-home> -p <processed-data-home> [--verbose]
 cocoa <stage> -c <config.yaml> ... # -c overrides the shipped default for that stage
 cocoa <stage> ... n_bins=5 '~key'  # trailing overrides edit single keys of it
 cocoa pipeline ... tokenization.n_bins=5  # in pipeline, each key names its stage
+cocoa winnow -p <processed-data-home> -o <dir>  # winnowed files go to <dir>
 cocoa <stage> -h                   # help; --verbose prints summary stats
 cocoa combine-datasets <dir> <dir> ... -o <output-dir>
 

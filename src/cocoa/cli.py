@@ -194,6 +194,17 @@ def winnow(
         str,
         typer.Option("--processed-data-home", "-p", help="Processed data directory"),
     ] = ...,
+    output_home: Annotated[
+        Optional[str],
+        typer.Option(
+            "--output-home",
+            "-o",
+            help="Directory to write the winnowed files to, along with copies of "
+            "the processed data directory's files (defaults to the processed data "
+            "directory)",
+            show_default=False,
+        ),
+    ] = None,
     verbose: Annotated[
         bool,
         typer.Option(
@@ -216,12 +227,13 @@ def winnow(
         winnower = Winnower(
             winnowing_cfg=winnowing_config,
             processed_data_home=processed_data_home,
+            output_home=output_home,
             overrides=overrides,
         )
         winnower.save_all(verbose=verbose)
         t1 = time.perf_counter()
         print(f"\n[green]✓[/green] Winnowing completed in {t1 - t0:.2f}s.")
-    out_path = winnower.processed_data_home
+    out_path = winnower.output_home
     for s in winnower.cfg.get("splits", ["held_out"]):
         print(f"  Output: [cyan]{out_path}/{s}_for_inference.parquet[/cyan]")
 

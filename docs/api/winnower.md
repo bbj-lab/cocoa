@@ -18,6 +18,22 @@ one file per configured split to the processed-data directory:
 - `{split}_for_inference.parquet` — the winnowed timelines with past/future
   splits and outcome flags (defaults to `held_out`).
 
+To write them somewhere else, pass `output_home` (on the command line,
+`--output-home` / `-o`); the directory is created if need be, and the
+processed-data directory is then only read.
+[`copy_processed_data`][cocoa.winnower.Winnower.copy_processed_data] copies the
+processed-data directory's files there too, so that it is a complete processed
+dataset of its own. It skips subdirectories, and any `*_for_inference.parquet`
+already in the processed-data directory, which may have been winnowed under
+another configuration. This lets one tokenized dataset be winnowed under several
+configurations side by side:
+
+```sh
+cocoa winnow -p ./processed/mimic -o ./processed/mimic/winnowed-24h
+cocoa winnow -p ./processed/mimic -o ./processed/mimic/winnowed-icu \
+    '~threshold.duration_s' threshold.first_occurrence=XFR-IN//icu
+```
+
 ## How it works
 
 [`prepare_winnowed_frame`][cocoa.winnower.Winnower.prepare_winnowed_frame] chains

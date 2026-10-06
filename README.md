@@ -519,6 +519,21 @@ splits: # select which splits to prepare
 - `train_for_inference.parquet` and `tuning_for_inference.parquet` are also
   provided; these are required to make rep-based predictions
 
+These files are written to the processed data directory unless `cocoa winnow` is
+given `--output-home` / `-o`, which sends them to another directory (created if
+need be) and leaves the processed data directory untouched. The files of the
+processed data directory are copied there too, so that it is a complete processed
+dataset of its own (one `cocoa visualize -p` can read, say); its subdirectories
+are not, nor are any `*_for_inference.parquet` files already there, which may
+come from another configuration. That way one tokenized dataset can be winnowed
+under several configurations, each into its own directory:
+
+```sh
+cocoa winnow -p ./processed/mimic -o ./processed/mimic/winnowed-24h
+cocoa winnow -p ./processed/mimic -o ./processed/mimic/winnowed-icu \
+    '~threshold.duration_s' threshold.first_occurrence=XFR-IN//icu
+```
+
 ## Usage
 
 We provide a CLI that should be sufficient for most use cases (to change a few
@@ -627,6 +642,12 @@ with commands:
     │                                           (overrides default)           │
     │ *  --processed-data-home  -p      <str>   Processed data directory      │
     │                                           [required]                    │
+    │    --output-home          -o      <str>   Directory to write the        │
+    │                                           winnowed files to, along with │
+    │                                           copies of the processed data  │
+    │                                           directory's files (defaults   │
+    │                                           to the processed data         │
+    │                                           directory)                    │
     │    --verbose              -v              Verbose logging for winnow;   │
     │                                           prints summary statistics     │
     │    --help                 -h              Show this message and exit.   │

@@ -56,6 +56,17 @@ cocoa tokenize  --tokenizer-home ./processed/mimic/tokenizer.yaml \
 cocoa winnow    --processed-data-home ./processed/ucmc
 ```
 
+`cocoa winnow` writes into the processed-data directory unless given
+`--output-home` / `-o`, which also gets a copy of the processed-data directory's
+files (see the [Winnower](winnower.md)). So to winnow the same tokenized dataset
+under several configurations, give each run its own output directory:
+
+```sh
+cocoa winnow -p ./processed/ucmc -o ./processed/ucmc/winnowed-24h
+cocoa winnow -p ./processed/ucmc -o ./processed/ucmc/winnowed-icu \
+    '~threshold.duration_s' threshold.first_occurrence=XFR-IN//icu
+```
+
 To look over a subject's timeline, serve it on localhost (Ctrl-C stops the
 server), save it as a self-contained html file with `--export-html` / `-e`, or
 save a static pdf of it with `--export-pdf`; give both to save both (see the

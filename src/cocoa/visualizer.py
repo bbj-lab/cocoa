@@ -201,9 +201,12 @@ class Visualizer(Configurable):
         if self.fused and (m := FUSED_BIN.search(rest)):
             name, bin_ = rest[: m.start()], int(m.group(1)[1:])
             text = rest[m.end() + 1 :] or None
+        if not sep and name in self.prefix_weight:
+            # a bare prefix, as collation wrote for a null code before 26.6.0
+            prefix, name = name, ""
         return {
             "prefix": prefix,
-            "code": f"{prefix}{sep}{name}" if sep else name,
+            "code": f"{prefix}{sep}{name}" if sep else name or prefix,
             "name": name,
             "bin": bin_,
             "text": text,
@@ -303,6 +306,7 @@ class Visualizer(Configurable):
                 and last["time"] == time_idx[i]
                 and "//" not in word
                 and word not in KINDS
+                and word not in self.prefix_weight  # a bare prefix is a code
             ):  # an unfused bin or text value belongs to the code before it
                 if BIN_WORD.match(word) and last["bin"] is None:
                     last["bin"] = int(word[1:])

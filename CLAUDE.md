@@ -185,10 +185,13 @@ add/update a pytest case first.
   `#cocoa-fallback` note tells a viewer that doesn't run scripts (an email or
   file preview) to open it in a browser; the script removes the note once the
   page is drawn. The pdf is drawn in Python from the same payload, by a
-  dependency-free writer in pdf's standard fonts (WinAnsi text, so other
-  characters print as `?`). It ports the page's lanes, axis ticks, and binned
-  rows from `timeline.js`, so a change to the payload or to how the page draws it
-  needs a matching change in `TimelinePdf`.
+  dependency-free writer that embeds the packaged Gotham whole (as Type0 fonts
+  addressed by glyph id, with a ToUnicode map so text copies out) and sets codes
+  and tokens in standard Courier (WinAnsi text); a character a font lacks prints
+  as `?`. A missing font file falls back to Helvetica, as the page falls back to
+  system fonts. It ports the page's lanes, axis ticks, and binned rows from
+  `timeline.js`, so a change to the payload or to how the page draws it needs a
+  matching change in `TimelinePdf`.
 - **Times** are normalized on load to the collation config's `default_timezone`
   (`Collator.to_default_tz`; `UTC` if unset) and stay **tz-aware** for the rest
   of the pipeline: tz-aware columns are instant-preserved, tz-naive columns are

@@ -3,6 +3,7 @@
 """the static pdf: a well-formed file, its text, and the timeline it lays out"""
 
 import datetime
+import importlib.resources as resources
 import re
 import zlib
 
@@ -12,27 +13,64 @@ import cocoa.pdf as pdf
 from cocoa.pdf import Document, TimelinePdf, clip, measure, rgb, timeline_pdf, wrap
 from cocoa.visualizer import Visualizer
 
-TJ = re.compile(rb"\(((?:\\.|[^\\)])*)\) Tj")
+TJ = re.compile(
+    rb"/(F\d) [\d.]+ Tf [-\d.]+ [-\d.]+ Td (\((?:\\.|[^\\)])*\)|<[\dA-F]*>) Tj"
+)
+
+
+def objects(data: bytes) -> dict[int, bytes]:
+    """each object of a pdf, by number"""
+    found = re.findall(rb"(?m)^(\d+) 0 obj\n(.*?)\nendobj$", data, re.S)
+    return {int(n): obj for n, obj in found}
+
+
+def inflate(obj: bytes) -> bytes:
+    """the data of a stream object, inflated"""
+    n = int(re.match(rb"<< /Length (\d+) ", obj).group(1))
+    start = obj.index(b">>\nstream\n") + len(b">>\nstream\n")
+    return zlib.decompress(obj[start : start + n])
 
 
 def streams(data: bytes) -> list[bytes]:
     """each page's content stream, inflated"""
-    found = re.findall(rb"stream\n(.*?)\nendstream", data, re.S)
-    return [zlib.decompress(s) for s in found]
+    objs = objects(data)
+    return [inflate(objs[int(n)]) for n in re.findall(rb"/Contents (\d+) 0 R", data)]
+
+
+def readers(data: bytes) -> dict:
+    """
+    how a pdf reader turns the strings shown in each font back into text: through
+    the font's ToUnicode map if it has one, else as winansi
+    """
+    objs, out = objects(data), {}
+    for font, n in re.findall(rb"/(F\d) (\d+) 0 R", data):
+        if m := re.search(rb"/ToUnicode (\d+) 0 R", objs[int(n)]):
+            cmap = inflate(objs[int(m.group(1))])
+            pairs = re.findall(
+                rb"<([\dA-F]{4})> <([\dA-F]+)>",
+                b"".join(re.findall(rb"beginbfchar\n(.*?)endbfchar", cmap, re.S)),
+            )
+            text = {g: bytes.fromhex(u.decode()).decode("utf-16-be") for g, u in pairs}
+            out[font] = lambda s, t=text: "".join(
+                t[s[i : i + 4]] for i in range(1, len(s) - 1, 4)
+            )
+        else:
+            out[font] = lambda s: re.sub(rb"\\(.)", rb"\1", s[1:-1]).decode("cp1252")
+    return out
 
 
 def page_texts(data: bytes) -> list[str]:
-    """the text set on each page, one string per page"""
-    out = []
-    for s in streams(data):
-        words = [re.sub(rb"\\(.)", rb"\1", m) for m in TJ.findall(s)]
-        out.append("\n".join(w.decode("cp1252", "replace") for w in words))
-    return out
+    """the text set on each page, one string per page, as a reader would copy it"""
+    read = readers(data)
+    return [
+        "\n".join(read[font](shown) for font, shown in TJ.findall(s))
+        for s in streams(data)
+    ]
 
 
 def check_structure(data: bytes) -> int:
     """assert the xref table points at every object; return the page count"""
-    assert data.startswith(b"%PDF-1.4\n") and data.endswith(b"%%EOF\n")
+    assert data.startswith(b"%PDF-1.6\n") and data.endswith(b"%%EOF\n")
     start = int(re.search(rb"startxref\n(\d+)\n%%EOF", data).group(1))
     assert data[start:].startswith(b"xref\n")
     n = int(re.match(rb"xref\n0 (\d+)\n", data[start:]).group(1))
@@ -65,17 +103,50 @@ def test_a_document_references_nothing_outside_itself():
     doc = Document("t")
     doc.new_page().text(10, 20, "see https://example.org")  # text, not a link
     data = doc.to_bytes()
-    for key in (b"/URI", b"/Launch", b"/GoToR", b"/FontFile", b"/EmbeddedFile"):
+    for key in (b"/URI", b"/Launch", b"/GoToR", b"/EmbeddedFile"):
         assert key not in data
     fonts = set(re.findall(rb"/BaseFont /([\w-]+)", data))
-    assert fonts == {b"Helvetica", b"Helvetica-Bold", b"Courier"}  # every reader's
+    assert fonts == {b"Gotham-Book", b"Gotham-Medium", b"Courier"}
 
 
-def test_text_is_escaped_and_what_winansi_lacks_becomes_a_question_mark():
+def test_the_page_fonts_are_embedded_whole():
     doc = Document("t")
-    doc.new_page().text(0, 10, "a (b) \\ °C ≥ 6.5\nok")
+    doc.new_page().text(10, 20, "x")
+    data = doc.to_bytes()
+    programs = [
+        inflate(obj) for obj in objects(data).values() if b"/Subtype /OpenType" in obj
+    ]
+    fonts = resources.files("cocoa.assets") / "fonts"
+    packaged = [(fonts / f).read_bytes() for f in pdf.EMBEDDED.values()]
+    assert sorted(programs) == sorted(packaged)
+    assert len(re.findall(rb"/FontFile3 \d+ 0 R", data)) == len(packaged)
+
+
+def test_gotham_sets_what_it_has_and_what_it_lacks_becomes_a_question_mark():
+    doc = Document("t")
+    doc.new_page().text(0, 10, "a (b) °C ≥ 6.5, cmH₂O · Łódź\nok")
+    assert page_texts(doc.to_bytes()) == ["a (b) °C ? 6.5, cmH₂O · Łódź ok"]
+
+
+def test_courier_text_is_escaped_and_what_winansi_lacks_becomes_a_question_mark():
+    doc = Document("t")
+    doc.new_page().text(0, 10, "a (b) \\ °C ≥ 6.5\nok", font="F3")
     (s,) = streams(doc.to_bytes())
     assert b"(a \\(b\\) \\\\ \xb0C ? 6.5 ok) Tj" in s  # \xb0 is cp1252's °
+
+
+def test_without_its_font_files_text_is_set_in_standard_fonts(monkeypatch):
+    monkeypatch.setattr(pdf, "face", lambda font: None)
+    doc = Document("t")
+    doc.new_page().text(0, 10, "°C ≥ 6.5, cmH₂O")
+    data = doc.to_bytes()
+    fonts = set(re.findall(rb"/BaseFont /([\w-]+)", data))
+    assert fonts == {b"Helvetica", b"Helvetica-Bold", b"Courier"}  # every reader's
+    assert b"/FontFile" not in data
+    assert page_texts(data) == ["°C ? 6.5, cmH?O"]
+    assert measure("W", 10) == pytest.approx(
+        9.44
+    )  # helvetica's afm width  # \xb0 is cp1252's °
 
 
 def test_metadata_holds_any_unicode():

@@ -3,13 +3,40 @@
 show_winnowing: !!bool false
 
 # lanes group code prefixes into the rows of a timeline, drawn top to bottom,
-# covering the prefixes of the shipped collation config and of marabou's nicu
-# config; a lane whose prefixes a dataset lacks is simply not drawn. colors are
-# from the university's color system and are embellishment only, since every
+# covering the prefixes of the shipped collation and tokenization configs, as for
+# clif-mimic; a lane whose prefixes a dataset lacks is simply not drawn. colors
+# are from the university's color system and are embellishment only, since every
 # lane is labeled. grey is kept for the structural lanes: time spacers and
 # clocks, and words out of the vocabulary. maroon is kept for the page's title
 # and footer, so no lane wears it
-lanes: []
+lanes:
+  - name: Time
+    prefixes: [TIME, CLCK]
+    color: "#A6A6A6" # greystone
+  - name: Demographics
+    prefixes: [AGE, SEX, RACE, ETHN]
+    color: "#B46A55" # light brick
+  - name: Encounter
+    prefixes: [ADMN, XFR-OUT, XFR-IN, CODE, DSCG]
+    color: "#59315F" # violet
+  - name: Labs
+    prefixes: [LAB-ORD, LAB-RES]
+    color: "#007396" # lake
+  - name: Vitals
+    prefixes: [VTL]
+    color: "#A4343A" # brick
+  - name: Assessments
+    prefixes: [ASMT, SOFA]
+    color: "#CC8A00" # dark goldenrod
+  - name: Medications
+    prefixes: [MED-CTS, MED-INT]
+    color: "#275D38" # forest
+  - name: Organ support
+    prefixes: [RESP, POSN, CRRT]
+    color: "#3EB1C8" # light lake
+  - name: Outcomes
+    prefixes: [LABEL]
+    color: "#41273B" # dark violet
 
 palette:
   - "#59315F" # violet
@@ -36,4 +63,29 @@ palette:
 other_color: "#737373" # dark greystone
 
 # what each prefix denotes; shown on hover alongside the code
-prefixes: []
+prefixes:
+  BOS: Beginning of sequence
+  EOS: End of sequence
+  UNK: Out of vocabulary
+  TIME: Time spacer
+  CLCK: Clock
+  AGE: Age
+  SEX: Sex
+  RACE: Race
+  ETHN: Ethnicity
+  ADMN: Admission
+  XFR-OUT: Transfer out
+  XFR-IN: Transfer in
+  CODE: Code status
+  DSCG: Discharge
+  LAB-ORD: Lab ordered
+  LAB-RES: Lab result
+  VTL: Vital sign
+  ASMT: Assessment
+  SOFA: SOFA subscore
+  MED-CTS: Continuous medication
+  MED-INT: Intermittent medication
+  RESP: Respiratory support
+  POSN: Position
+  CRRT: Continuous renal replacement therapy
+  LABEL: Outcome label

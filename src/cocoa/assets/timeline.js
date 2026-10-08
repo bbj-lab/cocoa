@@ -207,7 +207,7 @@
     "Double-click to zoom in",
     "Reset or [0] to see it all",
     "Click a lane to show each code",
-    "Click an event, then [←] [→] to step",
+    "Click an event or token, then [←] [→] to step",
   ])
     hint.append(withKeys(s));
   viz.append(sticky, bodyRow, hint);
@@ -234,6 +234,7 @@
   const panelNote = el("span", "panel-note num");
   tabs.append(panelNote);
   const panelBody = el("div", "panel-body");
+  panelBody.tabIndex = 0; // so a click on a token or row takes the arrow keys
   panelBody.setAttribute("role", "tabpanel");
   panel.append(tabs, panelBody);
   app.append(panel);
@@ -304,7 +305,7 @@
         const c = C[r.code];
         n = el("div", binned[r.code] ? "code binned" : "code");
         n.title = c.code + (c.description ? ` · ${c.description}` : "");
-        if (multi[r.lane]) n.append(el("span", "pfx", c.prefix));
+        if (multi[r.lane] || !c.name) n.append(el("span", "pfx", c.prefix));
         n.append(el("span", "nm", c.name), el("span", "ct", fmtInt(r.ev.length)));
         if (binned[r.code])
           n.append(el("span", "qhi", `Q${nBins - 1}`), el("span", "qlo", "Q0"));
@@ -810,22 +811,24 @@
     },
     { passive: false }
   );
-  wrap.addEventListener("keydown", (ev) => {
+  // the plot and the tokens/table panel below it both step through events
+  function stepKeys(ev) {
+    if (ev.metaKey || ev.ctrlKey || ev.altKey) return; // the browser's history
     const k = ev.key;
     if (k === "ArrowRight" || k === "ArrowLeft") step(k === "ArrowRight" ? 1 : -1);
     else if (k === "Home" || k === "End") {
       const list = navList();
       if (list.length) select(list[k === "Home" ? 0 : list.length - 1], true);
-    } else if (k === "+" || k === "=") zoomAt(W / 2, 0.5);
-    else if (k === "-" || k === "_") zoomAt(W / 2, 2);
-    else if (k === "0") setView(ext0, ext1);
-    else if (k === "Escape") select(-1);
+    } else if (k === "Escape") select(-1);
     else return;
     ev.preventDefault();
-  });
-  wrap.addEventListener("blur", () => {
-    if (!S.hov.length) hideTip();
-  });
+  }
+  for (const n of [wrap, panelBody]) {
+    n.addEventListener("keydown", stepKeys);
+    n.addEventListener("blur", () => {
+      if (!S.hov.length) hideTip();
+    });
+  }
 
   const navList = () => (S.match ? nav.filter((e) => S.match[E.code[e]]) : nav);
 
@@ -851,18 +854,31 @@
     if (e >= 0 && fromKeys) reveal(e);
     redraw(OVER);
     markPanel();
-    if (e >= 0 && fromKeys) {
-      // keyboard users get the same details a pointer gets on hover
-      requestAnimationFrame(() => {
-        const r = rowsOf(e).at(-1);
-        const b = wrap.getBoundingClientRect();
-        const y = r ? b.top + r.y + r.h / 2 : b.top;
-        const group = r ? groupAt(r, e) : [e];
-        showTip(group, b.left + X(ems[e]), y);
-      });
-      scrollPanelTo(e);
-    } else if (e < 0) hideTip();
-    else scrollPanelTo(e);
+    if (e < 0) return hideTip();
+    scrollPanelTo(e);
+    // keyboard users get the same details a pointer gets on hover
+    if (fromKeys) requestAnimationFrame(selTip);
+  }
+
+  let tipOnRender = false;
+  function selTip() {
+    const e = S.sel;
+    tipOnRender = false;
+    if (e < 0) return;
+    if (panelBody.contains(document.activeElement)) {
+      // stepping through the panel, so beside its token rather than at its mark
+      const n = (chipsOf.get(e) || [])[0];
+      if (!n) {
+        tipOnRender = true; // once the panel catches up with the view
+        return hideTip();
+      }
+      const b = n.getBoundingClientRect();
+      return showTip([e], b.left, b.bottom - 10);
+    }
+    const r = rowsOf(e).at(-1);
+    const b = wrap.getBoundingClientRect();
+    const y = r ? b.top + r.y + r.h / 2 : b.top;
+    showTip(r ? groupAt(r, e) : [e], b.left + X(ems[e]), y);
   }
 
   function groupAt(r, e) {
@@ -954,11 +970,19 @@
     }
   });
   document.addEventListener("keydown", (ev) => {
-    if (ev.key === "/" && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName)) {
+    // page-wide, since a scroll, pinch, or brush zooms without focusing the plot;
+    // with ⌘/Ctrl held the key is the browser's own zoom
+    if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName)) return;
+    if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
+    const k = ev.key;
+    if (k === "/") {
       search.focus();
       search.select();
-      ev.preventDefault();
-    }
+    } else if (k === "+" || k === "=") zoomAt(W / 2, 0.5);
+    else if (k === "-" || k === "_") zoomAt(W / 2, 2);
+    else if (k === "0") setView(ext0, ext1);
+    else return;
+    ev.preventDefault();
   });
 
   function setQuery(q) {
@@ -1078,6 +1102,7 @@
     panelBody.scrollTop = keep;
     markPanel();
     if (S.sel >= 0) scrollPanelTo(S.sel);
+    if (tipOnRender) selTip();
   }
 
   function capped(a, b, focus, cap) {
@@ -1142,7 +1167,7 @@
         ? `Showing ${fmtInt(t - s)} of the ${fmtInt(b - a)} rows in view; zoom in for the rest`
         : `${fmtInt(b - a)} of ${fmtInt(nE)} rows in view`;
     const cols = [
-      ["Token", "r", (e) => fmtInt(E.first_token[e])],
+      ["#", "r", (e) => fmtInt(E.first_token[e])],
       ["Time", "num", (e) => D.times.label[E.time[e]]],
       ["Lane", null, null],
       ["Code", "mono", (e) => C[E.code[e]].code],
@@ -1151,7 +1176,7 @@
     if (D.meta.has_numeric_values) cols.push(["Value", "r num", (e) => fmtNum(E.value[e], 6)]);
     cols.push(["Text", null, (e) => E.text[e] ?? ""]);
     cols.push([
-      "Tokens",
+      "Token",
       "mono",
       (e) => {
         const out = [];

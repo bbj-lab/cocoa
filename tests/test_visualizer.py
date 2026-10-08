@@ -151,6 +151,42 @@ def test_unfused_bins_attach_to_the_code_before_them(runner):
     assert n_binned > 0
 
 
+@pytest.mark.parametrize("fused", [True, False])
+def test_a_bare_prefix_is_drawn_with_its_prefix(runner, tmp_path, fused):
+    """before 26.6.0, collation wrote an event with a null code as its prefix"""
+    dest = runner.seed_collated()
+    meds = pl.read_parquet(dest / "meds.parquet")
+    bare = meds.filter(pl.col("code").str.starts_with("VTL//")).with_columns(
+        code=pl.lit("VTL")
+    )
+    pl.concat([meds, bare]).write_parquet(dest / "meds.parquet")
+    runner.tokenize(cfg={**default_cfg("tokenization"), "fused": fused}, processed=dest)
+    path, _ = viz_cfg(tmp_path)
+    v = Visualizer(path, processed_data_home=dest)
+    assert v.parse("VTL") == {
+        "prefix": "VTL",
+        "code": "VTL",
+        "name": "",
+        "bin": None,
+        "text": None,
+    }
+    n_binned = 0
+    for sid in bare["subject_id"].unique():
+        p = v.get_payload(sid)
+        codes = {c["code"]: c for c in p["codes"]}
+        assert not [c for c in codes if codes[c]["prefix"] == ""]
+        assert codes["VTL"]["prefix"] == "VTL"
+        assert codes["VTL"]["lane"] == codes["VTL//sbp"]["lane"] is not None
+        assert "VTL" not in p["events"]["text"]  # not glued onto the code before
+        n_binned += sum(
+            b is not None
+            for c, b in zip(p["events"]["code"], p["events"]["bin"])
+            if p["codes"][c]["code"] == "VTL"
+        )
+        assert v.render_pdf(sid).startswith(b"%PDF-")
+    assert n_binned > 0
+
+
 def test_a_tokenizer_cfg_without_fused_is_read_as_the_tokenizer_ran(runner):
     """the visualizer's fallback for `fused` agrees with the tokenizer's"""
     cfg = default_cfg("tokenization")

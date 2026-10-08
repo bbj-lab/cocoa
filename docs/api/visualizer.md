@@ -52,8 +52,9 @@ when the recipient may not open html in a browser; send both, and they can open
 the html to explore. Its first page shows the subject and every lane of the whole
 timeline; the pages after give every code a row of its own, with binned values at
 the height of their quantile, and then list the events, as many as the page's
-table shows at once. It is set in pdf's standard fonts, which every reader has, so
-it embeds none, and a character those fonts lack prints as `?`.
+table shows at once. It is set in the page's font, Gotham, which it embeds, with
+codes and tokens in Courier, one of pdf's standard fonts; a character the font lacks
+prints as `?`.
 
 ## Configuring the page
 

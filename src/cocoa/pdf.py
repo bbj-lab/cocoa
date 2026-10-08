@@ -7,6 +7,8 @@ visualizer builds for its html page
 
 import datetime
 import functools
+import importlib.resources as resources
+import struct
 import zlib
 import zoneinfo
 
@@ -39,9 +41,13 @@ STEPS = [
 EPOCH = datetime.datetime(1970, 1, 1)
 UTC_EPOCH = EPOCH.replace(tzinfo=datetime.timezone.utc)
 
-# pdf's standard fonts, which every reader has, so none needs embedding; widths
-# are thousandths of the font size, from their afm metrics for codes 32 to 126
+# the page's own fonts, embedded whole so that the pdf is set as the page is; one
+# whose file is missing falls back to the pdf standard font beside it, which every
+# reader has. codes and tokens are set in courier, as no monospace font is packaged
+EMBEDDED = {"F1": "Gotham-Book.otf", "F2": "Gotham-Medium.otf"}
 FONTS = {"F1": "Helvetica", "F2": "Helvetica-Bold", "F3": "Courier"}
+# the standard fonts' widths are thousandths of the font size, from their afm
+# metrics for codes 32 to 126
 HELVETICA = tuple(
     map(
         int,
@@ -69,6 +75,118 @@ HELVETICA_BOLD = tuple(
     )
 )
 WIDE = {0x85: 1000, 0x96: 556, 0x97: 1000, 0xB0: 400, 0xB7: 278, 0xD7: 584}
+# maps an embedded font's glyphs back to text, so that a reader can copy it
+TO_UNICODE = """/CIDInit /ProcSet findresource begin
+12 dict begin
+begincmap
+/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def
+/CMapName /Adobe-Identity-UCS def
+/CMapType 2 def
+1 begincodespacerange
+<0000> <FFFF>
+endcodespacerange
+{}endcmap
+CMapName currentdict /CIDInit /ProcSet findresource exch defineresource pop
+end
+end
+"""
+
+
+def read_cmap(data: bytes, at: int) -> dict[int, int]:
+    """code points to glyph ids, from the unicode subtable of the cmap at `at`"""
+    n = struct.unpack_from(">H", data, at + 2)[0]
+    subtables = {
+        (platform, encoding): at + offset
+        for platform, encoding, offset in struct.iter_unpack(
+            ">HHI", data[at + 4 : at + 4 + 8 * n]
+        )
+    }
+    s = subtables.get((3, 1)) or subtables[(0, 3)]  # format 4, the bmp
+    seg = struct.unpack_from(">H", data, s + 6)[0] // 2
+    ends = struct.unpack_from(f">{seg}H", data, s + 14)
+    starts = struct.unpack_from(f">{seg}H", data, s + 16 + 2 * seg)
+    deltas = struct.unpack_from(f">{seg}h", data, s + 16 + 4 * seg)
+    ranges = s + 16 + 6 * seg
+    offsets = struct.unpack_from(f">{seg}H", data, ranges)
+    cmap = {}
+    for k, (start, end, delta, offset) in enumerate(zip(starts, ends, deltas, offsets)):
+        for c in range(start, min(end, 0xFFFE) + 1):
+            if offset:
+                at_glyph = ranges + 2 * k + offset + 2 * (c - start)
+                g = struct.unpack_from(">H", data, at_glyph)[0]
+                g = (g + delta) & 0xFFFF if g else 0
+            else:
+                g = (c + delta) & 0xFFFF
+            if g:
+                cmap[c] = g
+    return cmap
+
+
+class Face:
+    """an opentype font, read for what setting and embedding text in it takes"""
+
+    def __init__(self, data: bytes, name: str):
+        self.data, self.name = data, name
+        n = struct.unpack_from(">H", data, 4)[0]
+        tables = {
+            tag: offset
+            for tag, _, offset, _ in struct.iter_unpack(
+                ">4sIII", data[12 : 12 + 16 * n]
+            )
+        }
+
+        def read(tag: bytes, fmt: str, at: int = 0) -> tuple:
+            return struct.unpack_from(">" + fmt, data, tables[tag] + at)
+
+        scale = 1000 / read(b"head", "H", 18)[0]  # font units to thousandths
+        self.bbox = [round(v * scale) for v in read(b"head", "4h", 36)]
+        self.ascent, self.descent = (round(v * scale) for v in read(b"hhea", "2h", 4))
+        n_metrics, n_glyphs = read(b"hhea", "H", 34)[0], read(b"maxp", "H", 4)[0]
+        advances = read(b"hmtx", "Hh" * n_metrics)[::2]
+        advances += advances[-1:] * (n_glyphs - n_metrics)  # the rest share the last
+        self.widths = [round(a * scale) for a in advances]
+        version, _, weight = read(b"OS/2", "HhH")
+        cap = read(b"OS/2", "h", 88)[0] if version >= 2 else None
+        self.cap_height = round(cap * scale) if cap else self.ascent
+        self.stem_v = 50 + round((weight / 65) ** 2)  # the usual guess from weight
+        self.italic_angle = read(b"post", "i", 4)[0] / 65536
+        self.cmap = read_cmap(data, tables[b"cmap"])
+        self.missing = self.cmap.get(ord("?"), 0)
+
+    def glyphs(self, s) -> list[int]:
+        """the glyph of each character of `s`; what the font lacks becomes ?"""
+        return [self.cmap.get(ord(c) if c >= " " else 32, self.missing) for c in str(s)]
+
+    @functools.cached_property
+    def program(self) -> bytes:
+        return zlib.compress(self.data, 9)
+
+    @functools.cached_property
+    def to_unicode(self) -> bytes:
+        first = {}  # a glyph that several code points share copies as the first
+        for c, g in sorted(self.cmap.items()):
+            first.setdefault(g, c)
+        pairs = [
+            f"<{g:04X}> <{chr(c).encode('utf-16-be').hex().upper()}>"
+            for g, c in sorted(first.items())
+        ]
+        blocks = "".join(  # a block holds at most 100
+            f"{len(pairs[i : i + 100])} beginbfchar\n"
+            + "\n".join(pairs[i : i + 100])
+            + "\nendbfchar\n"
+            for i in range(0, len(pairs), 100)
+        )
+        return zlib.compress(TO_UNICODE.format(blocks).encode())
+
+
+@functools.cache
+def face(font: str) -> Face | None:
+    """the packaged font that `font` embeds, or None to use a standard font"""
+    file = EMBEDDED.get(font)
+    path = resources.files("cocoa.assets") / "fonts" / file if file else None
+    if path is None or not path.is_file():
+        return None
+    return Face(path.read_bytes(), file.removesuffix(".otf"))
 
 
 def to_ansi(s) -> bytes:
@@ -76,26 +194,36 @@ def to_ansi(s) -> bytes:
     return "".join(c if c >= " " else " " for c in str(s)).encode("cp1252", "replace")
 
 
-def char_widths(b: bytes, font: str) -> list[int]:
-    """the advance of each byte of `b` in `font`, in thousandths of its size"""
+def char_widths(s, font: str) -> list[int]:
+    """the advance of each character of `s` in `font`, in thousandths of its size"""
+    if f := face(font):
+        return [f.widths[g] for g in f.glyphs(s)]
+    b = to_ansi(s)
     if font == "F3":
         return [600] * len(b)
     table = HELVETICA_BOLD if font == "F2" else HELVETICA
     return [table[c - 32] if 32 <= c <= 126 else WIDE.get(c, 556) for c in b]
 
 
+def encode(s, font: str) -> str:
+    """`s` as a pdf string in `font`: glyph ids if it is embedded, else winansi"""
+    if f := face(font):
+        return "<" + "".join(f"{g:04X}" for g in f.glyphs(s)) + ">"
+    return literal(to_ansi(s))
+
+
 def measure(s, size: float, font: str = "F1") -> float:
     """the width of `s` set in `font` at `size`, in points"""
-    return sum(char_widths(to_ansi(s), font)) * size / 1000
+    return sum(char_widths(s, font)) * size / 1000
 
 
 def clip(s, size: float, font: str, width: float) -> str:
     """`s`, cut short with an ellipsis if it is wider than `width`"""
     s = str(s)
-    ws = char_widths(to_ansi(s), font)
+    ws = char_widths(s, font)
     if sum(ws) * size / 1000 <= width:
         return s
-    room, n, acc = width * 1000 / size - char_widths(b"\x85", font)[0], 0, 0
+    room, n, acc = width * 1000 / size - char_widths("…", font)[0], 0, 0
     for w in ws:
         if acc + w > room:
             break
@@ -125,6 +253,39 @@ def literal(b: bytes) -> str:
 def utf16(s: str) -> bytes:
     """a pdf text string that holds any unicode, for document metadata"""
     return b"<FEFF" + s.encode("utf-16-be").hex().upper().encode() + b">"
+
+
+def stream(data: bytes, entries: str) -> bytes:
+    """a pdf stream of `data`, its dictionary holding `entries` too"""
+    head = f"<< /Length {len(data)} {entries} >>\nstream\n"
+    return head.encode() + data + b"\nendstream"
+
+
+def add_font(font: str, add) -> int:
+    """the objects of `font`, each given to `add`; returns the font's number"""
+    f = face(font)
+    if f is None:
+        return add(
+            f"<< /Type /Font /Subtype /Type1 /BaseFont /{FONTS[font]} "
+            "/Encoding /WinAnsiEncoding >>"
+        )
+    program = add(stream(f.program, "/Subtype /OpenType /Filter /FlateDecode"))
+    descriptor = add(
+        f"<< /Type /FontDescriptor /FontName /{f.name} /Flags 4 "
+        f"/FontBBox [{' '.join(map(str, f.bbox))}] /ItalicAngle {f.italic_angle:g} "
+        f"/Ascent {f.ascent} /Descent {f.descent} /CapHeight {f.cap_height} "
+        f"/StemV {f.stem_v} /FontFile3 {program} 0 R >>"
+    )
+    glyphs = add(  # cids are glyph ids, as its cff is not cid-keyed
+        f"<< /Type /Font /Subtype /CIDFontType0 /BaseFont /{f.name} "
+        "/CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> "
+        f"/FontDescriptor {descriptor} 0 R /W [0 [{' '.join(map(str, f.widths))}]] >>"
+    )
+    to_unicode = add(stream(f.to_unicode, "/Filter /FlateDecode"))
+    return add(
+        f"<< /Type /Font /Subtype /Type0 /BaseFont /{f.name} /Encoding /Identity-H "
+        f"/DescendantFonts [{glyphs} 0 R] /ToUnicode {to_unicode} 0 R >>"
+    )
 
 
 @functools.lru_cache(maxsize=None)
@@ -194,14 +355,14 @@ class Page:
         """`s` with its baseline at `y`, cut short to fit `width` if given"""
         if width is not None:
             s = clip(s, size, font, width)
-        b = to_ansi(s)
-        if not b:
+        ws = char_widths(s, font)
+        if not ws:
             return
-        w = sum(char_widths(b, font)) * size / 1000
+        w = sum(ws) * size / 1000
         x -= w if align == "right" else w / 2 if align == "center" else 0
         self.ops.append(
             f"BT {rgb(color)} rg /{font} {size:.2f} Tf "
-            f"{x:.2f} {PAGE_H - y:.2f} Td {literal(b)} Tj ET"
+            f"{x:.2f} {PAGE_H - y:.2f} Td {encode(s, font)} Tj ET"
         )
 
 
@@ -218,44 +379,41 @@ class Document:
         return page
 
     def to_bytes(self) -> bytes:
-        """the pdf: catalog, page tree, info, fonts, then each page and its content"""
-        fonts = {k: 4 + i for i, k in enumerate(FONTS)}
-        resources = " ".join(f"/{k} {n} 0 R" for k, n in fonts.items())
-        objs = {
-            1: b"<< /Type /Catalog /Pages 2 0 R >>",
-            3: b"<< /Title "
+        """the pdf: catalog, page tree, info, fonts, then each page's content and it"""
+        objs = [
+            b"<< /Type /Catalog /Pages 2 0 R >>",
+            b"",  # the page tree, once its pages are numbered
+            b"<< /Title "
             + utf16(self.title)
             + b" /Producer "
             + utf16(self.producer)
             + b" >>",
-        }
-        for k, n in fonts.items():
-            objs[n] = (
-                f"<< /Type /Font /Subtype /Type1 /BaseFont /{FONTS[k]} "
-                "/Encoding /WinAnsiEncoding >>"
-            ).encode()
-        kids = []
-        for i, page in enumerate(self.pages):
-            n = 4 + len(FONTS) + 2 * i
-            kids.append(f"{n} 0 R")
-            objs[n] = (
-                f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {PAGE_W:g} {PAGE_H:g}] "
-                f"/Resources << /Font << {resources} >> >> /Contents {n + 1} 0 R >>"
-            ).encode()
-            data = zlib.compress("\n".join(page.ops).encode("latin-1"))
-            objs[n + 1] = (
-                f"<< /Length {len(data)} /Filter /FlateDecode >>\nstream\n".encode()
-                + data
-                + b"\nendstream"
-            )
-        objs[2] = f"<< /Type /Pages /Kids [{' '.join(kids)}] /Count {len(kids)} >>"
-        objs[2] = objs[2].encode()
+        ]
 
-        out = bytearray(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
+        def add(obj) -> int:
+            """the number of `obj`, added as the next object"""
+            objs.append(obj if isinstance(obj, bytes) else obj.encode())
+            return len(objs)
+
+        fonts = " ".join(f"/{k} {add_font(k, add)} 0 R" for k in FONTS)
+        kids = []
+        for page in self.pages:
+            data = zlib.compress("\n".join(page.ops).encode("latin-1"))
+            contents = add(stream(data, "/Filter /FlateDecode"))
+            n = add(
+                f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {PAGE_W:g} {PAGE_H:g}] "
+                f"/Resources << /Font << {fonts} >> >> /Contents {contents} 0 R >>"
+            )
+            kids.append(f"{n} 0 R")
+        objs[1] = f"<< /Type /Pages /Kids [{' '.join(kids)}] /Count {len(kids)} >>"
+        objs[1] = objs[1].encode()
+
+        # 1.6, for an embedded opentype font
+        out = bytearray(b"%PDF-1.6\n%\xe2\xe3\xcf\xd3\n")
         offsets = []
-        for n in range(1, len(objs) + 1):
+        for n, obj in enumerate(objs, 1):
             offsets.append(len(out))
-            out += f"{n} 0 obj\n".encode() + objs[n] + b"\nendobj\n"
+            out += f"{n} 0 obj\n".encode() + obj + b"\nendobj\n"
         xref = len(out)
         out += f"xref\n0 {len(objs) + 1}\n0000000000 65535 f \n".encode()
         out += "".join(f"{o:010d} 00000 n \n" for o in offsets).encode()
@@ -672,7 +830,7 @@ class TimelinePdf:
         right = MARGIN + GUTTER - (16 if binned else 0)
         p.text(right, base, count, 6.5, color=INK2, align="right")
         x = MARGIN + 11
-        if self.multi[r["lane"]]:
+        if self.multi[r["lane"]] or not c["name"]:  # a bare prefix has no name
             p.text(x, base, c["prefix"], 6, color=INK2)
             x += measure(c["prefix"], 6) + 4
         p.text(x, base, c["name"], 7, width=right - x - measure(count, 6.5) - 6)
@@ -727,7 +885,7 @@ class TimelinePdf:
             return "  ".join(f"{t} {vocab.get(str(t), 'UNK')}" for t in ids)
 
         cols = [
-            ("Token", 34, "right", "F1", lambda e: fmt_int(E["first_token"][e])),
+            ("#", 34, "right", "F1", lambda e: fmt_int(E["first_token"][e])),
             ("Time", 112, "left", "F1", lambda e: self.labels[E["time"][e]]),
             ("Lane", 96, "left", "F1", None),
             ("Code", 150, "left", "F3", lambda e: self.C[E["code"][e]]["code"]),
@@ -739,7 +897,7 @@ class TimelinePdf:
             )
         cols.append(("Text", 70, "left", "F1", lambda e: E["text"][e] or ""))
         used = sum(c[1] for c in cols) + GAP * len(cols)
-        cols.append(("Tokens", PAGE_W - 2 * MARGIN - used, "left", "F3", tokens_of))
+        cols.append(("Token", PAGE_W - 2 * MARGIN - used, "left", "F3", tokens_of))
 
         n = min(self.n_e, ROW_CAP)
         note = (

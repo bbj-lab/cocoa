@@ -5,7 +5,11 @@
 import importlib.resources as resources
 import logging
 import pathlib
-import tomllib
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # python < 3.11
+    import tomli as tomllib
 
 import omegaconf.errors as oc_errors
 import pytest

@@ -52,7 +52,7 @@ template, css, js, icon, and fonts live in
 ## Commands
 
 ```sh
-# Dev install (Python >= 3.11)
+# Dev install (Python >= 3.10)
 python -m venv .venv && . .venv/bin/activate
 pip install -e '.[all]'          # all = dev + docs + test extras
 

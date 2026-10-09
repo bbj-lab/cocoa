@@ -23,7 +23,7 @@
     license-files = [ "LICEN[CS]E.*" ]
     name = "cocoa-tokenizer"
     readme = { file = "README.md", content-type = "text/markdown" }
-    requires-python = ">=3.11"
+    requires-python = ">=3.10"
     version = "26.10.0"
 
     [project.scripts]
@@ -36,20 +36,20 @@
 
     [project.optional-dependencies]
         all = [ "cocoa-tokenizer[dev,docs,test]" ]
-        dev = [ "pip", "ruff" ]
+        dev = [ "pip>=21.3", "ruff>=0.9" ]
         docs = [
-            "mkdocs",
-            "mkdocs-material",
-            "mkdocstrings[python]",
-            "mkdocs-include-markdown-plugin",
-            "mkdocs-callouts",
-            "mkdocs-git-revision-date-localized-plugin",
+            "mkdocs>=1.5.3,<2",
+            "mkdocs-material>=9.4",
+            "mkdocstrings[python]>=0.27",
+            "mkdocs-include-markdown-plugin>=4.0",
+            "mkdocs-callouts>=1.10",
+            "mkdocs-git-revision-date-localized-plugin>=0.5",
         ]
-        test = [ "pytest" ]
+        test = [ "pytest>=7.0", "tomli>=1.0; python_version < '3.11'" ]
 
 [build-system]
     build-backend = "setuptools.build_meta"
-    requires      = [ "setuptools" ]
+    requires      = [ "setuptools>=77" ]
 
 [tool.ruff]
     extend-exclude = [ "*.md" ]

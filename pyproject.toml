@@ -9,13 +9,13 @@
         "Programming Language :: Python :: 3",
     ]
     dependencies = [
-        "deepdiff",
-        "numpy",
-        "omegaconf",
-        "polars",
-        "pyyaml",
-        "rich",
-        "typer",
+        "deepdiff>=6.6",
+        "numpy>=1.23.2",
+        "omegaconf>=2.2.1",
+        "polars>=1.36.1",
+        "pyyaml>=6.0",
+        "rich>=13.8",
+        "typer>=0.26",
     ]
     description = "configurable collator and tokenizer"
     keywords = [ "data collation", "generative event models", "tokenization" ]
@@ -24,7 +24,7 @@
     name = "cocoa-tokenizer"
     readme = { file = "README.md", content-type = "text/markdown" }
     requires-python = ">=3.11"
-    version = "26.9.1"
+    version = "26.10.0"
 
     [project.scripts]
         cocoa = "cocoa.cli:main"

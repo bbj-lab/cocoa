@@ -85,7 +85,6 @@ def collate(
             "-v",
             help="Verbose logging for collate; this may cause "
             "memory issues with large datasets",
-            is_flag=True,
         ),
     ] = False,
     overrides: Overrides = None,
@@ -144,7 +143,6 @@ def tokenize(
             "-v",
             help="Verbose logging for tokenize; this may cause "
             "memory issues with large datasets",
-            is_flag=True,
         ),
     ] = False,
     overrides: Overrides = None,
@@ -211,7 +209,6 @@ def winnow(
             "--verbose",
             "-v",
             help="Verbose logging for winnow; prints summary statistics",
-            is_flag=True,
         ),
     ] = False,
     overrides: Overrides = None,
@@ -272,10 +269,7 @@ def pipeline(
         typer.Option("--processed-data-home", "-p", help="Processed data directory"),
     ] = ...,
     verbose: Annotated[
-        bool,
-        typer.Option(
-            "--verbose", "-v", help="Verbose logging for pipeline steps", is_flag=True
-        ),
+        bool, typer.Option("--verbose", "-v", help="Verbose logging for pipeline steps")
     ] = False,
     overrides: Annotated[
         Optional[list[str]],
@@ -390,15 +384,13 @@ def visualize(
         int, typer.Option("--port", help="Port to serve the page on; 0 picks any")
     ] = 8765,
     open_browser: Annotated[
-        bool,
-        typer.Option("--open", help="Open the page in a web browser", is_flag=True),
+        bool, typer.Option("--open", help="Open the page in a web browser")
     ] = False,
     show_winnowing: Annotated[
         bool,
         typer.Option(
             "--show-winnowing",
             help="Show the winnowing split into past and future, and its outcome flags",
-            is_flag=True,
         ),
     ] = False,
     overrides: Overrides = None,

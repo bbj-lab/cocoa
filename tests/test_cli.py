@@ -9,6 +9,7 @@ import re
 import shutil
 import subprocess
 import sys
+import warnings
 
 import polars as pl
 import pytest
@@ -115,6 +116,15 @@ def test_cli_version_matches_installed_package_metadata():
     assert cocoa.cli.__version__ == importlib.metadata.version("cocoa-tokenizer")
     # calver YY.M.patch
     assert re.fullmatch(r"\d{2}\.\d{1,2}\.\d+", cocoa.cli.__version__)
+
+
+def test_cli_declares_its_options_without_deprecated_typer_arguments():
+    """typer 0.27 deprecates `is_flag`, which a bool option named without a `/`
+    never needed; reloading reruns only the cli's own declarations"""
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        importlib.reload(cocoa.cli)
+    assert [str(w.message) for w in caught if w.category is DeprecationWarning] == []
 
 
 @pytest.mark.parametrize("flag", ["-h", "--help"])

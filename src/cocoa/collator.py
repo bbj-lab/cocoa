@@ -4,7 +4,9 @@
 collects and collates different dataframes into a denormalized format
 """
 
+import collections.abc
 import pathlib
+from typing import Any, Literal
 
 import numpy as np
 import polars as pl
@@ -17,11 +19,11 @@ class Collator(Configurable):
 
     def __init__(
         self,
-        collation_cfg: pathlib.Path | str = None,
-        raw_data_home: pathlib.Path | str = None,
-        processed_data_home: pathlib.Path | str = None,
-        **kwargs,
-    ):
+        collation_cfg: pathlib.Path | str | None = None,
+        raw_data_home: pathlib.Path | str | None = None,
+        processed_data_home: pathlib.Path | str | None = None,
+        **kwargs: Any,
+    ) -> None:
         super().__init__(collation_cfg, **kwargs)
 
         self.raw_data_home, self.processed_data_home = map(
@@ -29,9 +31,10 @@ class Collator(Configurable):
             [raw_data_home, processed_data_home],
         )
         self.processed_data_home.mkdir(parents=True, exist_ok=True)
-        self.reference_frame = None
-        self.splits: tuple = ("train", "tuning", "held_out")
+        self.reference_frame: pl.LazyFrame | None = None
+        self.splits: tuple[str, str, str] = ("train", "tuning", "held_out")
         self.tz = self.cfg.get("default_timezone", None) or "UTC"
+        self.time_unit: Literal["ms", "us", "ns"]
         self.time_unit = self.cfg.get("default_time_unit", None) or "us"  # pl default
         assert self.time_unit in (units := ("ms", "us", "ns")), (
             f"default_time_unit={self.time_unit!r} must be one of {units}"
@@ -42,7 +45,7 @@ class Collator(Configurable):
         self.logger.info(f"{self.processed_data_home=}")
 
     @staticmethod
-    def slightly_safer_eval(expr):
+    def slightly_safer_eval(expr: str) -> Any:
         """
         performs eval on polars expressions;
         prevents some forms of accidental usage
@@ -107,14 +110,14 @@ class Collator(Configurable):
     def load_table(
         self,
         *,
-        table: str = None,
-        filter_expr: str | list = None,
-        agg_expr: str | list = None,
-        with_col_expr: str | list = None,
-        key: str = None,
-        subject_id_str: str = None,
-        time: str = None,
-        **kwargs,
+        table: str | None = None,
+        filter_expr: str | collections.abc.Sequence[str] | None = None,
+        agg_expr: str | collections.abc.Sequence[str] | None = None,
+        with_col_expr: str | collections.abc.Sequence[str] | None = None,
+        key: str | None = None,
+        subject_id_str: str | None = None,
+        time: str | None = None,
+        **kwargs: Any,
     ) -> pl.LazyFrame:
         """
         lazy-load the table `table`.parquet and perform some standard ETL
@@ -184,16 +187,16 @@ class Collator(Configurable):
         time: str,
         code: str,
         *,
-        prefix: str = None,
-        numeric_value: str = None,
-        text_value: str = None,
-        filter_expr: str = None,
-        with_col_expr: str = None,
-        reference_key: str = None,
-        subject_id_str: str = None,
-        fix_date_to_time: bool = None,
-        agg_expr: str | list = None,
-        key: str = None,
+        prefix: str | None = None,
+        numeric_value: str | None = None,
+        text_value: str | None = None,
+        filter_expr: str | collections.abc.Sequence[str] | None = None,
+        with_col_expr: str | collections.abc.Sequence[str] | None = None,
+        reference_key: str | None = None,
+        subject_id_str: str | None = None,
+        fix_date_to_time: bool | None = None,
+        agg_expr: str | collections.abc.Sequence[str] | None = None,
+        key: str | None = None,
     ) -> pl.LazyFrame:
         """create tokens corresponding to a configured event"""
         df = (
@@ -334,7 +337,7 @@ class Collator(Configurable):
             pl.col(self.cfg["reference"]["end_time"]).alias("end_time"),
         )
 
-    def save_all(self, verbose: bool = False):
+    def save_all(self, verbose: bool = False) -> None:
         """save collated data and subject splits to disc, optionally w/ summary stats"""
         meds_path = self.processed_data_home / "meds.parquet"
         meds_path.unlink(missing_ok=True)

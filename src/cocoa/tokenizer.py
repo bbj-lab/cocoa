@@ -8,6 +8,7 @@ import datetime
 import importlib.metadata as meta
 import pathlib
 import zoneinfo
+from typing import Any
 
 import polars as pl
 from omegaconf import OmegaConf
@@ -25,19 +26,19 @@ class Tokenizer(Configurable):
 
     def __init__(
         self,
-        tokenization_cfg: pathlib.Path | str = None,
-        processed_data_home: pathlib.Path | str = None,
+        tokenization_cfg: pathlib.Path | str | None = None,
+        processed_data_home: pathlib.Path | str | None = None,
         is_training: bool = True,
-        **kwargs,
-    ):
+        **kwargs: Any,
+    ) -> None:
         super().__init__(tokenization_cfg, **kwargs)
         self.processed_data_home = (
             pathlib.Path(processed_data_home).expanduser().resolve()
         )
 
-        self.bins = None
-        self.subject_splits = None
-        self.lookup = None
+        self.bins: pl.DataFrame | None = None
+        self.subject_splits: pl.LazyFrame | None = None
+        self.lookup: pl.DataFrame | None = None
         self.is_training = is_training
         self.created_dttm = (
             datetime.datetime.now(zoneinfo.ZoneInfo("America/Chicago"))
@@ -327,7 +328,7 @@ class Tokenizer(Configurable):
 
         return df
 
-    def save_all(self, verbose: bool = False):
+    def save_all(self, verbose: bool = False) -> None:
         """
         get tokenized timelines and save them to disc,
         along with artifacts created during tokenization
@@ -351,14 +352,14 @@ class Tokenizer(Configurable):
         """is word in the tokenizer's vocabulary?"""
         return self.__call__(word) != 0
 
-    def __str__(self):
+    def __str__(self) -> str:
         return "{sp} of {sz} words {md}".format(
             sp=self.__class__,
             sz=len(self),
             md="in training mode" if self.is_training else "(frozen)",
         )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return str(self) + ", created {dttm}".format(dttm=self.created_dttm)
 
     def __len__(self) -> int:
@@ -386,7 +387,7 @@ class Tokenizer(Configurable):
             }
         )
 
-    def from_yaml(self, yaml_str: str, done_training=True) -> "Tokenizer":
+    def from_yaml(self, yaml_str: str, done_training: bool = True) -> "Tokenizer":
         """
         construct tokenizer from yaml representation
         places tokenizer into inference mode by default
@@ -424,14 +425,14 @@ class Tokenizer(Configurable):
             tkzr.is_training = False
         return tkzr
 
-    def save(self, path: pathlib.Path):
+    def save(self, path: pathlib.Path | str) -> None:
         """write yaml representation of tokenizer to disc"""
         to_file = pathlib.Path(path).expanduser().resolve()
         to_file.parent.mkdir(parents=True, exist_ok=True)
         with open(to_file, "w") as f:
             f.write(self.to_yaml())
 
-    def load(self, path: pathlib.Path, done_training=True):
+    def load(self, path: pathlib.Path | str, done_training: bool = True) -> "Tokenizer":
         """retrieve tokenizer from saved yaml representation"""
         from_file = pathlib.Path(path).expanduser().resolve()
         with open(from_file, "r") as f:

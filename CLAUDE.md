@@ -221,6 +221,16 @@ add/update a pytest case first.
 - Files open with `#!/usr/bin/env python3` and a short lowercase module
   docstring; method docstrings are terse and lowercase. Match the surrounding
   terseness.
+- **Type hints**: when writing a new function, try to hint its parameters and
+  return (`-> None` included), but only where the hints come out clean: short,
+  readable, and accurate. If a precise hint would sprawl over several lines, or
+  need a `cast`, a `# type: ignore`, or reshaped code to satisfy a type checker
+  (none runs here), use a simpler one like `dict[str, Any]` or leave it off.
+  Spell out `X | None` whenever the default is `None`, and hint a list read from
+  a config `collections.abc.Sequence`, since OmegaConf hands it over as a
+  `ListConfig`. Annotations are evaluated at import on Python 3.10, so quote
+  forward references and skip 3.11+ names like `typing.Self`; in `cli.py`, typer
+  reads a command's parameter annotations, so changing one changes the CLI.
 - **Config changes stay backward compatible with what's on PyPI** as far as
   possible. A config that worked with a released version, and lacks a key added
   since, must keep working exactly as it did under that release. A `-c` config

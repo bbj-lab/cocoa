@@ -24,7 +24,7 @@ TL_TGT_DISP_LEN = 1000  # example subjects are those with lengths nearest this
 class Logger(logging.Logger):
     """provides simple logging functionality and summary statistics"""
 
-    def __init__(self, name: str = __package__):
+    def __init__(self, name: str = __package__) -> None:
         super().__init__(name=name)
         self.setLevel(logging.INFO)
         self.handlers.clear()
@@ -45,7 +45,7 @@ class Logger(logging.Logger):
         )
         self.code_type = pl.col("code").str.split("//").list[0]
 
-    def summarize_meds_like(self, df: pl.LazyFrame, df_splits: pl.DataFrame):
+    def summarize_meds_like(self, df: pl.LazyFrame, df_splits: pl.DataFrame) -> None:
         df = df.cache()
         self.info("total rows: {}".format(df.select(pl.len()).collect().item()))
         self.info(
@@ -108,8 +108,11 @@ class Logger(logging.Logger):
         )
 
     def summarize_tokens_times(
-        self, df: pl.LazyFrame, df_splits: pl.DataFrame, lookup: pl.DataFrame
-    ):
+        self,
+        df: pl.LazyFrame,
+        df_splits: pl.DataFrame | pl.LazyFrame,
+        lookup: pl.DataFrame,
+    ) -> None:
         df = df.cache()
         self.info("total rows: {}".format(df.select(pl.len()).collect().item()))
         self.info(
@@ -175,7 +178,9 @@ class Logger(logging.Logger):
                 )
             )
 
-    def summarize_thresholded(self, df: pl.LazyFrame, outcome_tokens: list[str]):
+    def summarize_thresholded(
+        self, df: pl.LazyFrame, outcome_tokens: list[str]
+    ) -> None:
         self.info(
             (
                 df.select(

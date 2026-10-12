@@ -17,6 +17,7 @@ import math
 import pathlib
 import re
 import zoneinfo
+from typing import Any, Literal
 
 import polars as pl
 import yaml
@@ -47,10 +48,10 @@ class Visualizer(Configurable):
 
     def __init__(
         self,
-        visualization_cfg: pathlib.Path | str = None,
-        processed_data_home: pathlib.Path | str = None,
-        **kwargs,
-    ):
+        visualization_cfg: pathlib.Path | str | None = None,
+        processed_data_home: pathlib.Path | str | None = None,
+        **kwargs: Any,
+    ) -> None:
         super().__init__(visualization_cfg, **kwargs)
         self.processed_data_home = (
             pathlib.Path(processed_data_home).expanduser().resolve()
@@ -80,6 +81,7 @@ class Visualizer(Configurable):
         self.prefix_names = {
             str(k): str(v) for k, v in (self.cfg.get("prefixes") or {}).items() if v
         }
+        self.lanes: list[dict[str, Any]]
         self.lanes = [  # a lane needs prefixes; its name and color have defaults
             {
                 "name": str(lane.get("name") or ", ".join(ps)),
@@ -116,7 +118,7 @@ class Visualizer(Configurable):
             df = df.with_columns(pl.col("times").dt.replace_time_zone("UTC"))
         return df
 
-    def get_subject(self, subject_id: str) -> dict | None:
+    def get_subject(self, subject_id: str) -> dict[str, Any] | None:
         """the subject's row of subject_splits.parquet, if it has one"""
         f = self.processed_data_home / "subject_splits.parquet"
         if not f.exists():
@@ -129,7 +131,9 @@ class Visualizer(Configurable):
         )
         return df.row(0, named=True) if df.height else None
 
-    def get_values(self, subject_id: str, unit: str) -> dict | None:
+    def get_values(
+        self, subject_id: str, unit: Literal["ms", "us", "ns"]
+    ) -> collections.defaultdict[tuple[int, str, int], list[float]] | None:
         """
         the subject's numeric values from meds.parquet, keyed by (epoch in `unit`,
         code, bin), for timelines tokenized without include_numeric_values
@@ -154,7 +158,7 @@ class Visualizer(Configurable):
             found[(t, code, b)].append(v)
         return found
 
-    def get_winnowed(self, subject_id: str, split: str | None) -> dict | None:
+    def get_winnowed(self, subject_id: str, split: str | None) -> dict[str, Any] | None:
         """where the winnower split this subject into past and future, if it did"""
         f = self.processed_data_home / f"{split}_for_inference.parquet"
         if split is None or not f.exists():
@@ -192,7 +196,7 @@ class Visualizer(Configurable):
             return self.exact[code]
         return next((v for k, v in self.patterns if fnmatch.fnmatchcase(code, k)), None)
 
-    def parse(self, word: str) -> dict:
+    def parse(self, word: str) -> dict[str, Any]:
         """split a vocabulary word into its prefix, code, bin, and text value"""
         prefix, sep, rest = word.partition("//")
         if not sep:
@@ -212,7 +216,7 @@ class Visualizer(Configurable):
             "text": text,
         }
 
-    def lane_order(self, prefix: str) -> tuple:
+    def lane_order(self, prefix: str) -> tuple[bool, int, str]:
         """where a stray prefix's lane goes: tokenizer ordering, then name, UNK last"""
         ordering = list(self.tkzr_cfg.get("ordering", []))
         return (
@@ -221,10 +225,10 @@ class Visualizer(Configurable):
             prefix,
         )
 
-    def get_prefix_weight(self) -> collections.Counter:
+    def get_prefix_weight(self) -> collections.Counter[str]:
         """training occurrences of each code prefix in the vocabulary"""
         counts = self.tkzr.get("counts") or {}  # before 26.9.1, each word counts 1
-        weight = collections.Counter()
+        weight: collections.Counter[str] = collections.Counter()
         for w in self.decoder.values():
             if "//" in w:
                 weight[w.partition("//")[0]] += counts.get(w) or 1
@@ -235,7 +239,7 @@ class Visualizer(Configurable):
         claimed = {p for lane in self.lanes for p in lane["prefixes"]}
         return sorted(self.prefix_weight.keys() - claimed, key=self.lane_order)
 
-    def get_stray_colors(self) -> dict:
+    def get_stray_colors(self) -> dict[str, str]:
         """
         palette colors for the vocabulary prefixes no lane claims, from most to
         least frequent in training, skipping colors that lanes present in the
@@ -254,7 +258,7 @@ class Visualizer(Configurable):
         )
         return dict(zip(ranked, free))
 
-    def get_lanes(self, prefixes: set) -> list[dict]:
+    def get_lanes(self, prefixes: set[str]) -> list[dict[str, Any]]:
         """configured lanes holding any of `prefixes`, then a lane per stray prefix"""
         lanes = [{**lane, "prefixes": list(lane["prefixes"])} for lane in self.lanes]
         configured = {p for lane in lanes for p in lane["prefixes"]}
@@ -269,7 +273,7 @@ class Visualizer(Configurable):
         ]
         return [lane for lane in lanes if prefixes & set(lane["prefixes"])]
 
-    def get_payload(self, subject_id: str) -> dict:
+    def get_payload(self, subject_id: str) -> dict[str, Any]:
         """everything the page draws, as plain json-able data"""
         tl = self.get_timeline(subject_id)
         subject = self.get_subject(subject_id) or {}
@@ -295,6 +299,8 @@ class Visualizer(Configurable):
             else None
         )
 
+        codes: list[dict[str, Any]]
+        events: list[dict[str, Any]]
         codes, code_idx, events, token_event = [], {}, [], []
         for i, tok in enumerate(tokens):
             word = self.decoder.get(tok, "UNK")
@@ -451,7 +457,7 @@ class Visualizer(Configurable):
         return to_file
 
 
-def finite(x) -> float | None:
+def finite(x: float | None) -> float | None:
     """a json-safe float: NaN and infinities become null"""
     return float(x) if x is not None and math.isfinite(x) else None
 
@@ -462,7 +468,7 @@ def humanize(column: str) -> str:
     return label[:1].upper() + label[1:]
 
 
-def fmt_time(t) -> dict | None:
+def fmt_time(t: datetime.datetime | None) -> dict[str, Any] | None:
     """a datetime as epoch milliseconds plus an exact, zone-labeled string"""
     if not isinstance(t, datetime.datetime):
         return None
@@ -474,7 +480,7 @@ def fmt_time(t) -> dict | None:
     }
 
 
-def fmt_value(v) -> str | None:
+def fmt_value(v: Any) -> str | None:
     """a pass-through value as display text"""
     if v is None or (isinstance(v, float) and math.isnan(v)):
         return None
@@ -487,7 +493,7 @@ def fmt_value(v) -> str | None:
     return str(v)
 
 
-def to_script_json(obj) -> str:
+def to_script_json(obj: dict[str, Any]) -> str:
     """json that can sit inside a <script> element without closing it early"""
     return (
         json.dumps(obj, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
@@ -518,13 +524,13 @@ def make_server(
     body = page.encode("utf-8")
 
     class Handler(http.server.BaseHTTPRequestHandler):
-        def do_GET(self):
+        def do_GET(self) -> None:
             self.respond(include_body=True)
 
-        def do_HEAD(self):
+        def do_HEAD(self) -> None:
             self.respond(include_body=False)
 
-        def respond(self, include_body: bool):
+        def respond(self, include_body: bool) -> None:
             if self.path.split("?")[0] not in ("/", "/index.html"):
                 self.send_error(404)
                 return
@@ -536,7 +542,7 @@ def make_server(
             if include_body:
                 self.wfile.write(body)
 
-        def log_message(self, *args):
+        def log_message(self, *args: Any) -> None:
             pass  # keep the console quiet
 
     return http.server.ThreadingHTTPServer((host, port), Handler)

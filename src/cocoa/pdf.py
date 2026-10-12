@@ -5,12 +5,14 @@ draws a subject's timeline as a static, self-contained pdf, from the payload the
 visualizer builds for its html page
 """
 
+import collections.abc
 import datetime
 import functools
 import importlib.resources as resources
 import struct
 import zlib
 import zoneinfo
+from typing import Any
 
 # a landscape us letter page in points, laid out from its top-left corner
 PAGE_W, PAGE_H = 792.0, 612.0
@@ -125,7 +127,7 @@ def read_cmap(data: bytes, at: int) -> dict[int, int]:
 class Face:
     """an opentype font, read for what setting and embedding text in it takes"""
 
-    def __init__(self, data: bytes, name: str):
+    def __init__(self, data: bytes, name: str) -> None:
         self.data, self.name = data, name
         n = struct.unpack_from(">H", data, 4)[0]
         tables = {
@@ -135,7 +137,7 @@ class Face:
             )
         }
 
-        def read(tag: bytes, fmt: str, at: int = 0) -> tuple:
+        def read(tag: bytes, fmt: str, at: int = 0) -> tuple[int, ...]:
             return struct.unpack_from(">" + fmt, data, tables[tag] + at)
 
         scale = 1000 / read(b"head", "H", 18)[0]  # font units to thousandths
@@ -153,7 +155,7 @@ class Face:
         self.cmap = read_cmap(data, tables[b"cmap"])
         self.missing = self.cmap.get(ord("?"), 0)
 
-    def glyphs(self, s) -> list[int]:
+    def glyphs(self, s: str) -> list[int]:
         """the glyph of each character of `s`; what the font lacks becomes ?"""
         return [self.cmap.get(ord(c) if c >= " " else 32, self.missing) for c in str(s)]
 
@@ -163,6 +165,7 @@ class Face:
 
     @functools.cached_property
     def to_unicode(self) -> bytes:
+        first: dict[int, int]
         first = {}  # a glyph that several code points share copies as the first
         for c, g in sorted(self.cmap.items()):
             first.setdefault(g, c)
@@ -189,12 +192,12 @@ def face(font: str) -> Face | None:
     return Face(path.read_bytes(), file.removesuffix(".otf"))
 
 
-def to_ansi(s) -> bytes:
+def to_ansi(s: str) -> bytes:
     """text in WinAnsiEncoding, one byte a character; what it lacks becomes ?"""
     return "".join(c if c >= " " else " " for c in str(s)).encode("cp1252", "replace")
 
 
-def char_widths(s, font: str) -> list[int]:
+def char_widths(s: str, font: str) -> list[int]:
     """the advance of each character of `s` in `font`, in thousandths of its size"""
     if f := face(font):
         return [f.widths[g] for g in f.glyphs(s)]
@@ -205,19 +208,19 @@ def char_widths(s, font: str) -> list[int]:
     return [table[c - 32] if 32 <= c <= 126 else WIDE.get(c, 556) for c in b]
 
 
-def encode(s, font: str) -> str:
+def encode(s: str, font: str) -> str:
     """`s` as a pdf string in `font`: glyph ids if it is embedded, else winansi"""
     if f := face(font):
         return "<" + "".join(f"{g:04X}" for g in f.glyphs(s)) + ">"
     return literal(to_ansi(s))
 
 
-def measure(s, size: float, font: str = "F1") -> float:
+def measure(s: str, size: float, font: str = "F1") -> float:
     """the width of `s` set in `font` at `size`, in points"""
     return sum(char_widths(s, font)) * size / 1000
 
 
-def clip(s, size: float, font: str, width: float) -> str:
+def clip(s: str, size: float, font: str, width: float) -> str:
     """`s`, cut short with an ellipsis if it is wider than `width`"""
     s = str(s)
     ws = char_widths(s, font)
@@ -261,7 +264,7 @@ def stream(data: bytes, entries: str) -> bytes:
     return head.encode() + data + b"\nendstream"
 
 
-def add_font(font: str, add) -> int:
+def add_font(font: str, add: collections.abc.Callable[[bytes | str], int]) -> int:
     """the objects of `font`, each given to `add`; returns the font's number"""
     f = face(font)
     if f is None:
@@ -312,22 +315,30 @@ def mix(color: str, alpha: float) -> str:
 class Page:
     """one page's drawing operations, in points from its top-left corner"""
 
-    def __init__(self):
-        self.ops = []
+    def __init__(self) -> None:
+        self.ops: list[str] = []
 
-    def rect(self, x, y, w, h, color):
+    def rect(self, x: float, y: float, w: float, h: float, color: str) -> None:
         """a filled rectangle"""
         y = PAGE_H - y - h
         self.ops.append(f"{rgb(color)} rg {x:.2f} {y:.2f} {w:.2f} {h:.2f} re f")
 
-    def frame(self, x, y, w, h, color, width=0.5):
+    def frame(
+        self, x: float, y: float, w: float, h: float, color: str, width: float = 0.5
+    ) -> None:
         """an outlined rectangle"""
         y = PAGE_H - y - h
         self.ops.append(
             f"{rgb(color)} RG {width:.2f} w {x:.2f} {y:.2f} {w:.2f} {h:.2f} re S"
         )
 
-    def segments(self, segs, color, width=1.0, round_cap=False):
+    def segments(
+        self,
+        segs: list[tuple[float, float, float, float]],
+        color: str,
+        width: float = 1.0,
+        round_cap: bool = False,
+    ) -> None:
         """
         one stroked path of (x0, y0, x1, y1) segments; with round caps, a
         segment of no length is a dot as wide as the line
@@ -341,7 +352,9 @@ class Page:
         cap = 1 if round_cap else 0
         self.ops.append(f"{rgb(color)} RG {width:.2f} w {cap} J {path} S")
 
-    def polyline(self, points, color, width=1.0):
+    def polyline(
+        self, points: list[tuple[float, float]], color: str, width: float = 1.0
+    ) -> None:
         """a stroked line through `points`"""
         if len(points) < 2:
             return
@@ -351,7 +364,17 @@ class Page:
         )
         self.ops.append(f"{rgb(color)} RG {width:.2f} w 1 J 1 j {path} S")
 
-    def text(self, x, y, s, size=8.0, font="F1", color=INK, align="left", width=None):
+    def text(
+        self,
+        x: float,
+        y: float,
+        s: str,
+        size: float = 8.0,
+        font: str = "F1",
+        color: str = INK,
+        align: str = "left",
+        width: float | None = None,
+    ) -> None:
         """`s` with its baseline at `y`, cut short to fit `width` if given"""
         if width is not None:
             s = clip(s, size, font, width)
@@ -369,10 +392,10 @@ class Page:
 class Document:
     """pages written out as one pdf, with nothing referenced outside it"""
 
-    def __init__(self, title: str, producer: str = "cocoa"):
+    def __init__(self, title: str, producer: str = "cocoa") -> None:
         self.title = title
         self.producer = producer
-        self.pages = []
+        self.pages: list[Page] = []
 
     def new_page(self) -> Page:
         self.pages.append(page := Page())
@@ -390,7 +413,7 @@ class Document:
             + b" >>",
         ]
 
-        def add(obj) -> int:
+        def add(obj: bytes | str) -> int:
             """the number of `obj`, added as the next object"""
             objs.append(obj if isinstance(obj, bytes) else obj.encode())
             return len(objs)
@@ -424,11 +447,11 @@ class Document:
         return bytes(out)
 
 
-def fmt_int(n) -> str:
+def fmt_int(n: int) -> str:
     return f"{n:,}"
 
 
-def fmt_num(v, digits: int = 4) -> str:
+def fmt_num(v: float | None, digits: int = 4) -> str:
     """a number as the page shows one: to `digits` significant, with commas"""
     if v is None:
         return ""
@@ -459,7 +482,7 @@ class TimelinePdf:
     first, then every code on a row of its own, then the events
     """
 
-    def __init__(self, payload: dict):
+    def __init__(self, payload: dict[str, Any]) -> None:
         self.d = d = payload
         self.meta, self.sub = d["meta"], d["subject"]
         self.E, self.C, self.L = d["events"], d["codes"], d["lanes"]
@@ -468,7 +491,7 @@ class TimelinePdf:
         self.n_t = len(d["tokens"]["id"])
         self.zone_name = self.meta.get("timezone") or "UTC"
         try:
-            self.zone = zoneinfo.ZoneInfo(self.zone_name)
+            self.zone: datetime.tzinfo = zoneinfo.ZoneInfo(self.zone_name)
         except (zoneinfo.ZoneInfoNotFoundError, ValueError):
             self.zone_name, self.zone = "UTC", datetime.timezone.utc
         self.doc = Document(
@@ -480,19 +503,19 @@ class TimelinePdf:
         if self.n_e:
             self.index()
 
-    def index(self):
+    def index(self) -> None:
         """what the drawing needs from the events, as the page derives it"""
         E, times = self.E, self.d["times"]["ms"]
         self.ems = [times[i] for i in E["time"]]
         tms = [self.ems[e] for e in self.d["tokens"]["event"]]
         self.ends = [e for e, k in enumerate(E["kind"]) if k in ("bos", "eos")]
-        self.code_ev = [[] for _ in self.C]
-        self.lane_ev = [[] for _ in self.L]
+        self.code_ev: list[list[int]] = [[] for _ in self.C]
+        self.lane_ev: list[list[int]] = [[] for _ in self.L]
         for e, c in enumerate(E["code"]):
             self.code_ev[c].append(e)
             if self.C[c]["lane"] is not None:
                 self.lane_ev[self.C[c]["lane"]].append(e)
-        self.lane_codes = [[] for _ in self.L]
+        self.lane_codes: list[list[int]] = [[] for _ in self.L]
         for c, code in enumerate(self.C):
             if code["lane"] is not None:
                 self.lane_codes[code["lane"]].append(c)
@@ -535,12 +558,13 @@ class TimelinePdf:
             milliseconds=1
         )
 
-    def make_ticks(self):
+    def make_ticks(self) -> None:
         """axis ticks on round wall-clock times, about every 85 points"""
         v0, v1 = self.ext0, self.ext1
         want = (v1 - v0) / max(1, PLOT_W / 85)
         ms, mo, _ = next((s for s in STEPS if s[2] >= want), STEPS[-1])
         out = []
+        w: datetime.datetime | float
         if mo:
             w = self.wall(v0)
             m0 = (w.year * 12 + w.month - 1) // mo * mo
@@ -587,16 +611,16 @@ class TimelinePdf:
 
     # ---- flow ---------------------------------------------------------------------
 
-    def new_page(self):
+    def new_page(self) -> None:
         self.page = self.doc.new_page()
         self.y = MARGIN
 
-    def need(self, h: float):
+    def need(self, h: float) -> None:
         """start a new page unless `h` more points fit on this one"""
         if self.y + h > BOTTOM:
             self.new_page()
 
-    def heading(self, title: str, note: str = None):
+    def heading(self, title: str, note: str | None = None) -> None:
         self.need(40)
         self.page.text(MARGIN, self.y + 11, title, 11, "F2")
         if note:
@@ -605,13 +629,13 @@ class TimelinePdf:
             )
         self.y += 20
 
-    def paragraph(self, s: str, size: float = 7.0, color: str = INK2):
+    def paragraph(self, s: str, size: float = 7.0, color: str = INK2) -> None:
         for line in wrap(s, size, "F1", PAGE_W - 2 * MARGIN):
             self.need(size * 1.5)
             self.page.text(MARGIN, self.y + size, line, size, color=color)
             self.y += size * 1.5
 
-    def definitions(self, pairs, bold: bool = True):
+    def definitions(self, pairs: list[tuple[str, str]], bold: bool = True) -> None:
         """label-over-value pairs, flowing in rows across the page"""
         font, x = ("F2" if bold else "F1"), MARGIN
         self.need(24)
@@ -627,7 +651,7 @@ class TimelinePdf:
 
     # ---- sections -----------------------------------------------------------------
 
-    def header(self):
+    def header(self) -> None:
         sub, p = self.sub, self.page
         title = f"Subject {sub['subject_id']}"
         p.text(MARGIN, self.y + 15, title, 17, "F2", ACCENT, width=PAGE_W - 2 * MARGIN)
@@ -654,7 +678,7 @@ class TimelinePdf:
             self.definitions(fields, bold=False)
         self.y += 4
 
-    def overview(self):
+    def overview(self) -> None:
         """every lane, squeezed if need be to fit this page under the header"""
         room = BOTTOM - self.y - AXIS_H - 30
         h = max(10.0, min(LANE_H, room / max(1, len(self.L))))
@@ -669,7 +693,7 @@ class TimelinePdf:
             "height of their quantile, and then list the events one by one."
         )
 
-    def every_code(self):
+    def every_code(self) -> None:
         rows = []
         for j in range(len(self.L)):
             rows.append({"lane": j, "code": None, "ev": self.lane_ev[j], "h": LANE_H})
@@ -684,7 +708,7 @@ class TimelinePdf:
             self.heading("Every code", f"{fmt_int(len(self.C))} distinct codes")
             self.figure(rows)
 
-    def figure(self, rows):
+    def figure(self, rows: list[dict[str, Any]]) -> None:
         """rows of the timeline under a time axis, carried onto new pages"""
         i = 0
         while i < len(rows):
@@ -701,7 +725,7 @@ class TimelinePdf:
             self.y = y + 8
             i = j
 
-    def axis(self, top):
+    def axis(self, top: float) -> None:
         p = self.page
         p.text(MARGIN, top + 18, f"Times in {self.zone_name}", 6.5, color=INK2)
         marks = []
@@ -715,9 +739,9 @@ class TimelinePdf:
         p.segments(marks, AXIS, 0.5)
         p.segments([(PLOT_X, top + AXIS_H, PLOT_X + PLOT_W, top + AXIS_H)], AXIS, 0.5)
         # markers: the winnowing threshold wins any overlap with BOS and EOS
-        taken = []
+        taken: list[tuple[float, float]] = []
 
-        def place(s, x, align):
+        def place(s: str, x: float, align: str) -> None:
             w = measure(s, 6)
             x0 = x if align == "left" else x - w
             if x0 < PLOT_X or x0 + w > PLOT_X + PLOT_W:
@@ -740,7 +764,7 @@ class TimelinePdf:
             else:
                 place("EOS", x - 3, "right")
 
-    def plot(self, rows, y0, y1):
+    def plot(self, rows: list[dict[str, Any]], y0: float, y1: float) -> None:
         p, right = self.page, PLOT_X + PLOT_W
         for r in rows:
             if r["code"] is not None:
@@ -772,16 +796,16 @@ class TimelinePdf:
                 self.draw_ticks(r)
             self.label(r)
 
-    def draw_ticks(self, r):
+    def draw_ticks(self, r: dict[str, Any]) -> None:
         pad = max(2.0, r["h"] * 0.2)
         xs = sorted({round(self.X(self.ems[e]) * 4) / 4 for e in r["ev"]})
         segs = [(x, r["y"] + pad, x, r["y"] + r["h"] - pad) for x in xs]
         self.page.segments(segs, self.L[r["lane"]]["color"], 1.0)
 
-    def draw_binned(self, r):
+    def draw_binned(self, r: dict[str, Any]) -> None:
         p, color, top, h = self.page, self.L[r["lane"]]["color"], r["y"], r["h"]
 
-        def y_bin(b):
+        def y_bin(b: int) -> float:
             return top + h - 4 - b / (self.n_bins - 1) * (h - 8)
 
         guides = [y_bin(self.n_bins - 1), y_bin(0)]
@@ -795,7 +819,7 @@ class TimelinePdf:
             else:
                 pts.append((x, y_bin(b)))
         if len(pts) > PLOT_W / 2:  # too dense for a line: the range per column
-            cols = {}
+            cols: dict[float, tuple[float, float]] = {}
             for x, y in pts:
                 k = round(x * 2) / 2
                 lo, hi = cols.get(k, (y, y))
@@ -814,7 +838,7 @@ class TimelinePdf:
         mid = top + h / 2
         p.segments([(x, mid - 3, x, mid + 3) for x in bare], color, 1.0)
 
-    def label(self, r):
+    def label(self, r: dict[str, Any]) -> None:
         p, lane, top, h = self.page, self.L[r["lane"]], r["y"], r["h"]
         count = fmt_int(len(r["ev"]))
         if r["code"] is None:
@@ -841,7 +865,7 @@ class TimelinePdf:
                 MARGIN + GUTTER, top + h - 2.5, "Q0", 5.5, color=MUTED, align="right"
             )
 
-    def winnowing(self):
+    def winnowing(self) -> None:
         w8 = self.d.get("winnowed")
         if not w8:
             return
@@ -875,11 +899,11 @@ class TimelinePdf:
             self.y += 4
             self.paragraph("Absent from both: " + ", ".join(absent), 7, INK)
 
-    def table(self):
+    def table(self) -> None:
         E, toks = self.E, self.d["tokens"]
         vocab = toks["vocab"]
 
-        def tokens_of(e):
+        def tokens_of(e: int) -> str:
             first = E["first_token"][e]
             ids = toks["id"][first : first + E["n_tokens"][e]]
             return "  ".join(f"{t} {vocab.get(str(t), 'UNK')}" for t in ids)
@@ -909,7 +933,7 @@ class TimelinePdf:
         self.new_page()
         self.heading("Events", note)
 
-        def col_head():
+        def col_head() -> None:
             x = MARGIN
             for name, w, align, *_ in cols:
                 at = x + w if align == "right" else x
@@ -920,7 +944,7 @@ class TimelinePdf:
             self.page.segments([line], GRID, 0.5)
 
         col_head()
-        lines = []
+        lines: list[tuple[float, float, float, float]] = []
         for e in range(n):
             if self.y + ROW_H > BOTTOM:
                 self.page.segments(lines, GRID_SOFT, 0.4)
@@ -943,7 +967,7 @@ class TimelinePdf:
             lines.append((MARGIN, self.y, PAGE_W - MARGIN, self.y))
         self.page.segments(lines, GRID_SOFT, 0.4)
 
-    def footers(self):
+    def footers(self) -> None:
         m = self.meta
         items = [
             f"cocoa {m.get('cocoa_version')}",
@@ -979,10 +1003,10 @@ class TimelinePdf:
         return self.doc.to_bytes()
 
 
-def _q(b) -> str:
+def _q(b: int | None) -> str:
     return f"Q{b}" if b is not None else ""
 
 
-def timeline_pdf(payload: dict) -> bytes:
+def timeline_pdf(payload: dict[str, Any]) -> bytes:
     """a visualizer payload as a static, self-contained pdf"""
     return TimelinePdf(payload).to_bytes()

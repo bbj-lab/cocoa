@@ -8,6 +8,7 @@ adding flags to disqualify certain subjects from evaluation
 import fnmatch
 import pathlib
 import shutil
+from typing import Any
 
 import numpy as np
 import polars as pl
@@ -27,12 +28,12 @@ class Winnower(Configurable):
 
     def __init__(
         self,
-        winnowing_cfg: pathlib.Path | str = None,
-        processed_data_home: pathlib.Path | str = None,
+        winnowing_cfg: pathlib.Path | str | None = None,
+        processed_data_home: pathlib.Path | str | None = None,
         is_training: bool = True,
-        output_home: pathlib.Path | str = None,
-        **kwargs,
-    ):
+        output_home: pathlib.Path | str | None = None,
+        **kwargs: Any,
+    ) -> None:
         super().__init__(winnowing_cfg, **kwargs)
         self.processed_data_home = (
             pathlib.Path(processed_data_home).expanduser().resolve()
@@ -45,7 +46,7 @@ class Winnower(Configurable):
             else self.processed_data_home
         )
         self.tkzr_cfg = OmegaConf.load(self.processed_data_home / "tokenizer.yaml")
-        self.grokked_outcome_tokens = [
+        self.grokked_outcome_tokens: list[str] = [
             x
             for x in self.tkzr_cfg.lookup.keys()
             if any(fnmatch.fnmatch(x, p) for p in self.cfg.outcome_tokens)
@@ -59,7 +60,7 @@ class Winnower(Configurable):
             f"Processed expressions to generate {self.grokked_outcome_tokens=}"
         )
 
-    def load_frame(self, split="held_out") -> pl.LazyFrame:
+    def load_frame(self, split: str = "held_out") -> pl.LazyFrame:
         """
         loads held_out timelines, and performs some preliminary calculations;
         these are lazily evaluated, so only completed if used
@@ -167,7 +168,7 @@ class Winnower(Configurable):
             }
         )
 
-    def prepare_winnowed_frame(self, split="held_out") -> pl.LazyFrame:
+    def prepare_winnowed_frame(self, split: str = "held_out") -> pl.LazyFrame:
         """loads held-out data, splits at time threshold, and prepares labels"""
         return (
             self.load_frame(split=split)
@@ -192,7 +193,7 @@ class Winnower(Configurable):
         self.logger.info(f"Copied {[f.name for f in copied]} to {self.output_home}")
         return copied
 
-    def save_all(self, verbose: bool = False):
+    def save_all(self, verbose: bool = False) -> None:
         """grabs winnowed frame, prints summary stats if requested, and saves it"""
         self.copy_processed_data()
         for split in self.cfg.get("splits", ["held_out"]):

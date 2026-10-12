@@ -7,13 +7,14 @@ configurable class with overridable defaults
 import collections.abc
 import importlib.resources as resources
 import pathlib
+from typing import Any
 
 from omegaconf import DictConfig, OmegaConf
 
 from cocoa.logger import Logger
 
 
-def apply_overrides(cfg: DictConfig, overrides: collections.abc.Iterable[str]):
+def apply_overrides(cfg: DictConfig, overrides: collections.abc.Iterable[str]) -> None:
     """
     edits `cfg` in place with `overrides`, in order: `key=value` sets a key,
     adding it if `cfg` lacks it (a leading `+` or `++`, as Hydra writes an
@@ -41,13 +42,14 @@ class Configurable:
     """
 
     default_file: str | None = None
+    cfg: DictConfig
 
     def __init__(
         self,
-        config_file: pathlib.Path | str = None,
-        overrides: collections.abc.Iterable[str] = None,
-        **kwargs,
-    ):
+        config_file: pathlib.Path | str | None = None,
+        overrides: collections.abc.Iterable[str] | None = None,
+        **kwargs: Any,
+    ) -> None:
         self.config_file = config_file
         self.cfg = OmegaConf.merge(
             self.load_cfg(self.config_file, overrides),
@@ -59,8 +61,8 @@ class Configurable:
     @classmethod
     def load_cfg(
         cls,
-        config_file: pathlib.Path | str = None,
-        overrides: collections.abc.Iterable[str] = None,
+        config_file: pathlib.Path | str | None = None,
+        overrides: collections.abc.Iterable[str] | None = None,
     ) -> DictConfig:
         """
         the passed config, or else the shipped default, edited by `overrides`;

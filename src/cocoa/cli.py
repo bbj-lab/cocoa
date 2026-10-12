@@ -47,7 +47,7 @@ STAGES = {"collation": Collator, "tokenization": Tokenizer, "winnowing": Winnowe
 
 def route_overrides(overrides: list[str] | None) -> dict[str, list[str]]:
     """`pipeline`'s overrides by stage, each with its stage's name dropped"""
-    routed = {stage: [] for stage in STAGES}
+    routed: dict[str, list[str]] = {stage: [] for stage in STAGES}
     for override in overrides or ():
         op = next((p for p in ("++", "+", "~") if override.startswith(p)), "")
         stage, dot, rest = override.removeprefix(op).partition(".")
@@ -88,7 +88,7 @@ def collate(
         ),
     ] = False,
     overrides: Overrides = None,
-):
+) -> None:
     """
     Collate raw data into a denormalized format.
 
@@ -146,7 +146,7 @@ def tokenize(
         ),
     ] = False,
     overrides: Overrides = None,
-):
+) -> None:
     """
     Tokenize collated data into integer sequences.
 
@@ -212,7 +212,7 @@ def winnow(
         ),
     ] = False,
     overrides: Overrides = None,
-):
+) -> None:
     """
     Winnow held-out data for evaluation.
 
@@ -279,7 +279,7 @@ def pipeline(
             show_default=False,
         ),
     ] = None,
-):
+) -> None:
     """
     Run the full pipeline: collate, tokenize, & winnow.
     """
@@ -323,7 +323,7 @@ def combine_datasets(
             "--output-data-dir", "-o", help="Output directory for combined data"
         ),
     ] = ...,
-):
+) -> None:
     """
     Combine multiple processed datasets into one.
 
@@ -394,7 +394,7 @@ def visualize(
         ),
     ] = False,
     overrides: Overrides = None,
-):
+) -> None:
     """
     Visualize a subject's timeline as an interactive html page.
 
@@ -458,7 +458,7 @@ def visualize(
     print("  Stopped serving.")
 
 
-def main():
+def main() -> None:
     app()
 
 

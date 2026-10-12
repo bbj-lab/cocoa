@@ -4,6 +4,7 @@
 combine datasets processed with same configuration
 """
 
+import collections.abc
 import datetime
 import pathlib
 import zoneinfo
@@ -16,7 +17,7 @@ from cocoa.logger import Logger
 
 
 def combine_processed_data(
-    processed_data_homes: list[pathlib.Path | str],
+    processed_data_homes: collections.abc.Iterable[pathlib.Path | str],
     processed_data_home: pathlib.Path | str,
 ) -> str:
     """
@@ -56,8 +57,8 @@ def combine_processed_data(
             .replace(microsecond=0)
             .isoformat()
         )
-        with open(processed_data_home / f, "w") as f:
-            f.write(OmegaConf.to_yaml(cfg0))
+        with open(processed_data_home / f, "w") as g:
+            g.write(OmegaConf.to_yaml(cfg0))
 
     for f in parquets:
         try:

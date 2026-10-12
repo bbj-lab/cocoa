@@ -5,6 +5,7 @@
 import collections
 import datetime
 import math
+import random
 import re
 
 import polars as pl
@@ -470,7 +471,7 @@ def test_custom_spacers_mapping_supplies_the_bucket_labels(runner):
     ]
 
 
-def test_spacer_token_carries_the_following_events_numeric_value(runner):
+def test_spacer_token_carries_no_numeric_value(runner):
     p = runner.minimal(
         hospitalizations=stay(24),
         vitals=vitals(
@@ -491,14 +492,14 @@ def test_spacer_token_carries_the_following_events_numeric_value(runner):
         "VTL//hr_Q1",
         "EOS",
     ]
-    # the spacer rides on the row of the event it precedes, and so repeats it
-    assert nums == [None, 10.0, 50.0, 50.0, 90.0, None]
+    # the spacer is a row of its own, not the event it precedes
+    assert nums == [None, 10.0, None, 50.0, 90.0, None]
 
 
 def test_spacer_tokens_match_the_gaps_between_neighbouring_times(runner):
     spacers = default_cfg("tokenization")["spacers"]
     _, p = tokenized(runner, insert_spacers=True)
-    total, off_head = 0, 0
+    total = 0
     assert p.tokens_times.height > 0
     for row in p.tokens_times.iter_rows(named=True):
         words, stamps = p.decode(row["tokens"]), list(row["times"])
@@ -514,12 +515,10 @@ def test_spacer_tokens_match_the_gaps_between_neighbouring_times(runner):
             if not w.startswith("TIME//"):
                 continue
             total += 1
-            # the spacer rides on an event's row, so an event always follows it
-            assert i + 1 < len(words) and stamps[i + 1] == stamps[i]
-            if i > 0 and stamps[i - 1] == stamps[i]:
-                off_head += 1  # ... but not necessarily the first of that instant
+            # the spacer opens its instant, and something there follows it
+            assert 0 < i < len(words) - 1, row["subject_id"]
+            assert stamps[i - 1] < stamps[i] == stamps[i + 1], row["subject_id"]
     assert total > 100
-    assert off_head > 0
 
 
 # --- clocks ----------------------------------------------------------------
@@ -653,6 +652,78 @@ def test_spacers_are_measured_after_clocks_are_inserted(runner):
     ]
     assert stamps[2] == stamps[3] == utc(2024, 1, 2, 0)
     assert stamps[4] == stamps[5] == utc(2024, 1, 2, 0, 20)
+
+
+MEDS_SCHEMA = {
+    "subject_id": pl.String,
+    "time": pl.Datetime("us", "UTC"),
+    "code": pl.String,
+    "numeric_value": pl.Float32,
+    "text_value": pl.String,
+}
+
+# two prefixes share 23:00; the last event shares 00:00 with a clock and EOS
+SPACER_EVENTS = [
+    (utc(2024, 1, 1, 21), "AAA//a"),
+    (utc(2024, 1, 1, 23), "AAA//b"),
+    (utc(2024, 1, 1, 23), "ZZZ//b"),
+    (utc(2024, 1, 2, 0), "ZZZ//c"),
+]
+
+
+def tokenize_meds(runner, events: list, **overrides) -> Processed:
+    """tokenize (subject_id, time, code) rows written to meds.parquet in order"""
+    dest = runner.dir()
+    pl.DataFrame(
+        [(*e, None, None) for e in events], schema=MEDS_SCHEMA, orient="row"
+    ).write_parquet(dest / "meds.parquet")
+    pl.DataFrame(
+        {"subject_id": sorted({e[0] for e in events}), "split": "train"}
+    ).write_parquet(dest / "subject_splits.parquet")
+    runner.tokenize(processed=dest, cfg=tok_cfg(**overrides))
+    return Processed(dest, None)
+
+
+@pytest.mark.parametrize("fused", [True, False])
+@pytest.mark.parametrize(
+    "ordering",
+    [
+        ["BOS", "TIME", "CLCK", "AAA", "ZZZ", "EOS"],
+        ["BOS", "CLCK", "AAA", "ZZZ", "EOS"],
+    ],
+    ids=["listed", "unlisted"],
+)
+def test_a_spacer_opens_its_instant_however_the_rows_arrive(runner, ordering, fused):
+    """
+    a spacer is a row of its own, so it lands neither between cotemporaneous
+    events nor after a clock or the last event, and a spacer missing from
+    `ordering` still comes first at its instant
+    """
+    rows = [(f"S{i:02d}", t, code) for i in range(50) for t, code in SPACER_EVENTS]
+    random.Random(0).shuffle(rows)
+    p = tokenize_meds(
+        runner,
+        rows,
+        insert_spacers=True,
+        insert_clocks=True,
+        clocks=["00"],
+        ordering=ordering,
+        fused=fused,
+    )
+    assert p.tokens_times.height == 50
+    assert {tuple(p.timeline(s)) for s in p.tokens_times["subject_id"]} == {
+        (
+            "BOS",
+            "AAA//a",
+            "TIME//1h-2h",
+            "AAA//b",
+            "ZZZ//b",
+            "TIME//15m-1h",
+            "CLCK//00",
+            "ZZZ//c",
+            "EOS",
+        )
+    }
 
 
 def test_inserted_tokens_leave_the_event_tokens_and_their_times_intact(

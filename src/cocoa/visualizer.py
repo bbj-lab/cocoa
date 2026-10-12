@@ -344,7 +344,6 @@ class Visualizer(Configurable):
                     "code": code_idx[code],
                     "bin": parsed["bin"],
                     "text": parsed["text"],
-                    # a spacer carries the value of the event it precedes
                     "value": finite(values[i]) if values and kind == "event" else None,
                     "hours_to_end": finite(to_end[i]) if to_end else None,
                     "first_token": i,

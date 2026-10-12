@@ -160,25 +160,27 @@ class Tokenizer(Configurable):
 
     def insert_time_spacers(self, df: pl.LazyFrame) -> pl.LazyFrame:
         """
-        add time spacing tokens if configured;
+        add time spacing tokens if configured, one per gap between a subject's
+        consecutive instants, as rows of their own at the later instant;
         this should be done after clock tokens are inserted
         """
         if self.cfg.get("insert_spacers", False):
             spcrs = dict(self.cfg.spacers)
-            return (
-                df.sort("subject_id", "time")
-                .with_columns(
-                    tdiff_mins=(
-                        pl.col("time") - pl.col("time").shift(1).over("subject_id")
-                    ).dt.total_minutes()
-                )
-                .with_columns(
-                    t_spacer=pl.when(
-                        (pl.col("tdiff_mins") < min(spcrs.values()))
-                        | pl.col("tdiff_mins").is_null()
+            return pl.concat(
+                [
+                    df,
+                    df.select("subject_id", "time")
+                    .unique()
+                    .sort("subject_id", "time")
+                    .with_columns(
+                        tdiff_mins=(
+                            pl.col("time") - pl.col("time").shift(1).over("subject_id")
+                        ).dt.total_minutes()
                     )
-                    .then(None)
-                    .otherwise(
+                    .filter(pl.col("tdiff_mins") >= min(spcrs.values()))
+                    .select(
+                        "subject_id",
+                        "time",
                         pl.concat_str(
                             pl.lit("TIME//"),
                             pl.col("tdiff_mins")
@@ -187,28 +189,29 @@ class Tokenizer(Configurable):
                                 labels=list(spcrs.keys()),
                             )
                             .cast(pl.String),
-                        )
-                    )
-                    .cast(pl.String)
-                )
+                        ).alias("code"),
+                    ),
+                ],
+                how="diagonal",
             )
         else:
-            return df.with_columns(t_spacer=pl.lit(None))
+            return df
 
     def get_pretokenized(self, df: pl.LazyFrame) -> pl.LazyFrame:
         """prepare codes for tokenization, depending on whether fusion is configured"""
         return df.with_columns(
-            pl.concat_list(
-                pl.col("t_spacer"),
-                pl.concat_str(
-                    pl.col("code"),
-                    pl.col("binned_value"),
-                    pl.col("text_value"),
-                    separator="_",
-                    ignore_nulls=True,
+            (
+                pl.concat_list(
+                    pl.concat_str(
+                        pl.col("code"),
+                        pl.col("binned_value"),
+                        pl.col("text_value"),
+                        separator="_",
+                        ignore_nulls=True,
+                    )
                 )
                 if self.fused
-                else pl.concat_list("code", "binned_value", "text_value"),
+                else pl.concat_list("code", "binned_value", "text_value")
             )
             .list.drop_nulls()
             .alias("to_tokenize")
@@ -271,6 +274,8 @@ class Tokenizer(Configurable):
             .with_columns(
                 priority=pl.when(pl.col("code") == "EOS")
                 .then(n + 1)  # EOS ends the timeline, after any prefix not in ordering
+                .when(pl.col("priority").is_null() & (pl.col("code_type") == "TIME"))
+                .then(-1)  # a spacer missing from ordering still opens its instant
                 .otherwise(pl.col("priority").fill_null(n))
             )
             # thanks, @lukesolo-ml! numeric_value only breaks ties between otherwise

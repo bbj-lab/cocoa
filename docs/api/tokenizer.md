@@ -33,7 +33,7 @@ in order:
    [`get_bins`][cocoa.tokenizer.Tokenizer.get_bins].
 4. [`insert_time_spacers`][cocoa.tokenizer.Tokenizer.insert_time_spacers] —
    optionally insert `TIME//…` tokens encoding the gap between consecutive
-   events.
+   instants, each at the later instant and ahead of the events there.
 5. [`tokenize_data`][cocoa.tokenizer.Tokenizer.tokenize_data] — map the
    vocabulary to integers via the lookup table from
    [`get_lookup`][cocoa.tokenizer.Tokenizer.get_lookup], sorting simultaneous

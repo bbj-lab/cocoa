@@ -361,11 +361,14 @@ that specifies:
   threshold and keeps every word seen while training. Raise it to prune the long
   tail of one-off codes. Structural tokens (`BOS`, `EOS`, and any `CLCK//` or
   `TIME//` tokens) are exempt and always learned.
-- `insert_spacers` — whether to insert time spacing tokens between events.
+- `insert_spacers` — whether to insert time spacing tokens between events. Each
+  marks the gap between two consecutive instants and opens the later one, ahead
+  of the events there.
 - `insert_clocks` — whether to insert clock tokens at specified times.
 - `ordering` — the priority order of code prefixes when sorting events within the
   same timestamp. A prefix missing from it sorts after the listed ones, though
-  still before `EOS`, which always ends the timeline.
+  still before `EOS`, which always ends the timeline. If `TIME` is missing, time
+  spacing tokens instead sort first, so they still open their instant.
 - `spacers` — mapping of time intervals (e.g., `5m-15m`, `1h-2h`) to their lower
   bounds in minutes, used for time spacing tokens.
 - `clocks` — list of hour strings (e.g., `00`, `04`, ...) at which to insert

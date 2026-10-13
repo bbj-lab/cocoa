@@ -320,6 +320,17 @@ class Tokenizer(Configurable):
             ),
         )
 
+    def shuffle_rows(self, df: pl.LazyFrame) -> pl.LazyFrame:
+        """shuffle the order of subjects' timelines if configured"""
+        if self.cfg.get("shuffle_rows", False):
+            return (
+                df.with_row_index("_idx")
+                .with_columns(pl.col("_idx").hash(seed=42))
+                .sort("_idx")
+                .drop("_idx")
+            )
+        return df
+
     def get_all(self, verbose: bool = False) -> pl.LazyFrame:
         """run all steps to convert collated data to tokenized timelines"""
         df = self.get_data()  # load data
@@ -329,6 +340,7 @@ class Tokenizer(Configurable):
         df = self.insert_time_spacers(df)  # insert time spacer codes when configured
         df = self.get_pretokenized(df).cache()  # pretokenize
         df = self.tokenize_data(df)  # collect tokens into timelines
+        df = self.shuffle_rows(df)  # shuffle the timelines if configured
 
         if verbose:
             self.logger.summarize_tokens_times(df, self.subject_splits, self.lookup)

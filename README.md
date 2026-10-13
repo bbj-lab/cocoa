@@ -377,6 +377,11 @@ that specifies:
   threshold and keeps every word seen while training. Raise it to prune the long
   tail of one-off codes. Structural tokens (`BOS`, `EOS`, and any `CLCK//` or
   `TIME//` tokens) are exempt and always learned.
+- `shuffle_rows` — whether to shuffle the order of subjects' rows in
+  `tokens_times.parquet` (`false` by default). Each subject's row is unchanged;
+  only the order of rows changes.
+- `shuffle_seed` — the seed for that shuffle (`42` by default), so a rerun writes
+  the same order. Set it to `null` to draw a fresh order every run.
 - `insert_spacers` — whether to insert time spacing tokens between events. Each
   marks the gap between two consecutive instants and opens the later one, ahead
   of the events there.
@@ -395,7 +400,8 @@ that specifies:
 ### Outputs
 
 - `tokens_times.parquet` gives one row per subject, ordered by when each timeline
-  opens and then by `subject_id`. By default it has three columns:
+  opens and then by `subject_id` (or shuffled, under `shuffle_rows`). By default
+  it has three columns:
     - `subject_id`
     - `tokens` — the integer token sequence for the subject's timeline.
     - `times` — a parallel list of timestamps, one per token, indicating when

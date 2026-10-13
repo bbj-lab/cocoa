@@ -801,3 +801,36 @@ def test_empty_ordering_raises_a_polars_schema_error(runner):
     # actual behaviour: an empty ordering makes the priority join key null-typed
     with pytest.raises(pl.exceptions.SchemaError):
         two_prefix_timeline(runner, [])
+
+
+# --- row shuffling ---------------------------------------------------------
+
+
+def subject_order(p) -> list:
+    return p.tokens_times["subject_id"].to_list()
+
+
+def test_rows_follow_when_each_timeline_opens_by_default(pipeline):
+    assert default_cfg("tokenization")["shuffle_rows"] is False
+    tt = pipeline.tokens_times
+    assert tt.height > 10
+    assert tt.equals(tt.sort(pl.col("times").list.first(), "subject_id"))
+
+
+@pytest.mark.parametrize("seed", [42, None])
+def test_shuffle_rows_permutes_whole_rows(runner, pipeline, seed):
+    _, p = tokenized(runner, shuffle_rows=True, shuffle_seed=seed)
+    assert p.tokens_times.height == pipeline.tokens_times.height > 10
+    assert subject_order(p) != subject_order(pipeline)
+    # each subject's row is untouched; only the order of rows changes
+    assert p.tokens_times.sort("subject_id").equals(
+        pipeline.tokens_times.sort("subject_id")
+    )
+
+
+def test_winnowing_a_shuffled_dataset_finds_the_same_rows(runner, pipeline):
+    _, p = tokenized(runner, shuffle_rows=True)
+    runner.winnow(processed=p.path)
+    got, want = p.inference(), pipeline.inference()
+    assert got.height == want.height > 0
+    assert got.sort("subject_id").equals(want.sort("subject_id"))

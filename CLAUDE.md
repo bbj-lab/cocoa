@@ -134,6 +134,10 @@ add/update a pytest case first.
   `get_bins` on `code`, so `created_dttm` is the only line of `tokenizer.yaml`
   that changes between runs. Row order in `meds.parquet` and
   `subject_splits.parquet` still varies; nothing reads them by position.
+  `shuffle_rows` (off by default) then reorders the rows of
+  `tokens_times.parquet` with `Tokenizer.shuffle_rows`, a lazy sort on a seeded
+  permutation, so a fixed `shuffle_seed` (`42` if unset) keeps reruns identical,
+  and a null seed gives up that guarantee.
 - **Config-embedded expressions**: `filter_expr` / `with_col_expr` / `agg_expr`
   in a collation config are Polars expression _strings_ `eval`'d via
   `Collator.slightly_safer_eval`. This is intentionally powerful and **not a
@@ -264,7 +268,7 @@ add/update a pytest case first.
       the previous behavior, whatever the shipped default sets. Never use
       `cfg.key` / `cfg["key"]`, which raise on a missing key.
       `drop_duplicate_events`, `default_time_unit`, `min_training_ct`,
-      `include_hours_to_end_time`, and `max_lookback_days` /
+      `include_hours_to_end_time`, `shuffle_rows`, and `max_lookback_days` /
       `max_lookahead_days` all follow this pattern.
     - don't rename a key, repurpose it, or change what an existing value means.
       If a key has to change, keep accepting the old spelling.

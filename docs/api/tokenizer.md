@@ -15,7 +15,7 @@ writes two files to the processed-data directory:
 
 - `tokens_times.parquet` — the tokenized timelines (`tokens`, `times`, and
   optionally `numeric_values`) for each subject, ordered by when each timeline
-  opens and then by `subject_id`.
+  opens and then by `subject_id`, or shuffled when `shuffle_rows` is set.
 - `tokenizer.yaml` — the learned state (lookup table, bins, and config),
   sufficient to reconstruct the tokenizer.
 
@@ -39,6 +39,8 @@ in order:
    vocabulary to integers via the lookup table from
    [`get_lookup`][cocoa.tokenizer.Tokenizer.get_lookup], sorting simultaneous
    events by the configured `ordering` priority. `UNK` is always token `0`.
+6. [`shuffle_rows`][cocoa.tokenizer.Tokenizer.shuffle_rows] — optionally shuffle
+   the order of subjects' rows, with the configured `shuffle_seed`.
 
 ## Reusing a trained tokenizer
 

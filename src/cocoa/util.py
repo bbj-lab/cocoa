@@ -64,12 +64,10 @@ def combine_processed_data(
         try:
             (
                 pl.scan_parquet([d / f for d in input_dirs], missing_columns="insert")
-                .with_row_index("_idx")
-                .with_columns(
-                    pl.col("_idx").hash(seed=42).alias("_rand")  # deterministic shuffle
-                )
-                .sort("_rand")
-                .drop(["_rand", "_idx"])
+                .with_row_index("_idx")  # deterministic shuffle
+                .with_columns(pl.col("_idx").hash(seed=42))
+                .sort("_idx")
+                .drop("_idx")
                 .sink_parquet(processed_data_home / f)
             )
         except (

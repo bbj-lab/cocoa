@@ -21,7 +21,8 @@ two files to the processed-data directory:
 
 - `meds.parquet` — the collated events for every subject.
 - `subject_splits.parquet` — a `train` / `tuning` / `held_out` assignment for
-  each subject, partitioned by first event time and the fractions in the config.
+  each subject, partitioned by first event time (ties broken by id) and the
+  fractions in the config.
 
 ## How it works
 

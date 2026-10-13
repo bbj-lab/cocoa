@@ -14,7 +14,8 @@ Running the tokenizer (via [`save_all`][cocoa.tokenizer.Tokenizer.save_all])
 writes two files to the processed-data directory:
 
 - `tokens_times.parquet` — the tokenized timelines (`tokens`, `times`, and
-  optionally `numeric_values`) for each subject.
+  optionally `numeric_values`) for each subject, ordered by when each timeline
+  opens and then by `subject_id`.
 - `tokenizer.yaml` — the learned state (lookup table, bins, and config),
   sufficient to reconstruct the tokenizer.
 

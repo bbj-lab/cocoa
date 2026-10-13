@@ -132,6 +132,7 @@ class Tokenizer(Configurable):
                         for i in range(1, self.cfg.n_bins)
                     ]
                 )
+                .sort("code")  # so tokenizer.yaml lists bins the same way every run
             ).collect()
         return self.bins
 
@@ -279,8 +280,9 @@ class Tokenizer(Configurable):
                 .otherwise(pl.col("priority").fill_null(n))
             )
             # thanks, @lukesolo-ml! numeric_value only breaks ties between otherwise
-            # identical tokens, so that numeric_values is the same every run
-            .sort("time", "priority", "to_tokenize", "numeric_value")
+            # identical tokens, so that numeric_values is the same every run; and
+            # subject_id orders the rows of subjects that open at the same instant
+            .sort("time", "priority", "to_tokenize", "numeric_value", "subject_id")
             .explode("to_tokenize", empty_as_null=False)
             .join(
                 self.get_lookup(pt).lazy(),

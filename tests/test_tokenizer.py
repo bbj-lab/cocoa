@@ -319,6 +319,11 @@ def test_bins_are_non_decreasing(bins):
         assert all(a <= b for a, b in itertools.pairwise(breaks)), code
 
 
+def test_bins_are_listed_in_code_order(bins):
+    assert len(bins) > 10
+    assert list(bins) == sorted(bins)
+
+
 # --- binning ---------------------------------------------------------------
 
 
@@ -597,14 +602,50 @@ def test_eos_ends_the_timeline_when_ordering_omits_or_misplaces_it(runner):
 # --- determinism -----------------------------------------------------------
 
 
-def test_retokenizing_learns_the_same_lookup_and_bins(runner, pipeline):
+def test_retokenizing_writes_the_same_files(runner, pipeline):
+    """
+    the same collated data tokenizes to the same tokens_times.parquet, row for
+    row, and the same tokenizer.yaml, line for line but for created_dttm
+    """
     dirs = [runner.seed_collated(), runner.seed_collated()]
     for d in dirs:
         runner.tokenize(processed=d)
-    saved = []
-    for d in dirs + [pipeline.path]:
-        cfg = OmegaConf.to_container(OmegaConf.load(d / "tokenizer.yaml"))
-        cfg.pop("created_dttm")
-        saved.append(cfg)
-    assert len(dict(saved[0]["lookup"])) > 100
-    assert saved[0] == saved[1] == saved[2]
+    dirs.append(pipeline.path)
+    assert len(pipeline.vocab) > 100
+    yamls = [
+        [
+            line
+            for line in (d / "tokenizer.yaml").read_text().splitlines()
+            if not line.startswith("created_dttm:")
+        ]
+        for d in dirs
+    ]
+    assert yamls[0] == yamls[1] == yamls[2]
+    frames = [pl.read_parquet(d / "tokens_times.parquet") for d in dirs]
+    assert frames[0].equals(frames[1]) and frames[0].equals(frames[2])
+
+
+def test_rows_follow_first_instants_then_subject_id(runner):
+    """
+    subjects come in order of the instant their timelines open, and those that
+    open together in subject_id order, however the raw tables list them
+    """
+    admit = datetime.datetime(2024, 1, 1, 0, 0)
+    ids = [f"H{n:02d}" for n in range(12)]
+    opens = {s: admit + datetime.timedelta(hours=n % 3) for n, s in enumerate(ids)}
+    processed = runner.minimal(
+        hospitalizations=[
+            {
+                "hospitalization_id": s,
+                "admission_dttm": admit,
+                "discharge_dttm": admit + datetime.timedelta(1),
+            }
+            for s in reversed(ids)
+        ],
+        vitals=[
+            {"hospitalization_id": s, "recorded_dttm": opens[s], "vital_value": 60.0}
+            for s in reversed(ids)
+        ],
+    )
+    expected = sorted(ids, key=lambda s: (opens[s], s))
+    assert processed.tokens_times["subject_id"].to_list() == expected

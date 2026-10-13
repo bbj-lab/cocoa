@@ -283,18 +283,35 @@ def test_a_null_admission_sorts_a_group_first(runner):
     assert _map(df) == {"HA": "train", "HB": "tuning", "HC": "held_out"}
 
 
-def test_tied_first_times_keep_the_block_sizes(runner):
+def test_tied_first_times_are_broken_within_the_blocks(runner):
     """
-    PA and PB share an admission instant; which of them is ranked first is not
-    specified (polars sort is not stable), but the block sizes are, so the tie
-    is broken *within* train/tuning and PC still sorts last
+    PA and PB share an admission instant, so patient_id breaks the tie *within*
+    train/tuning, putting PA in train, and PC still sorts last
     """
     spec = (("HA", "PA", 0, 1), ("HB", "PB", 0, 2), ("HC", "PC", 20, 21))
     cfg = synth.minimal_collation_cfg(group_id="patient_id", subject_splits=THIRDS)
     assigned = _map(_splits_of(runner.collate(cfg=cfg, raw=_spec_raw(runner, spec))))
-    assert len(assigned) == 3
-    assert {assigned["HA"], assigned["HB"]} == {"train", "tuning"}
-    assert assigned["HC"] == "held_out"
+    assert assigned == {"HA": "train", "HB": "tuning", "HC": "held_out"}
+
+
+@pytest.mark.parametrize("group_id", [None, "patient_id"])
+def test_tied_first_times_are_ranked_by_id(runner, group_id):
+    """
+    twenty stays admitted at one instant, written in reverse: their ids rank
+    them, so the split is the same every run; patient_id ranks them under
+    group_id and hospitalization_id without, which here run opposite ways
+    """
+    spec = tuple((f"H{n:02d}", f"P{19 - n:02d}", 0, 1) for n in range(20))
+    cfg = synth.minimal_collation_cfg(
+        subject_splits={"train_frac": 0.5, "tuning_frac": 0.25},
+        **({"group_id": group_id} if group_id else {}),
+    )
+    raw = _spec_raw(runner, spec, reverse=True)
+    by = 1 if group_id else 0  # rank on patient_id or hospitalization_id
+    ranked = [s[0] for s in sorted(spec, key=lambda s: s[by])]
+    # 20 stays, bounds int(20 * cumsum([0.5, 0.25])) -> (10, 15)
+    expected = _blocks(ranked, 10, 15)
+    assert _map(_splits_of(runner.collate(cfg=cfg, raw=raw))) == expected
 
 
 def test_reference_row_order_does_not_change_the_assignment(runner):

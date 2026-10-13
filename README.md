@@ -87,7 +87,9 @@ subject_splits:
 `subject_id` is the column that uniquely identifies each subject (e.g. a
 hospitalization). `group_id` is an optional higher-level grouping column.
 Subjects are sorted chronologically and split into train / tuning / held-out sets
-according to the specified fractions.
+according to the specified fractions; with `group_id`, groups are sorted instead,
+each by its earliest start time, keeping every group in one split. Ties are
+broken by id, so the split is the same every run.
 
 All timestamps are stored as timezone-aware datetimes in `default_timezone` (an
 IANA name like `America/Chicago`, defaulting to `UTC` if unset). Columns that
@@ -392,8 +394,8 @@ that specifies:
 
 ### Outputs
 
-- `tokens_times.parquet` gives one row per subject. By default it has three
-  columns:
+- `tokens_times.parquet` gives one row per subject, ordered by when each timeline
+  opens and then by `subject_id`. By default it has three columns:
     - `subject_id`
     - `tokens` — the integer token sequence for the subject's timeline.
     - `times` — a parallel list of timestamps, one per token, indicating when
@@ -411,10 +413,10 @@ that specifies:
     │ ---                ┆ ---             ┆ ---                             │
     │ str                ┆ list[u32]       ┆ list[datetime[μs]]              │
     ╞════════════════════╪═════════════════╪═════════════════════════════════╡
-    │ 20002103           ┆ [20, 350, … 21] ┆ [2116-05-08 02:45:00, 2116-05-… │
     │ 20008372           ┆ [20, 350, … 21] ┆ [2110-10-30 13:03:00, 2110-10-… │
-    │ …                  ┆ …               ┆ …                               │
     │ 29994865           ┆ [20, 364, … 21] ┆ [2111-01-28 21:49:00, 2111-01-… │
+    │ …                  ┆ …               ┆ …                               │
+    │ 20002103           ┆ [20, 350, … 21] ┆ [2116-05-08 02:45:00, 2116-05-… │
     └────────────────────┴─────────────────┴─────────────────────────────────┘
     ```
 
@@ -440,20 +442,10 @@ that specifies:
       …
     ```
 
-    and an entry for bin cutpoints:
+    and an entry for bin cutpoints, listed by code:
 
     ```yaml
     bins:
-      VTL//heart_rate:
-        - 65.0
-        - 70.0
-        - 75.0
-        - 80.0
-        - 84.0
-        - 89.0
-        - 94.0
-        - 100.0
-        - 108.0
       LAB-RES//platelet_count:
         - 62.0
         - 114.0
@@ -464,6 +456,16 @@ that specifies:
         - 267.0
         - 314.0
         - 390.0
+      VTL//heart_rate:
+        - 65.0
+        - 70.0
+        - 75.0
+        - 80.0
+        - 84.0
+        - 89.0
+        - 94.0
+        - 100.0
+        - 108.0
       …
     ```
 

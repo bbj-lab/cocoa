@@ -342,11 +342,12 @@ class Collator(Configurable):
 
     def get_subject_splits(self) -> pl.DataFrame:
         """get the subject splits as configured"""
+        key = self.cfg.get("group_id", self.cfg["subject_id"])
         partition = (
             self.get_reference_frame()
-            .group_by(self.cfg.get("group_id", self.cfg["subject_id"]))
+            .group_by(key)
             .agg(pl.col(self.cfg.reference.start_time).min().alias("first_time"))
-            .sort("first_time")
+            .sort("first_time", key)  # id breaks ties, so every run splits alike
             .with_row_index()
         ).collect()
         split_idx = (

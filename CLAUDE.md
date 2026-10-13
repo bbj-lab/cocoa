@@ -125,6 +125,15 @@ add/update a pytest case first.
 - **Polars everywhere**, lazy by default. Frames are built as `LazyFrame` and
   written with `sink_parquet(..., engine="streaming")` to stay memory-bounded;
   `--verbose` forces collection for stats and can OOM on large data.
+- **Reruns write the same files.** polars' `sort` is unstable and `group_by`
+  returns groups in no set order, so a sort that decides an output's order needs
+  keys that leave ties only between rows identical in every column written.
+  `get_subject_splits` sorts groups on `(first_time, id)`; `tokenize_data` on
+  `(time, priority, to_tokenize, numeric_value, subject_id)`, which also orders
+  the rows of `tokens_times.parquet` (by first token, then `subject_id`); and
+  `get_bins` on `code`, so `created_dttm` is the only line of `tokenizer.yaml`
+  that changes between runs. Row order in `meds.parquet` and
+  `subject_splits.parquet` still varies; nothing reads them by position.
 - **Config-embedded expressions**: `filter_expr` / `with_col_expr` / `agg_expr`
   in a collation config are Polars expression _strings_ `eval`'d via
   `Collator.slightly_safer_eval`. This is intentionally powerful and **not a

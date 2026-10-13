@@ -10,7 +10,6 @@ import pathlib
 import shutil
 from typing import Any
 
-import numpy as np
 import polars as pl
 from omegaconf import OmegaConf
 
@@ -51,7 +50,6 @@ class Winnower(Configurable):
             for x in self.tkzr_cfg.lookup.keys()
             if any(fnmatch.fnmatch(x, p) for p in self.cfg.outcome_tokens)
         ]
-        self.rng = np.random.default_rng(seed=42)
 
         self.logger.info("Winnower initialized...")
         self.logger.info(f"{self.processed_data_home=}")

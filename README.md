@@ -75,6 +75,8 @@ group_id: patient_id # multiple subjects can belong to a group
 default_timezone: UTC # or, e.g. America/Chicago; times are stored in this zone
 default_time_unit: us # precision of stored times: 'ms', 'us', or 'ns'
 drop_duplicate_events: false # collapse rows an entry repeats verbatim
+max_lookback_days: null # drop events more than this many days before start_time
+max_lookahead_days: null # drop events more than this many days after end_time
 
 subject_splits:
     train_frac: 0.7
@@ -120,6 +122,18 @@ a vital charted twice, a row multiplied by a join — and each copy would otherw
 become another token at the same timestamp. Rows are compared on the whole
 collated event, so two copies are dropped to one only when their `subject_id`,
 `time`, `code`, `numeric_value`, and `text_value` all agree.
+
+`max_lookback_days` and `max_lookahead_days` bound how far a subject's events may
+reach outside its reference window, from `start_time` to `end_time` (see
+[Reference table](#reference-table)). An event more than `max_lookback_days`
+before its subject's start time, or more than `max_lookahead_days` after its end
+time, is dropped; one exactly at the limit is kept. The limits apply to every
+entry, unlike `reference_key`, which holds a single entry to the window itself. A
+day is 24 hours of elapsed time, so like the other durations the limits are
+unaffected by daylight-saving shifts, and fractional days are allowed. Either
+limit can be set alone, and `0` drops everything outside the window on that side.
+Unset or `null` (the default), a limit drops nothing; so does a null bound, or a
+subject missing from the reference table, since there is no time to measure from.
 
 ### Reference table
 

@@ -660,6 +660,118 @@ def test_duplicates_are_dropped_per_subject_not_across_subjects(runner):
     assert set(meds["subject_id"]) == {"H0", "H1"}
 
 
+# --- max_lookback_days / max_lookahead_days ----------------------------------
+
+# hours after the hand-built admission; the stay is discharged at 48
+SPREAD = (-49, -48, -13, -12, -1, 1, 47, 71, 72, 73)
+SPREAD_VITALS = {"clif_vitals": [vital(n) for n in SPREAD]}
+
+
+def hours_after_admission(meds: pl.DataFrame) -> list:
+    return sorted((t - utc(ADM)) / HOUR for t in meds["time"])
+
+
+def windowed(runner, tables: dict, **overrides) -> pl.DataFrame:
+    """collate hand-written vitals under a lookback / lookahead"""
+    return hand_collate(
+        runner, tables, shipped_entries("clif_vitals", "VTL"), **overrides
+    )
+
+
+@pytest.mark.parametrize(
+    "limits,kept",
+    [
+        ({"max_lookback_days": 2, "max_lookahead_days": 1}, SPREAD[1:-1]),
+        ({"max_lookback_days": 2}, SPREAD[1:]),
+        ({"max_lookahead_days": 1}, SPREAD[:-1]),
+        ({"max_lookback_days": 0.5, "max_lookahead_days": 0.5}, SPREAD[3:7]),
+        ({"max_lookback_days": 0, "max_lookahead_days": 0}, (1, 47)),
+    ],
+)
+def test_events_beyond_the_lookback_or_lookahead_are_dropped(runner, limits, kept):
+    """a limit is inclusive, may be fractional, and can be set on either side alone"""
+    meds = windowed(runner, SPREAD_VITALS, **limits)
+    assert hours_after_admission(meds) == list(kept)
+
+
+@pytest.mark.parametrize(
+    "cfg", [{}, {"max_lookback_days": None, "max_lookahead_days": None}]
+)
+def test_without_a_lookback_or_lookahead_every_event_survives(runner, cfg):
+    """the shipped default is null, so an unset key keeps distant events too"""
+    meds = windowed(runner, SPREAD_VITALS, **cfg)
+    assert hours_after_admission(meds) == list(SPREAD)
+
+
+def test_lookback_and_lookahead_measure_from_each_subjects_own_stay(runner):
+    later = {
+        **BASE_TABLES["clif_hospitalization"][0],
+        "hospitalization_id": "H1",
+        "patient_id": "P1",
+        "admission_dttm": ADM + 240 * HOUR,
+        "discharge_dttm": ADM + 288 * HOUR,
+    }
+    meds = windowed(
+        runner,
+        with_second_stay(
+            {
+                "clif_hospitalization": BASE_TABLES["clif_hospitalization"] + [later],
+                "clif_vitals": [vital(1), vital(1, hid="H1"), vital(241, hid="H1")],
+            }
+        ),
+        max_lookback_days=1,
+        max_lookahead_days=1,
+    )
+    # H0's event at hour 1 is inside its stay, but ten days before H1's
+    assert sorted(meds.select("subject_id", "time").rows()) == [
+        ("H0", utc(ADM + HOUR)),
+        ("H1", utc(ADM + 241 * HOUR)),
+    ]
+
+
+def test_a_lookahead_day_is_24_hours_of_elapsed_time(runner):
+    """so seven days on from a stay ending before a dst shift ends an hour later"""
+    # the stay is discharged at 08:00 CST on 3 March; 168 hours later is
+    # 09:00 CDT on 10 March, not the 08:00 CDT seven calendar days would give
+    meds = windowed(
+        runner,
+        # 08:30 and 09:30 local time on 10 March
+        {"clif_vitals": [vital(216.5), vital(217.5)]},
+        default_timezone="America/Chicago",
+        max_lookahead_days=7,
+    )
+    assert [t.hour for t in meds["time"].dt.convert_time_zone("UTC")] == [13]
+
+
+def test_a_missing_bound_leaves_that_side_of_the_window_open(runner):
+    """no end_time, or no reference row at all, means nothing to measure from"""
+    open_ended = {**BASE_TABLES["clif_hospitalization"][0], "discharge_dttm": None}
+    meds = windowed(
+        runner,
+        {
+            "clif_hospitalization": [open_ended],
+            "clif_vitals": [vital(n) for n in (-49, 1, 1000)]
+            + [vital(n, hid="H9") for n in (-49, 1000)],
+        },
+        max_lookback_days=2,
+        max_lookahead_days=1,
+    )
+    assert sorted(meds.select("subject_id", "time").rows()) == [
+        ("H0", utc(ADM + HOUR)),
+        ("H0", utc(ADM + 1000 * HOUR)),
+        ("H9", utc(ADM - 49 * HOUR)),
+        ("H9", utc(ADM + 1000 * HOUR)),
+    ]
+
+
+@pytest.mark.parametrize("key", ["max_lookback_days", "max_lookahead_days"])
+@pytest.mark.parametrize("value", [-1, "7"])
+def test_a_negative_or_non_numeric_lookback_or_lookahead_raises(runner, key, value):
+    cfg = {**default_cfg("collation"), key: value}
+    with pytest.raises(AssertionError, match=key):
+        runner.collate(cfg=cfg)
+
+
 # --- numeric_value / text_value ---------------------------------------------
 
 

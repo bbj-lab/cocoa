@@ -5,6 +5,8 @@ group_id: patient_id # multiple subjects can belong to a group
 default_timezone: UTC # or, e.g. America/Chicago; times are stored in this zone
 default_time_unit: us # polars unit for stored times: 'ms', 'us', or 'ns'
 drop_duplicate_events: !!bool false # collapse rows repeated verbatim
+max_lookback_days: null # drop events more than this many days before start_time
+max_lookahead_days: null # drop events more than this many days after end_time
 
 subject_splits:
   train_frac: !!float 0.7

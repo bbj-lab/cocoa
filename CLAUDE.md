@@ -136,6 +136,14 @@ add/update a pytest case first.
   multiplied by a join — comparing the whole collated event (`subject_id`,
   `time`, `code`, `numeric_value`, `text_value`). Two _entries_ that emit the
   same event still contribute a row each to `get_all`'s concat. Off by default.
+- **`max_lookback_days` / `max_lookahead_days` window the whole event stream.**
+  `Collator.drop_events_outside_window` runs once at the end of `get_all`, left-
+  joining each event to its subject's reference `start_time`/`end_time`
+  (`validate="m:1"`, so a reference table with a repeated `subject_id` raises
+  rather than duplicating events). Limits are inclusive, in 24-hour days of
+  elapsed time, built at `default_time_unit`. An unset limit, a null bound, or a
+  subject absent from the reference frame keeps the event. Both are `null`
+  (off) by default.
 - **Vocabulary/bins are frozen after training.** `UNK` is always token `0`. Reuse
   a learned tokenizer across datasets with
   `cocoa tokenize --tokenizer-home <path>/tokenizer.yaml` (see
@@ -246,8 +254,9 @@ add/update a pytest case first.
     - read a new key with `cfg.get(key, fallback)`, where the fallback reproduces
       the previous behavior, whatever the shipped default sets. Never use
       `cfg.key` / `cfg["key"]`, which raise on a missing key.
-      `drop_duplicate_events`, `default_time_unit`, `min_training_ct`, and
-      `include_hours_to_end_time` all follow this pattern.
+      `drop_duplicate_events`, `default_time_unit`, `min_training_ct`,
+      `include_hours_to_end_time`, and `max_lookback_days` /
+      `max_lookahead_days` all follow this pattern.
     - don't rename a key, repurpose it, or change what an existing value means.
       If a key has to change, keep accepting the old spelling.
     - the `cfg` block saved in `tokenizer.yaml` is a config too, and copies

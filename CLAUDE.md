@@ -52,7 +52,7 @@ template, css, js, icon, and fonts live in
 ## Commands
 
 ```sh
-# Dev install (Python >= 3.10)
+# Dev install (Python >= 3.11)
 python -m venv .venv && . .venv/bin/activate
 pip install -e '.[all]'          # all = dev + docs + test extras
 
@@ -136,9 +136,8 @@ external URLs. When you change behavior, add/update a pytest case first.
   that changes between runs. Row order in `meds.parquet` and
   `subject_splits.parquet` still varies; nothing reads them by position.
   `shuffle_rows` (off by default) then reorders the rows of
-  `tokens_times.parquet` with `Tokenizer.shuffle_rows`, a lazy sort on a seeded
-  permutation, so a fixed `shuffle_seed` (`42` if unset) keeps reruns identical,
-  and a null seed gives up that guarantee.
+  `tokens_times.parquet` with `Tokenizer.shuffle_rows`, a lazy sort on a hash of
+  the row index with a fixed seed, so reruns stay identical.
 - **Config-embedded expressions**: `filter_expr` / `with_col_expr` / `agg_expr`
   in a collation config are Polars expression _strings_ `eval`'d via
   `Collator.slightly_safer_eval`. This is intentionally powerful and **not a
@@ -252,9 +251,9 @@ external URLs. When you change behavior, add/update a pytest case first.
   (none runs here), use a simpler one like `dict[str, Any]` or leave it off.
   Spell out `X | None` whenever the default is `None`, and hint a list read from
   a config `collections.abc.Sequence`, since OmegaConf hands it over as a
-  `ListConfig`. Annotations are evaluated at import on Python 3.10, so quote
-  forward references and skip 3.11+ names like `typing.Self`; in `cli.py`, typer
-  reads a command's parameter annotations, so changing one changes the CLI.
+  `ListConfig`. Annotations are evaluated at import on Python 3.11, so quote
+  forward references and skip 3.12+ names like `typing.override`; in `cli.py`,
+  typer reads a command's parameter annotations, so changing one changes the CLI.
 - **Config changes stay backward compatible with what's on PyPI** as far as
   possible. A config that worked with a released version, and lacks a key added
   since, must keep working exactly as it did under that release. A `-c` config
@@ -320,8 +319,10 @@ external URLs. When you change behavior, add/update a pytest case first.
 - `combine-datasets` does **not** refuse to merge processed dirs whose tokenizer
   configs differ. It diffs the yamls (ignoring `created_dttm`) and logs a warning
   with the diff, but still combines the parquets and writes the _first_ input's
-  `tokenizer.yaml`, so check its output for `Configuration mismatch`. It also
-  handles a legacy Int64-token schema from tokenizers `<= 26.4.0`. Only
+  `tokenizer.yaml`, so check its output for `Configuration mismatch`. A dir
+  tokenized with `--tokenizer-home` records `is_training: false` where its source
+  records `true`, so combining the two always warns, about that key alone. It
+  also handles a legacy Int64-token schema from tokenizers `<= 26.4.0`. Only
   `tokenizer.yaml` is written to the processed dir, so a `default_timezone` or
   `default_time_unit` mismatch escapes that config diff and instead surfaces as a
   polars `SchemaError` on the datetime columns — which the legacy-schema fallback

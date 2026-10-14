@@ -31,8 +31,8 @@ This installs the `cocoa` command. To see it run end to end on public data,
 follow the
 [MIMIC-IV demo](https://github.com/bbj-lab/cocoa/blob/master/recipes/mimic-iv-demo.md).
 The examples below come from that demo and use its paths: it reads CLIF tables
-from `data-raw/demo` and writes processed data to `processed/demo`.
-To work from source instead (e.g. for development):
+from `data-raw/demo` and writes processed data to `processed/demo`. To work from
+source instead (e.g. for development):
 
 ```sh
 git clone git@github.com:bbj-lab/cocoa.git
@@ -386,9 +386,7 @@ that specifies:
   `TIME//` tokens) are exempt and always learned.
 - `shuffle_rows` — whether to shuffle the order of subjects' rows in
   `tokens_times.parquet` (`false` by default). Each subject's row is unchanged;
-  only the order of rows changes.
-- `shuffle_seed` — the seed for that shuffle (`42` by default), so a rerun writes
-  the same order. Set it to `null` to draw a fresh order every run.
+  only the order of rows changes, the same way on every run.
 - `insert_spacers` — whether to insert time spacing tokens between events. Each
   marks the gap between two consecutive instants and opens the later one, ahead
   of the events there.
@@ -493,16 +491,16 @@ that specifies:
 
 ## (3) Winnowing
 
-The winnower prepares held-out timelines for evaluation by filtering and flagging
-subjects based on outcome criteria. It:
+The winnower prepares timelines for evaluation by splitting each at a threshold
+and flagging the outcome tokens on either side. It:
 
-1. Loads held-out data from the tokenized timelines and associated timestamps.
-2. Splits each subject's timeline at a configurable time horizon or at the first
-   occurrence of a specified token, separating events into "past" (before the
-   horizon) and "future" (after the horizon).
+1. Loads the tokenized timelines of each split it is configured to prepare.
+2. Splits each subject's timeline at a configurable threshold, either a duration
+   after the timeline's first event or the first occurrence of a specified token,
+   separating events into "past" (before the threshold) and "future" (after it).
 3. Checks for the presence of outcome tokens in both the past and future periods.
-4. Filters out subjects whose timelines don't exceed the horizon duration,
-   ensuring subjects have sufficient observation time.
+4. Filters out subjects whose timelines never reach the threshold, ensuring
+   subjects have sufficient observation time.
 5. Outputs a winnowed dataset suitable for inference and evaluation tasks.
 
 Winnowing is driven by a YAML config (the package ships a default; see
@@ -578,7 +576,7 @@ config keys from the command line, see
 ```
  Usage: cocoa [OPTIONS] COMMAND [ARGS]...
 
- Configurable collation and tokenization (v26.6.1)
+ Configurable collation and tokenization (v26.10.1)
 
 ╭─ Options ───────────────────────────────────────────────────────────────╮
 │ --install-completion            Install completion for the current      │
@@ -591,9 +589,11 @@ config keys from the command line, see
 ╭─ Commands ──────────────────────────────────────────────────────────────╮
 │ collate           Collate raw data into a denormalized format.          │
 │ tokenize          Tokenize collated data into integer sequences.        │
-│ winnow            Winnow held-out data for evaluation.                  │
+│ winnow            Winnow timelines for evaluation.                      │
 │ pipeline          Run the full pipeline: collate, tokenize, & winnow.   │
 │ combine-datasets  Combine multiple processed datasets into one.         │
+│ visualize         Visualize a subject's timeline as an interactive html │
+│                   page.                                                 │
 ╰─────────────────────────────────────────────────────────────────────────╯
 ```
 
@@ -662,11 +662,11 @@ with commands:
     ```
     Usage: cocoa winnow [OPTIONS] [overrides]...
 
-    Winnow held-out data for evaluation.
+    Winnow timelines for evaluation.
 
-    Filters held-out timelines and assigns flags to disqualify certain
-    subjects
-    from evaluation based on the configured criteria.
+    Splits each timeline of the configured splits into a past and a future
+    at a threshold, drops those that never reach it, and flags which outcome
+    tokens fall on each side.
 
     ╭─ Arguments ─────────────────────────────────────────────────────────────╮
     │   overrides      <str>  Config overrides: key=value sets a key, adding  │
@@ -714,6 +714,27 @@ with commands:
     │    --verbose              -v              Verbose logging for pipeline  │
     │                                           steps                         │
     │    --help                 -h              Show this message and exit.   │
+    ╰─────────────────────────────────────────────────────────────────────────╯
+    ```
+
+- `cocoa combine-datasets`
+
+    ```
+    Usage: cocoa combine-datasets [OPTIONS] {input_data_dirs}...
+
+    Combine multiple processed datasets into one.
+
+    Merges the parquet files of the input directories and keeps the first
+    directory's tokenizer.yaml, warning if another's differs.
+
+    ╭─ Arguments ─────────────────────────────────────────────────────────────╮
+    │ *    input_data_dirs      <str>  Processed data directories to combine  │
+    │                                  [required]                             │
+    ╰─────────────────────────────────────────────────────────────────────────╯
+    ╭─ Options ───────────────────────────────────────────────────────────────╮
+    │ *  --output-data-dir  -o      <str>  Output directory for combined data │
+    │                                      [required]                         │
+    │    --help             -h             Show this message and exit.        │
     ╰─────────────────────────────────────────────────────────────────────────╯
     ```
 
@@ -807,6 +828,48 @@ A few things to know:
   overrides, as it does over `-c`.
 - Quote anything starting with `~` in zsh, which otherwise reads it as a
   directory name and fails.
+
+### Combining datasets
+
+`cocoa combine-datasets` merges processed directories into one, such as the
+timelines of two hospitals, or of the two periods that the
+[tokenizer transfer recipe](https://github.com/bbj-lab/cocoa/blob/master/recipes/tokenizer-transfer.md)
+splits the demo into:
+
+```sh
+cocoa combine-datasets processed/demo-2011-2013 processed/demo-2014-2016 \
+    -o processed/demo-combined
+```
+
+Each parquet file of the first directory (`meds.parquet`,
+`subject_splits.parquet`, `tokens_times.parquet`, and any
+`{split}_for_inference.parquet`) is concatenated with the file of the same name
+in each of the others, and its rows are shuffled, the same way on every run. Each
+subject keeps the split it had, so the combined splits are the inputs' splits put
+together, not a fresh split of the combined subjects.
+
+The output gets the first directory's `tokenizer.yaml`, so every input's tokens
+have to come from that one tokenizer: tokenize each of the others with
+`--tokenizer-home` pointing at the first's `tokenizer.yaml`. The inputs'
+`tokenizer.yaml` files are compared, but a difference isn't refused:
+`combine-datasets` warns of a `Configuration mismatch`, logs the keys that
+differ, and combines the inputs anyway. A tokenizer loaded with
+`--tokenizer-home` records `is_training: false` where the one it came from
+records `true`, so expect that key in the warning; any other key means the inputs
+were tokenized differently, and their tokens don't mean the same thing.
+
+A few more things to know:
+
+- Subject ids must not repeat across the inputs. `combine-datasets` doesn't
+  check, but `cocoa winnow` then fails on the combined directory, since it pairs
+  each timeline with a single row of `subject_splits.parquet`.
+- The first directory decides which files are combined: a parquet file only a
+  later directory has is left out, and one that a later directory lacks is an
+  error. Likewise, a column only the first input has is filled with nulls for the
+  others, but a column only a later input has is an error, so list the input with
+  the most columns first.
+- Inputs collated with different `default_timezone` or `default_time_unit` values
+  can't be combined; polars fails with a `SchemaError`.
 
 <!-- prettier-ignore-start -->
 > [!TIP]

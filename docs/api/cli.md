@@ -11,16 +11,18 @@ for inspecting one subject's tokenized timeline.
 | ------------------------ | ------------------------------------------------------- |
 | `cocoa collate`          | Collate raw tables into a denormalized event stream.    |
 | `cocoa tokenize`         | Tokenize collated data into integer timelines.          |
-| `cocoa winnow`           | Prepare held-out timelines for evaluation.              |
+| `cocoa winnow`           | Prepare timelines for evaluation.                       |
 | `cocoa pipeline`         | Run `collate`, `tokenize`, and `winnow` end-to-end.     |
 | `cocoa combine-datasets` | Merge multiple processed datasets into one.             |
 | `cocoa visualize`        | Show one subject's timeline as an interactive web page. |
 
 Every stage command accepts `--processed-data-home` / `-p` (the working directory
 for intermediate and output files) and `--verbose` / `-v` (extra logging and
-summary statistics). Each also takes an optional `-c` config file that overrides
-the packaged default for that stage. `cocoa visualize` takes `-p` and `-c` too,
-but has no `--verbose`.
+summary statistics). Each single-stage command also takes an optional `-c` config
+file that overrides the packaged default for that stage; `cocoa pipeline` takes
+one per stage instead, as `--collation-config`, `--tokenization-config`, and
+`--winnowing-config`. `cocoa visualize` takes `-p` and `-c` too, but has no
+`--verbose`.
 
 To change individual config keys for one run, list them after the command's
 options, as in `cocoa tokenize -p processed/demo n_bins=5`; for `cocoa pipeline`,
@@ -58,6 +60,15 @@ cocoa collate   --raw-data-home data-raw/demo-2014-2016 \
 cocoa tokenize  --tokenizer-home processed/demo-2011-2013/tokenizer.yaml \
                 --processed-data-home processed/demo-2014-2016
 cocoa winnow    --processed-data-home processed/demo-2014-2016
+```
+
+Since the two halves then share a vocabulary, `cocoa combine-datasets` can merge
+them into one processed dataset (see
+[Combining datasets](../index.md#combining-datasets)):
+
+```sh
+cocoa combine-datasets processed/demo-2011-2013 processed/demo-2014-2016 \
+    -o processed/demo-combined
 ```
 
 `cocoa winnow` writes into the processed-data directory unless given

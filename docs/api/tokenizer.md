@@ -40,7 +40,7 @@ in order:
    [`get_lookup`][cocoa.tokenizer.Tokenizer.get_lookup], sorting simultaneous
    events by the configured `ordering` priority. `UNK` is always token `0`.
 6. [`shuffle_rows`][cocoa.tokenizer.Tokenizer.shuffle_rows] — optionally shuffle
-   the order of subjects' rows, with the configured `shuffle_seed`.
+   the order of subjects' rows, the same way on every run.
 
 ## Reusing a trained tokenizer
 

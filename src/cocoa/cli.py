@@ -214,10 +214,11 @@ def winnow(
     overrides: Overrides = None,
 ) -> None:
     """
-    Winnow held-out data for evaluation.
+    Winnow timelines for evaluation.
 
-    Filters held-out timelines and assigns flags to disqualify certain subjects
-    from evaluation based on the configured criteria.
+    Splits each timeline of the configured splits into a past and a future
+    at a threshold, drops those that never reach it, and flags which outcome
+    tokens fall on each side.
     """
     with console.status("[bold green]Winnowing data..."):
         t0 = time.perf_counter()
@@ -316,7 +317,12 @@ def pipeline(
 
 @app.command()
 def combine_datasets(
-    input_data_dirs: list[str],
+    input_data_dirs: Annotated[
+        list[str],
+        typer.Argument(
+            help="Processed data directories to combine", show_default=False
+        ),
+    ],
     output_data_dir: Annotated[
         str,
         typer.Option(
@@ -327,8 +333,8 @@ def combine_datasets(
     """
     Combine multiple processed datasets into one.
 
-    Merges parquet files and validates that tokenizer configurations match
-    across all input directories.
+    Merges the parquet files of the input directories and keeps the first
+    directory's tokenizer.yaml, warning if another's differs.
     """
     with console.status("[bold green]Combining datasets..."):
         t0 = time.perf_counter()
@@ -459,6 +465,7 @@ def visualize(
 
 
 def main() -> None:
+    """entry point for the `cocoa` command"""
     app()
 
 

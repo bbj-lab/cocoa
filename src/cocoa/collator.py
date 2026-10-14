@@ -15,6 +15,11 @@ from cocoa.configurable import Configurable
 
 
 class Collator(Configurable):
+    """
+    collates raw tables into one frame of events, as configured;
+    `save_all` writes meds.parquet and subject_splits.parquet
+    """
+
     default_file = "collation.yaml"
 
     def __init__(
@@ -125,12 +130,12 @@ class Collator(Configurable):
         **kwargs: Any,
     ) -> pl.LazyFrame:
         """
-        lazy-load the table `table`.parquet and perform some standard ETL
-        tasks in the following order if specified:
+        lazy-load the table `table`.parquet (or else `table`.csv) and perform
+        some standard ETL tasks in the following order if specified:
         1. fix subject_id to `subject_id_str`
         2. perform a filter operation
         3. add columns
-        4. perform an aggregation by `key` or self.cfg["subfject_id"]
+        4. perform an aggregation by `key` or self.cfg["subject_id"]
         """
         if (f := self.raw_data_home / f"{table}.parquet").exists():
             df = pl.scan_parquet(f)
@@ -203,7 +208,10 @@ class Collator(Configurable):
         agg_expr: str | collections.abc.Sequence[str] | None = None,
         key: str | None = None,
     ) -> pl.LazyFrame:
-        """create tokens corresponding to a configured event"""
+        """
+        collate one configured entry into rows of
+        subject_id, time, code, numeric_value, and text_value
+        """
         df = (
             self.get_reference_frame()
             if table == "REFERENCE"
@@ -333,7 +341,10 @@ class Collator(Configurable):
         )
 
     def get_all(self) -> pl.LazyFrame:
-        """get all tokens for all events as configured"""
+        """
+        concatenate every configured entry into one stream of events,
+        dropping any outside the configured lookback and lookahead
+        """
         return self.drop_events_outside_window(
             pl.concat(
                 (self.get_entry(**entry) for entry in self.cfg.get("entries", []))

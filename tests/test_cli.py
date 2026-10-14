@@ -160,7 +160,7 @@ HELP_TEXT = {
     ),
     "winnow": (
         (
-            "Winnow held-out data",
+            "Winnow timelines",
             "--winnowing-config",
             "--processed-data-home",
             "--output-home",

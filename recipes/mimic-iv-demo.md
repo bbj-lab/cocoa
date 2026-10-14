@@ -51,62 +51,29 @@ The demo is released under the
 which asks you to say where anything you share came from, and to share a database
 derived from it (the CLIF tables or the timelines, say) under the same license.
 If you publish anything made from it, cite it, along with MIMIC-IV and PhysioNet,
-as [its page](https://physionet.org/content/mimic-iv-demo/2.2/) asks:
-
-> Johnson, A., Bulgarelli, L., Pollard, T., Horng, S., Celi, L. A., & Mark, R.
-> (2023). MIMIC-IV Clinical Database Demo (version 2.2). PhysioNet.
-> RRID:SCR_007345. <https://doi.org/10.13026/dp1f-ex47>
+as [its page](https://physionet.org/content/mimic-iv-demo/2.2/) asks.[^1]
 
 ### 2. Convert it to CLIF
 
-Clone the ETL's `demo` branch, at the commit this recipe was tested with:
+Clone the ETL's `demo` branch:
 
 ```sh
 git clone --branch demo https://github.com/bbj-lab/CLIF-MIMIC.git
-git -C CLIF-MIMIC checkout -q 5be22e320e1d
 ```
 
 The branch adds
-[one fix](https://github.com/bbj-lab/CLIF-MIMIC/commit/5be22e320e1d) to the ETL's
-`main`. The ETL was written for the full MIMIC-IV, which charts every item
-(MIMIC's word for a kind of measurement) that the ETL maps at least once. The
-demo's 100 patients lack a few, and without them two tables,
+[a fix and three files](https://github.com/bbj-lab/CLIF-MIMIC/compare/main...demo)
+to the ETL's `main`. The ETL was written for the full MIMIC-IV, which charts
+every item (MIMIC's word for a kind of measurement) that the ETL maps at least
+once. The demo's 100 patients lack a few, and without them two tables,
 `patient_assessments` and `respiratory_support`, fail to build on `main`. On
 `demo` both do without, and on data with every item, they come out with the same
-rows as on `main`.
-
-Point the ETL at the demo, by absolute path (as the ETL asks, hence `$PWD`), and
-choose the twelve tables that the steps below read:
-
-```sh
-cat > CLIF-MIMIC/config/config.json <<EOF
-{
-  "current_workspace": "demo",
-  "demo": {
-    "mimic_csv_dir": "$PWD/mimic-iv-clinical-database-demo-2.2",
-    "mimic_parquet_dir": ""
-  },
-  "create_mimic_parquet_from_csv": 1,
-  "overwrite_existing_mimic_parquet": 0,
-  "clif_output_dir_name": "",
-  "clif_version": "2.1",
-  "clif_tables": {
-    "patient": 1,
-    "hospitalization": 1,
-    "adt": 1,
-    "vitals": 1,
-    "labs": 1,
-    "patient_assessments": 1,
-    "respiratory_support": 1,
-    "medication_admin_continuous": 1,
-    "medication_admin_intermittent": 1,
-    "position": 1,
-    "crrt_therapy": 1,
-    "code_status": 1
-  }
-}
-EOF
-```
+rows as on `main`. One file is the ETL's config, `CLIF-MIMIC/config/config.json`,
+which on `main` you write yourself. It points the ETL at the demo, at
+`../mimic-iv-clinical-database-demo-2.2` (relative to `CLIF-MIMIC`, where the ETL
+runs), and chooses the twelve tables that the steps below read. The other two are
+scripts, one for step 3 and one that splits the demo in two for the
+[tokenizer-transfer recipe](tokenizer-transfer.md).
 
 Then run it. `--frozen` installs exactly the versions in the ETL's lockfile, and
 `--no-dev` leaves out its development tools; the first run also installs the
@@ -134,8 +101,8 @@ twelve tables and `clif_patient_assessments_raw_gcs.parquet`:
 ls CLIF-MIMIC/output/rclif-2.1
 ```
 
-The steps below read them from `data-raw/demo`, next to the `processed/demo`
-that cocoa writes, so copy them there:
+The steps below read them from `data-raw/demo`, next to the `processed/demo` that
+cocoa writes, so copy them there:
 
 ```sh
 mkdir -p data-raw/demo
@@ -160,120 +127,18 @@ CLIF tables:
   So the `SOFA//` tokens, and the `LABEL//sepsis_onset` derived from them, come
   at the end of a timeline.
 
-This script writes them next to the others. Its preferred units are the ones we
-use on the full MIMIC-IV (see
+The script on the ETL's branch,
+[`CLIF-MIMIC/scripts/clifpy_tables.py`](https://github.com/bbj-lab/CLIF-MIMIC/blob/demo/scripts/clifpy_tables.py),
+writes them next to the others. Its preferred units are the ones we use on the
+full MIMIC-IV (see
 [coreopsis](https://github.com/bbj-lab/coreopsis/blob/main/recipes/run_clifpy.py)),
 with dextrose split as the ETL now splits it, so that every dose clifpy can
-convert does:
+convert does. Run it with clifpy 2.1.0:
 
 ```sh
-cat > clifpy_tables.py <<'EOF'
-import pathlib
-import sys
-
-import clifpy
-
-clif = pathlib.Path(sys.argv[1]).resolve()
-co = clifpy.ClifOrchestrator(
-    data_directory=str(clif),
-    filetype="parquet",
-    timezone="UTC",
-    output_directory=str(clif.parent / "clifpy"),  # for clifpy's logs
-)
-
-# load every vital first: otherwise the dose conversions load only weights, and
-# sofa then finds no blood pressure
-co.load_table("vitals")
-
-co.load_table("respiratory_support")
-co.respiratory_support.waterfall().df.to_parquet(
-    clif / "clif_respiratory_support_processed.parquet"
-)
-
-co.convert_dose_units_for_continuous_meds(
-    preferred_units={
-        "acetaminophen": "mg/min", "albumin_infusion": "ml/hr",
-        "alteplase": "mg/hr", "aminocaproic": "g/hr",
-        "aminophylline": "mg/kg/hr", "amiodarone": "mg/min",
-        "angiotensin": "ng/kg/min", "argatroban": "mcg/kg/min",
-        "bivalirudin": "mg/kg/hr", "bumetanide": "mg/hr",
-        "cisatracurium": "mg/kg/hr", "clevidipine": "mg/hr",
-        "dexmedetomidine": "mcg/kg/hr", "dextrose_5_water": "ml/hr",
-        "dextrose_10_water": "ml/hr", "dextrose_other": "g/hr",
-        "diltiazem": "mg/hr", "dobutamine": "mcg/kg/min",
-        "dopamine": "mcg/kg/min", "epinephrine": "mcg/kg/min",
-        "epoprostenol": "ng/kg/min", "eptifibatide": "mcg/kg/min",
-        "esmolol": "mcg/kg/min", "fentanyl": "mcg/hr", "furosemide": "mg/hr",
-        "heparin": "u/hr", "hydromorphone": "mg/hr", "insulin": "u/hr",
-        "ketamine": "mg/kg/hr", "labetalol": "mg/min", "lidocaine": "mg/min",
-        "lorazepam": "mg/hr", "magnesium": "g/hr", "midazolam": "mg/hr",
-        "milrinone": "mcg/kg/min", "morphine": "mg/hr", "naloxone": "mg/hr",
-        "nicardipine": "mcg/kg/min", "nitroglycerin": "mcg/kg/min",
-        "nitroprusside": "mcg/kg/min", "norepinephrine": "mcg/kg/min",
-        "octreotide": "mcg/hr", "pantoprazole": "mg/hr",
-        "pentobarbital": "mg/kg/hr", "phenylephrine": "mcg/kg/min",
-        "procainamide": "mg/min", "propofol": "mcg/kg/min",
-        "rocuronium": "mcg/kg/min", "sodium chloride": "ml/hr", "tpn": "ml/hr",
-        "treprostinil": "ng/kg/min", "vasopressin": "u/hr",
-        "vecuronium": "mg/kg/hr",
-    },
-    override=True,
-)
-co.medication_admin_continuous.df_converted.to_parquet(
-    clif / "clif_medication_admin_continuous_converted.parquet"
-)
-
-co.convert_dose_units_for_intermittent_meds(
-    preferred_units={
-        "acetaminophen": "mg", "adenosine": "mg", "amiodarone": "mg",
-        "bumetanide": "mg", "cisatracurium": "mg", "dextrose_5_water": "ml",
-        "dextrose_10_water": "ml", "dextrose_other": "ml", "diazepam": "mg",
-        "diltiazem": "mg", "epinephrine": "mg", "fentanyl": "mcg",
-        "furosemide": "mg", "heparin": "u", "hydromorphone": "mg",
-        "insulin": "u", "ketamine": "mcg", "labetalol": "mg", "lidocaine": "mg",
-        "lorazepam": "mg", "magnesium": "g", "midazolam": "mg", "morphine": "mg",
-        "naloxone": "mg", "propofol": "mg", "rocuronium": "mg",
-        "sodium bicarbonate": "ml", "sodium chloride": "ml", "vecuronium": "mg",
-        # mostly charted as "1 dose", which clifpy can't convert, but those
-        # charted by mass then convert
-        **dict.fromkeys(
-            ["acyclovir", "amikacin", "ampicillin", "ampicillin_sulbactam",
-             "azithromycin", "aztreonam", "caspofungin", "cefazolin", "cefepime",
-             "ceftaroline", "ceftazidime", "ceftriaxone", "ciprofloxacin",
-             "clindamycin", "colistin", "daptomycin", "doxycycline", "ertapenem",
-             "erythromycin", "esomeprazole", "fluconazole", "foscarnet",
-             "gentamicin", "imipenem", "levofloxacin", "linezolid", "meropenem",
-             "metronidazole", "micafungin", "moxifloxacin", "nafcillin",
-             "pantoprazole", "penicillin", "piperacillin_tazobactam", "rifampin",
-             "tigecycline", "tobramycin", "vancomycin", "voriconazole"],
-            "mg",
-        ),
-    },
-    override=True,
-)
-co.medication_admin_intermittent.df_converted.to_parquet(
-    clif / "clif_medication_admin_intermittent_converted.parquet"
-)
-
-# a row for each encounter_block, clifpy's name for a stay: the hospitalizations
-# of a patient at most 6 hours apart, stitched together
-sofa = co.compute_sofa_scores()
-last = (
-    co.wide_df.sort_values("event_time")
-    .groupby("encounter_block", as_index=False)
-    .agg(
-        event_time=("event_time", "max"),
-        hospitalization_id=("hospitalization_id", "last"),
-    )
-)
-last.merge(sofa, on="encounter_block", validate="1:1").to_parquet(
-    clif / "clif_sofa.parquet", index=False
-)
-EOF
-
 uv run --isolated --no-project --managed-python --python 3.12 \
     --exclude-newer 2026-10-14T16:00:00Z --with clifpy==2.1.0 \
-    python clifpy_tables.py data-raw/demo
+    python CLIF-MIMIC/scripts/clifpy_tables.py data-raw/demo
 ```
 
 uv runs the script in a fresh environment of its own: `--isolated` keeps out any
@@ -380,10 +245,9 @@ first hypotension and tachycardia, and `sepsis_onset` all come after it.
 
 ### Next steps
 
-- `cocoa pipeline -r data-raw/demo -p processed/demo` collates,
-  tokenizes, and winnows in one go (steps 4 to 6, short of drawing), and takes
-  config overrides, each key prefixed by its stage: `collation.`,
-  `tokenization.`, or `winnowing.`.
+- `cocoa pipeline -r data-raw/demo -p processed/demo` collates, tokenizes, and
+  winnows in one go (steps 4 to 6, short of drawing), and takes config overrides,
+  each key prefixed by its stage: `collation.`, `tokenization.`, or `winnowing.`.
 - Clock tokens mark every fourth hour (`CLCK//00`, `CLCK//04`, and so on) on the
   clock of the collation config's `default_timezone`, which the shipped config
   sets to `UTC`. MIMIC-IV's times are Boston's, so for local hours, run the
@@ -401,3 +265,8 @@ first hypotension and tachycardia, and `sepsis_onset` all come after it.
   to the later ones.
 - To train a model on the timelines, see
   [🦜 cotorra](https://pypi.org/project/cotorra/).
+
+[^1]:
+    A. Johnson, L. Bulgarelli, T. Pollard, S. Horng, L. A. Celi, & R. Mark,
+    [MIMIC-IV Clinical Database Demo (version 2.2)](https://doi.org/10.13026/dp1f-ex47),
+    PhysioNet (2023), RRID:SCR_007345

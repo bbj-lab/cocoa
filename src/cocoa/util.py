@@ -21,7 +21,10 @@ def combine_processed_data(
     processed_data_home: pathlib.Path | str,
 ) -> str:
     """
-    combines processed data from multiple sources into a single new version
+    combines processed data from multiple sources into a single new version:
+    concatenates each parquet file of the first directory with its namesakes in
+    the others, shuffling rows the same way every run, and writes the first
+    directory's tokenizer.yaml, warning where another's differs
     """
     processed_data_home = pathlib.Path(processed_data_home).expanduser().resolve()
     processed_data_home.mkdir(parents=True, exist_ok=True)

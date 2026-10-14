@@ -10,39 +10,15 @@ tables.
 0. Split the CLIF tables in two. MIMIC-IV shifts each patient's dates by its own
    amount, but the `anchor_year_group` of its `patients` table places each
    patient's care, roughly, in a span of three real years: 2011–2013 for 43 of
-   the demo's patients, and 2014–2016 for the other 57. This script writes each
-   group's rows of every table to a directory of its own next to the demo's,
-   `data-raw/demo-2011-2013` and `data-raw/demo-2014-2016`; run it with the
-   Python that cocoa is installed in, which has polars:
+   the demo's patients, and 2014–2016 for the other 57. The script on the ETL's
+   branch,
+   [`CLIF-MIMIC/scripts/split_by_years.py`](https://github.com/bbj-lab/CLIF-MIMIC/blob/demo/scripts/split_by_years.py),
+   writes each group's rows of every table to a directory of its own next to the
+   demo's, `data-raw/demo-2011-2013` and `data-raw/demo-2014-2016`; run it with
+   the Python that cocoa is installed in, which has polars:
 
     ```sh
-    cat > split_by_years.py <<'EOF'
-    import pathlib
-    import sys
-
-    import polars as pl
-
-    clif, patients = map(pathlib.Path, sys.argv[1:])
-    years = pl.read_csv(patients, schema_overrides={"subject_id": pl.String}).select(
-        pl.col("subject_id").alias("patient_id"), "anchor_year_group"
-    )
-    hosp = pl.read_parquet(clif / "clif_hospitalization.parquet")
-    ids = hosp.join(years, on="patient_id")
-
-    for (group,), rows in ids.group_by("anchor_year_group"):
-        # e.g. data-raw/demo-2011-2013
-        out = clif.with_name(clif.name + "-" + group.replace(" ", ""))
-        out.mkdir(exist_ok=True)
-        for table in clif.glob("*.parquet"):
-            df = pl.read_parquet(table)
-            # patient and code_status have only a patient_id
-            key = "hospitalization_id" if "hospitalization_id" in df else "patient_id"
-            df.join(rows.select(key).unique(), on=key, how="semi").write_parquet(
-                out / table.name
-            )
-    EOF
-
-    python split_by_years.py data-raw/demo \
+    python CLIF-MIMIC/scripts/split_by_years.py data-raw/demo \
         mimic-iv-clinical-database-demo-2.2/hosp/patients.csv.gz
     ```
 
@@ -107,3 +83,21 @@ tables.
     cocoa winnow \
       --processed-data-home processed/demo-2014-2016
     ```
+
+5. To work with both halves as one dataset, combine them; their tokens mean the
+   same thing, since both come from the earlier patients' tokenizer:
+
+    ```sh
+    cocoa combine-datasets \
+      processed/demo-2011-2013 processed/demo-2014-2016 \
+      --output-data-dir processed/demo-combined
+    ```
+
+    This writes the events, splits, timelines, and winnowed frames of all 275
+    hospitalizations to `processed/demo-combined`, with the earlier patients'
+    `tokenizer.yaml`. Each hospitalization keeps the split it was given, so the
+    combined dataset has 180 training, 27 tuning, and 68 held-out
+    hospitalizations, not the 187, 33, and 55 of the demo collated whole. It
+    warns of a `Configuration mismatch` between the two `tokenizer.yaml` files,
+    in `is_training` alone, since the later patients were tokenized by a frozen
+    copy; any other key would mean the halves were tokenized differently.

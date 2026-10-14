@@ -19,7 +19,8 @@ from cocoa.configurable import Configurable
 class Tokenizer(Configurable):
     """
     converts collated data to tokenized timelines,
-    learning bins and lookup table on training data
+    learning bins and lookup table on training data;
+    `save_all` writes tokens_times.parquet and tokenizer.yaml
     """
 
     default_file = "tokenization.yaml"
@@ -52,6 +53,7 @@ class Tokenizer(Configurable):
         return bool(self.cfg.get("fused", True))
 
     def get_data(self) -> pl.LazyFrame:
+        """lazily loads the collated events, and the subject splits alongside"""
         self.logger.info(f"Loading collated data with {self.processed_data_home=}")
         self.subject_splits = pl.scan_parquet(
             self.processed_data_home / "subject_splits.parquet"

@@ -97,11 +97,11 @@ name, a code description); a test that needs them writes its own config, as
 
 Most modules also keep an `if __name__ == "__main__"` block that self-tests
 against a local processed dataset (e.g. `./processed/mimic/`, for which
-[recipes/mimic-iv-demo.md](recipes/mimic-iv-demo.md) builds a public stand-in);
-run a module directly (`python -m cocoa.tokenizer`) to exercise it against real
-data — the tokenizer block also asserts round-trip save/load equality, and the
-visualizer block asserts the page references no external URLs. When you change
-behavior, add/update a pytest case first.
+[recipes/mimic-iv-demo.md](recipes/mimic-iv-demo.md) builds a public stand-in,
+`./processed/demo/`); run a module directly (`python -m cocoa.tokenizer`) to
+exercise it against real data — the tokenizer block also asserts round-trip
+save/load equality, and the visualizer block asserts the page references no
+external URLs. When you change behavior, add/update a pytest case first.
 
 ## Architecture notes
 
@@ -304,8 +304,12 @@ behavior, add/update a pytest case first.
   primary user-facing docs. [recipes/mimic-iv-demo.md](recipes/mimic-iv-demo.md)
   runs the shipped defaults end to end on the public MIMIC-IV demo and quotes
   what they make of it (event and split counts, vocabulary size, timeline
-  lengths, the first held-out hospitalization), so rerun it after changing a
-  shipped config, binning, or splitting.
+  lengths, the first held-out hospitalization). The other docs take their
+  examples from the same run: the README's output tables and bin edges, the docs'
+  paths (`data-raw/demo`, `processed/demo`), and the counts quoted
+  by the other recipes, which run variants of it (split by `anchor_year_group`,
+  or collated in `America/New_York`). So rerun it, and refresh those, after
+  changing a shipped config, binning, or splitting.
 
 ## Gotchas
 

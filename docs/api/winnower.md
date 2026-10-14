@@ -26,11 +26,12 @@ processed-data directory's files there too, so that it is a complete processed
 dataset of its own. It skips subdirectories, and any `*_for_inference.parquet`
 already in the processed-data directory, which may have been winnowed under
 another configuration. This lets one tokenized dataset be winnowed under several
-configurations side by side:
+configurations side by side, as here on the
+[MIMIC-IV demo](../recipes/mimic-iv-demo.md):
 
 ```sh
-cocoa winnow -p ./processed/mimic -o ./processed/mimic/winnowed-24h
-cocoa winnow -p ./processed/mimic -o ./processed/mimic/winnowed-icu \
+cocoa winnow -p processed/demo -o processed/demo/winnowed-24h
+cocoa winnow -p processed/demo -o processed/demo/winnowed-icu \
     '~threshold.duration_s' threshold.first_occurrence=XFR-IN//icu
 ```
 

@@ -1,9 +1,10 @@
 ## Date-based generative inference
 
-To prepare data for inference at first midnight after admission,
+To prepare data for inference at first midnight after admission (here on the
+[MIMIC-IV demo](mimic-iv-demo.md), from its working directory),
 
-1. In your tokenization config (e.g. `tokenization.yaml`), configure midnight
-   clock token generation:
+1. In your tokenization config (e.g. `tokenization.yaml`, a copy of the shipped
+   one), configure midnight clock token generation:
 
     ```yaml
     insert_clocks: !!bool true
@@ -13,7 +14,11 @@ To prepare data for inference at first midnight after admission,
     ```
 
     Clock hours are read in the collation config's `default_timezone`, so
-    `CLCK//00` marks local midnight in that zone (`UTC` if unset).
+    `CLCK//00` marks local midnight in that zone (`UTC` if unset). The demo's
+    CLIF tables are in UTC, but MIMIC-IV's times are Boston's, so step 3 collates
+    them in `America/New_York`. (For MIMIC-IV's shifted years, polars keeps that
+    zone on standard time all year, as the ETL did in converting to UTC, so
+    `CLCK//00` falls at midnight as MIMIC-IV records it.)
 
 2. In your winnowing config (e.g. `winnowing.yaml`), threshold at the first
    occurrence of `CLCK//00`:
@@ -30,6 +35,13 @@ To prepare data for inference at first midnight after admission,
     cocoa pipeline \
       --tokenization-config tokenization.yaml \
       --winnowing-config winnowing.yaml \
-      --raw-data-home ./raw-data \
-      --processed-data-home ./processed
+      --raw-data-home data-raw/demo \
+      --processed-data-home processed/demo-midnight \
+      collation.default_timezone=America/New_York
     ```
+
+    Only timelines that reach a midnight are kept: on the demo, 184 of the 187
+    training hospitalizations, 32 of the 33 tuning, and 54 of the 55 held out.
+    The held-out one left out, 22380825, is a five-hour stay. Hospitalization
+    27708593, admitted at 07:15, is cut at midnight that night, before its
+    transfer to the ICU and its first tachycardia.

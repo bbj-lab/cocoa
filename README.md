@@ -30,6 +30,8 @@ pip install cocoa-tokenizer
 This installs the `cocoa` command. To see it run end to end on public data,
 follow the
 [MIMIC-IV demo](https://github.com/bbj-lab/cocoa/blob/master/recipes/mimic-iv-demo.md).
+The examples below come from that demo and use its paths: it reads CLIF tables
+from `data-raw/demo` and writes processed data to `processed/demo`.
 To work from source instead (e.g. for development):
 
 ```sh
@@ -154,7 +156,7 @@ reference:
         - table: clif_patient
           key: patient_id
           validation: "m:1"
-          with_col_expr: pl.lit("AGE").alias("AGE")
+          with_col_expr: pl.lit("age").alias("AGE")
 ```
 
 - `table` — the name of the parquet (or csv) file in `--raw-data-home` (without
@@ -223,8 +225,8 @@ entry's fields tell the collator which source columns map to these outputs.
       time: discharge_dttm
     ```
 
-    creates codes such as `DSCG//assisted_living`, `DSCG//home`, `DSCG//hospice`
-    with time `discharge_dttm`.
+    creates codes such as `DSCG//expired`, `DSCG//home`, `DSCG//hospice` with
+    time `discharge_dttm`.
 
 - A numeric event from an external table:
 
@@ -272,8 +274,8 @@ entry's fields tell the collator which source columns map to these outputs.
       filter_expr: pl.col("crrt_mode_category").is_not_null()
       with_col_expr: pl.lit("crrt_init").alias("code")
       agg_expr:
-          - pl.col("code").first()
-          - pl.col("recorded_dttm").first()
+          - pl.col("code").sort_by("recorded_dttm").first()
+          - pl.col("recorded_dttm").min()
       code: code
       time: recorded_dttm
     ```
@@ -302,46 +304,49 @@ entry's fields tell the collator which source columns map to these outputs.
 
 ### Outputs
 
-- `meds.parquet` gives a table of the collated events:
+- `meds.parquet` gives a table of the collated events. Here are some of the
+  demo's, from the minutes around hospitalization 27708593's transfer to the ICU,
+  sorted by time:
 
     ```
-    ┌────────────┬─────────────────────┬──────────────────────────────┬───────────────┬────────────┐
-    │ subject_id ┆ time                ┆ code                         ┆ numeric_value ┆ text_value │
-    │ ---        ┆ ---                 ┆ ---                          ┆ ---           ┆ ---        │
-    │ str        ┆ datetime[μs]        ┆ str                          ┆ f32           ┆ str        │
-    ╞════════════╪═════════════════════╪══════════════════════════════╪═══════════════╪════════════╡
-    │ 24591817   ┆ 2111-09-26 18:15:00 ┆ MED-CTS//sodium_chloride     ┆ 0.0           ┆ null       │
-    │ 21343412   ┆ 2112-01-11 06:31:00 ┆ LAB-RES//albumin             ┆ 3.3           ┆ null       │
-    │ 24894995   ┆ 2113-01-14 14:25:00 ┆ LAB-ORD//creatinine          ┆ null          ┆ null       │
-    │ 20947416   ┆ 2110-12-12 18:41:00 ┆ LAB-RES//hemoglobin          ┆ 8.4           ┆ null       │
-    │ 25082363   ┆ 2110-06-17 17:00:00 ┆ VTL//respiratory_rate        ┆ 30.0          ┆ null       │
-    │ …          ┆ …                   ┆ …                            ┆ …             ┆ …          │
-    │ 22074503   ┆ 2110-07-13 03:53:00 ┆ LAB-ORD//chloride            ┆ null          ┆ null       │
-    │ 24524153   ┆ 2110-10-08 03:20:00 ┆ LAB-RES//glucose_serum       ┆ 179.0         ┆ null       │
-    │ 28104308   ┆ 2112-03-22 14:31:00 ┆ LAB-RES//sodium              ┆ 137.0         ┆ null       │
-    │ 23859742   ┆ 2110-08-21 21:35:00 ┆ LAB-RES//ptt                 ┆ 26.299999     ┆ null       │
-    │ 25805890   ┆ 2110-10-03 11:00:00 ┆ LAB-ORD//eosinophils_percent ┆ null          ┆ null       │
-    └────────────┴─────────────────────┴──────────────────────────────┴───────────────┴────────────┘
+    ┌────────────┬─────────────────────────┬───────────────────────┬───────────────┬────────────┐
+    │ subject_id ┆ time                    ┆ code                  ┆ numeric_value ┆ text_value │
+    │ ---        ┆ ---                     ┆ ---                   ┆ ---           ┆ ---        │
+    │ str        ┆ datetime[μs, UTC]       ┆ str                   ┆ f32           ┆ str        │
+    ╞════════════╪═════════════════════════╪═══════════════════════╪═══════════════╪════════════╡
+    │ 27708593   ┆ 2177-03-15 10:49:00 UTC ┆ VTL//heart_rate       ┆ 143.0         ┆ null       │
+    │ 27708593   ┆ 2177-03-15 10:49:00 UTC ┆ VTL//respiratory_rate ┆ 13.0          ┆ null       │
+    │ 27708593   ┆ 2177-03-15 10:49:00 UTC ┆ VTL//spo2             ┆ 98.0          ┆ null       │
+    │ 27708593   ┆ 2177-03-15 10:49:00 UTC ┆ VTL//weight_kg        ┆ 95.099998     ┆ null       │
+    │ 27708593   ┆ 2177-03-15 10:49:26 UTC ┆ XFR-IN//icu           ┆ null          ┆ null       │
+    │ …          ┆ …                       ┆ …                     ┆ …             ┆ …          │
+    │ 27708593   ┆ 2177-03-15 11:00:00 UTC ┆ ASMT//cam_mental      ┆ null          ┆ no         │
+    │ 27708593   ┆ 2177-03-15 11:00:00 UTC ┆ ASMT//cam_total       ┆ null          ┆ no         │
+    │ 27708593   ┆ 2177-03-15 11:00:00 UTC ┆ ASMT//gcs_eye         ┆ 4.0           ┆ null       │
+    │ 27708593   ┆ 2177-03-15 11:00:00 UTC ┆ ASMT//gcs_motor       ┆ 6.0           ┆ null       │
+    │ 27708593   ┆ 2177-03-15 11:00:00 UTC ┆ ASMT//gcs_total       ┆ 15.0          ┆ null       │
+    └────────────┴─────────────────────────┴───────────────────────┴───────────────┴────────────┘
     ```
 
-- `subject_splits.parquet` gives a table of all subject_id's and their
-  corresponding split assignment:
+- `subject_splits.parquet` gives a table of every subject_id with its split
+  assignment, its start and end times, and its pass-through columns (left out
+  here):
 
     ```
-    ┌────────────┬──────────┐
-    │ subject_id ┆ split    │
-    │ ---        ┆ ---      │
-    │ str        ┆ str      │
-    ╞════════════╪══════════╡
-    │ 21081215   ┆ train    │
-    │ 20302177   ┆ train    │
-    │ …          ┆ …        │
-    │ 27116134   ┆ tuning   │
-    │ 29134959   ┆ tuning   │
-    │ …          ┆ …        │
-    │ 28150003   ┆ held_out │
-    │ 22151813   ┆ held_out │
-    └────────────┴──────────┘
+    ┌────────────┬──────────┬─────────────────────────┬─────────────────────────┐
+    │ subject_id ┆ split    ┆ start_time              ┆ end_time                │
+    │ ---        ┆ ---      ┆ ---                     ┆ ---                     │
+    │ str        ┆ str      ┆ datetime[μs, UTC]       ┆ datetime[μs, UTC]       │
+    ╞════════════╪══════════╪═════════════════════════╪═════════════════════════╡
+    │ 25563031   ┆ train    ┆ 2110-04-11 20:08:00 UTC ┆ 2110-04-14 20:00:00 UTC │
+    │ 20291550   ┆ train    ┆ 2110-11-30 11:31:00 UTC ┆ 2110-12-10 20:53:00 UTC │
+    │ …          ┆ …        ┆ …                       ┆ …                       │
+    │ 29366372   ┆ tuning   ┆ 2167-05-04 02:24:00 UTC ┆ 2167-05-11 17:57:00 UTC │
+    │ 22954658   ┆ tuning   ┆ 2167-11-08 00:05:00 UTC ┆ 2167-11-11 19:23:00 UTC │
+    │ …          ┆ …        ┆ …                       ┆ …                       │
+    │ 27708593   ┆ held_out ┆ 2177-03-12 12:15:00 UTC ┆ 2177-03-19 19:25:00 UTC │
+    │ 29281842   ┆ held_out ┆ 2178-07-04 02:13:00 UTC ┆ 2178-07-09 01:20:00 UTC │
+    └────────────┴──────────┴─────────────────────────┴─────────────────────────┘
     ```
 
 ## (2) Tokenization
@@ -413,23 +418,23 @@ that specifies:
     tokens, is added only when `include_numeric_values` is set, and an
     `hours_to_end_time` column only when `include_hours_to_end_time` is.
 
-    The table will look something like this:
+    For the demo, the table looks like this:
 
     ```
-    ┌────────────────────┬─────────────────┬─────────────────────────────────┐
-    │ subject_id         ┆ tokens          ┆ times                           │
-    │ ---                ┆ ---             ┆ ---                             │
-    │ str                ┆ list[u32]       ┆ list[datetime[μs]]              │
-    ╞════════════════════╪═════════════════╪═════════════════════════════════╡
-    │ 20008372           ┆ [20, 350, … 21] ┆ [2110-10-30 13:03:00, 2110-10-… │
-    │ 29994865           ┆ [20, 364, … 21] ┆ [2111-01-28 21:49:00, 2111-01-… │
-    │ …                  ┆ …               ┆ …                               │
-    │ 20002103           ┆ [20, 350, … 21] ┆ [2116-05-08 02:45:00, 2116-05-… │
-    └────────────────────┴─────────────────┴─────────────────────────────────┘
+    ┌────────────┬───────────────────┬─────────────────────────────────┐
+    │ subject_id ┆ tokens            ┆ times                           │
+    │ ---        ┆ ---               ┆ ---                             │
+    │ str        ┆ list[u32]         ┆ list[datetime[μs, UTC]]         │
+    ╞════════════╪═══════════════════╪═════════════════════════════════╡
+    │ 25563031   ┆ [86, 5, … 103]    ┆ [2110-04-11 20:08:00 UTC, 2110… │
+    │ 20291550   ┆ [86, 1088, … 103] ┆ [2110-11-30 09:45:00 UTC, 2110… │
+    │ …          ┆ …                 ┆ …                               │
+    │ 21477991   ┆ [86, 1090, … 103] ┆ [2201-12-11 08:04:13 UTC, 2201… │
+    └────────────┴───────────────────┴─────────────────────────────────┘
     ```
 
-    In this example, token 20 corresponds to the beginning-of-sequence token
-    (`BOS`), token 21 to the end-of-sequence token (`EOS`), and the tokens in
+    In this example, token 86 corresponds to the beginning-of-sequence token
+    (`BOS`), token 103 to the end-of-sequence token (`EOS`), and the tokens in
     between correspond to the subject's clinical events in chronological order
     (with ties broken by the configured `ordering`). In fused mode each event is
     a single token; in unfused mode an event with a numeric value becomes two
@@ -455,25 +460,25 @@ that specifies:
     ```yaml
     bins:
       LAB-RES//platelet_count:
-        - 62.0
-        - 114.0
-        - 147.0
-        - 175.0
-        - 203.0
-        - 233.0
-        - 267.0
-        - 314.0
-        - 390.0
+        - 34.0
+        - 83.0
+        - 115.0
+        - 145.0
+        - 170.0
+        - 202.0
+        - 241.0
+        - 292.0
+        - 359.0
       VTL//heart_rate:
-        - 65.0
-        - 70.0
+        - 67.0
         - 75.0
-        - 80.0
-        - 84.0
-        - 89.0
-        - 94.0
-        - 100.0
-        - 108.0
+        - 81.0
+        - 85.0
+        - 90.0
+        - 95.0
+        - 101.0
+        - 106.0
+        - 114.0
       …
     ```
 
@@ -556,10 +561,13 @@ come from another configuration. That way one tokenized dataset can be winnowed
 under several configurations, each into its own directory:
 
 ```sh
-cocoa winnow -p ./processed/mimic -o ./processed/mimic/winnowed-24h
-cocoa winnow -p ./processed/mimic -o ./processed/mimic/winnowed-icu \
+cocoa winnow -p processed/demo -o processed/demo/winnowed-24h
+cocoa winnow -p processed/demo -o processed/demo/winnowed-icu \
     '~threshold.duration_s' threshold.first_occurrence=XFR-IN//icu
 ```
+
+On the demo, the first keeps 50 of the 55 held-out hospitalizations, those whose
+timelines run past 24 hours, and the second 26, those with a transfer to the ICU.
 
 ## Usage
 
@@ -757,14 +765,14 @@ To change a few keys without writing a new config file, list them after a
 command's options, as dotted paths into its config:
 
 ```sh
-cocoa tokenize -p processed/mimic n_bins=5 insert_spacers=true
+cocoa tokenize -p processed/demo n_bins=5 insert_spacers=true
 ```
 
 `cocoa pipeline` takes them too, each key starting with the stage it's for:
 
 ```sh
-cocoa pipeline -r raw/mimic -p processed/mimic \
-    collation.default_timezone=America/Chicago tokenization.n_bins=5 \
+cocoa pipeline -r data-raw/demo -p processed/demo \
+    collation.default_timezone=America/New_York tokenization.n_bins=5 \
     '~winnowing.threshold.duration_s' winnowing.threshold.first_occurrence=XFR-IN//icu
 ```
 

@@ -20,7 +20,7 @@ You'll need a POSIX shell (macOS, Linux, or WSL) with git, curl, and unzip;
 environments for the ETL and for clifpy; and cocoa 26.10 or later
 (`pip install -U 'cocoa-tokenizer>=26.10'`; the numbers below come from 26.10.1).
 The environments take a little over 1 GB of disk, and the data, with everything
-made from it, about 45 MB.
+made from it, about 47 MB.
 
 ### 0. Make a working directory
 
@@ -132,6 +132,14 @@ twelve tables and `clif_patient_assessments_raw_gcs.parquet`:
 
 ```sh
 ls CLIF-MIMIC/output/rclif-2.1
+```
+
+The steps below read them from `data-raw/demo`, next to the `processed/demo`
+that cocoa writes, so copy them there:
+
+```sh
+mkdir -p data-raw/demo
+cp CLIF-MIMIC/output/rclif-2.1/*.parquet data-raw/demo
 ```
 
 ### 3. Derive the tables that clifpy makes
@@ -265,7 +273,7 @@ EOF
 
 uv run --isolated --no-project --managed-python --python 3.12 \
     --exclude-newer 2026-10-14T16:00:00Z --with clifpy==2.1.0 \
-    python clifpy_tables.py CLIF-MIMIC/output/rclif-2.1
+    python clifpy_tables.py data-raw/demo
 ```
 
 uv runs the script in a fresh environment of its own: `--isolated` keeps out any
@@ -281,8 +289,8 @@ unit that the demo never charts, of a unit it can't convert to (`meq/min`, sodiu
 bicarbonate's own), and of assessments with both a numerical and a categorical
 value; pandas adds a `FutureWarning`. It ends with
 `SOFA computation completed. Results stored in self.sofa_df with shape: (272, 10)`,
-and `CLIF-MIMIC/output/rclif-2.1/` then holds 17 files. If you rerun the ETL,
-rerun this step too.
+and `data-raw/demo/` then holds 17 files. If you rerun the ETL, copy its tables
+again and rerun this step too.
 
 ### 4. Collate
 
@@ -291,16 +299,16 @@ names the directory of tables to read, and `-p` the directory to write to, which
 the later steps read from:
 
 ```sh
-cocoa collate -r CLIF-MIMIC/output/rclif-2.1 -p processed --verbose
+cocoa collate -r data-raw/demo -p processed/demo --verbose
 ```
 
-This writes `processed/meds.parquet`, the 275,648 events of the 275
+This writes `processed/demo/meds.parquet`, the 275,648 events of the 275
 hospitalizations, a row each with its `subject_id`, `time`, `code` (such as
 `LAB-RES//sodium`), and any value; the shipped config makes each hospitalization
 a subject (`subject_id: hospitalization_id`). It also writes
-`processed/subject_splits.parquet`, which assigns patients, with all of their
-hospitalizations, to splits in the order of their first admissions: the first 70
-to train, the next 10 to tuning, and the last 20 to held out. Since each
+`processed/demo/subject_splits.parquet`, which assigns patients, with all of
+their hospitalizations, to splits in the order of their first admissions: the
+first 70 to train, the next 10 to tuning, and the last 20 to held out. Since each
 patient's dates are shifted separately, that order isn't chronological in real
 time. `--verbose` prints summaries as it goes, among them the split by
 hospitalization:
@@ -320,23 +328,23 @@ hospitalization:
 ### 5. Tokenize
 
 ```sh
-cocoa tokenize -p processed --verbose
+cocoa tokenize -p processed/demo --verbose
 ```
 
 The tokenizer learns its vocabulary, and the deciles of each code's numeric
 values, on the 187 training hospitalizations, and applies both, frozen, to the
 rest. With the shipped config, each event becomes one token: its code, with the
 decile of its value appended when it has one, as in `LAB-RES//sodium_Q5`. It
-writes `processed/tokenizer.yaml`, the vocabulary and bin edges, and
-`processed/tokens_times.parquet`, a row for each hospitalization holding its
+writes `processed/demo/tokenizer.yaml`, the vocabulary and bin edges, and
+`processed/demo/tokens_times.parquet`, a row for each hospitalization holding its
 tokens, from `BOS` to `EOS`, and their times. `--verbose` prints the timelines'
 lengths, from 10 tokens to 11,461 with a median of 339, and a few timelines token
 by token, and ends with:
 
 ```
 ✓ Tokenization completed in 0.72s.
-  Output: …/mimic-iv-demo/processed/tokens_times.parquet
-  Output: …/mimic-iv-demo/processed/tokenizer.yaml
+  Output: …/mimic-iv-demo/processed/demo/tokens_times.parquet
+  Output: …/mimic-iv-demo/processed/demo/tokenizer.yaml
   Vocabulary size: 1100 tokens
 ```
 
@@ -346,20 +354,20 @@ by token, and ends with:
 hours after its first event into a past and a future, keeps those that run past
 the cut, and flags which outcome tokens (`XFR-IN//icu`, `RESP//imv`,
 `DSCG//expired`, `ASMT//cam_total_yes`, and the `LABEL//` tokens) fall on each
-side. It writes `processed/train_for_inference.parquet`,
-`processed/tuning_for_inference.parquet`, and
-`processed/held_out_for_inference.parquet`, keeping 169, 30, and 50 of the 187,
-33, and 55 hospitalizations, and `--verbose` prints how often each outcome falls
-on each side:
+side. It writes `processed/demo/train_for_inference.parquet`,
+`processed/demo/tuning_for_inference.parquet`, and
+`processed/demo/held_out_for_inference.parquet`, keeping 169, 30, and 50 of the
+187, 33, and 55 hospitalizations, and `--verbose` prints how often each outcome
+falls on each side:
 
 ```sh
-cocoa winnow -p processed --verbose
+cocoa winnow -p processed/demo --verbose
 ```
 
 Then draw one timeline:
 
 ```sh
-cocoa visualize 27708593 -p processed --show-winnowing --open
+cocoa visualize 27708593 -p processed/demo --show-winnowing --open
 ```
 
 `cocoa visualize` serves the page until you press Ctrl-C; to keep it as a file
@@ -372,7 +380,7 @@ first hypotension and tachycardia, and `sepsis_onset` all come after it.
 
 ### Next steps
 
-- `cocoa pipeline -r CLIF-MIMIC/output/rclif-2.1 -p processed` collates,
+- `cocoa pipeline -r data-raw/demo -p processed/demo` collates,
   tokenizes, and winnows in one go (steps 4 to 6, short of drawing), and takes
   config overrides, each key prefixed by its stage: `collation.`,
   `tokenization.`, or `winnowing.`.
@@ -380,7 +388,7 @@ first hypotension and tachycardia, and `sepsis_onset` all come after it.
   clock of the collation config's `default_timezone`, which the shipped config
   sets to `UTC`. MIMIC-IV's times are Boston's, so for local hours, run the
   pipeline again into a new directory:
-  `cocoa pipeline -r CLIF-MIMIC/output/rclif-2.1 -p processed-local collation.default_timezone=America/New_York tokenization.insert_clocks=true`.
+  `cocoa pipeline -r data-raw/demo -p processed/demo-local collation.default_timezone=America/New_York tokenization.insert_clocks=true`.
   [Date-based generative inference](date-based-generative-inference.md) uses such
   clock tokens to cut timelines at midnight.
 - To change what's collated or how it's tokenized, copy a shipped config from
@@ -388,7 +396,8 @@ first hypotension and tachycardia, and `sepsis_onset` all come after it.
   edit it, and pass it with `-c`;
   [configure a new event token](configure-new-token.md) walks through adding an
   entry.
-- [Tokenizer transfer](tokenizer-transfer.md) applies the vocabulary learned here
-  to another dataset.
+- [Tokenizer transfer](tokenizer-transfer.md) splits the demo in two, by when its
+  patients were treated, and applies a vocabulary learned on the earlier patients
+  to the later ones.
 - To train a model on the timelines, see
   [🦜 cotorra](https://pypi.org/project/cotorra/).

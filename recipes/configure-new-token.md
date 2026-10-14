@@ -1,35 +1,36 @@
 ## Configuring a new event token
 
 Suppose you have a table `clif_medication_admin_intermittent_converted` that you
-would like to add to the tokenization process:
+would like to add to the tokenization process, such as the one clifpy derives in
+step 3 of the [MIMIC-IV demo](mimic-iv-demo.md):
 
 ```
-┌────────────────────┬───────────────────────────────┬───────────────────────┬────────────────────┬─────────────────────────┬─────────────────────┬─────────────────────────────────┐
-│ hospitalization_id ┆ admin_dttm                    ┆ med_category          ┆ med_dose_converted ┆ med_dose_unit_converted ┆ mar_action_category ┆ _convert_status                 │
-│ ---                ┆ ---                           ┆ ---                   ┆ ---                ┆ ---                     ┆ ---                 ┆ ---                             │
-│ str                ┆ datetime[μs, America/Chicago] ┆ str                   ┆ f64                ┆ str                     ┆ str                 ┆ str                             │
-╞════════════════════╪═══════════════════════════════╪═══════════════════════╪════════════════════╪═════════════════════════╪═════════════════════╪═════════════════════════════════╡
-│ 20008851           ┆ 2111-01-19 15:00:00 CST       ┆ morphine              ┆ 2.5                ┆ mg                      ┆ given               ┆ success                         │
-│ 20008851           ┆ 2111-01-19 16:00:00 CST       ┆ morphine              ┆ 2.5                ┆ mg                      ┆ given               ┆ success                         │
-│ 20008851           ┆ 2111-01-19 18:00:00 CST       ┆ morphine              ┆ 2.5                ┆ mg                      ┆ given               ┆ success                         │
-│ 20008851           ┆ 2111-01-19 18:15:00 CST       ┆ morphine              ┆ 2.5                ┆ mg                      ┆ given               ┆ success                         │
-│ 20008851           ┆ 2111-01-19 19:45:00 CST       ┆ sodium bicarbonate    ┆ 50.0               ┆ ml                      ┆ given               ┆ success                         │
-│ …                  ┆ …                             ┆ …                     ┆ …                  ┆ …                       ┆ …                   ┆ …                               │
-│ 29966638           ┆ 2110-09-15 16:00:00 CST       ┆ dextrose              ┆ 100.0              ┆ ml                      ┆ given               ┆ success                         │
-│ 29966638           ┆ 2110-09-15 16:00:00 CST       ┆ dextrose_in_water_d5w ┆ 100.0              ┆ ml                      ┆ given               ┆ success                         │
-│ 29966638           ┆ 2110-09-15 16:00:00 CST       ┆ metronidazole         ┆ 1.0                ┆ dose                    ┆ given               ┆ original unit dose is not reco… │
-│ 29966638           ┆ 2110-09-15 19:57:00 CST       ┆ insulin               ┆ 2.0                ┆ u                       ┆ given               ┆ user-preferred unit units is n… │
-│ 29966638           ┆ 2110-09-15 20:51:00 CST       ┆ hydromorphone         ┆ 0.5                ┆ mg                      ┆ given               ┆ success                         │
-└────────────────────┴───────────────────────────────┴───────────────────────┴────────────────────┴─────────────────────────┴─────────────────────┴─────────────────────────────────┘
+┌────────────────────┬─────────────────────────┬─────────────────────────┬────────────────────┬─────────────────────────┬─────────────────────┬──────────────────────────────────┐
+│ hospitalization_id ┆ admin_dttm              ┆ med_category            ┆ med_dose_converted ┆ med_dose_unit_converted ┆ mar_action_category ┆ _convert_status                  │
+│ ---                ┆ ---                     ┆ ---                     ┆ ---                ┆ ---                     ┆ ---                 ┆ ---                              │
+│ str                ┆ datetime[μs, UTC]       ┆ str                     ┆ f64                ┆ str                     ┆ str                 ┆ str                              │
+╞════════════════════╪═════════════════════════╪═════════════════════════╪════════════════════╪═════════════════════════╪═════════════════════╪══════════════════════════════════╡
+│ 20044587           ┆ 2113-08-25 21:29:00 UTC ┆ propofol                ┆ 10.000001          ┆ mg                      ┆ given               ┆ success                          │
+│ 20044587           ┆ 2113-08-25 22:13:00 UTC ┆ propofol                ┆ 10.000001          ┆ mg                      ┆ given               ┆ success                          │
+│ 20044587           ┆ 2113-08-25 23:08:00 UTC ┆ sodium chloride         ┆ 300.0              ┆ ml                      ┆ given               ┆ success                          │
+│ 20044587           ┆ 2113-08-26 00:31:00 UTC ┆ cefazolin               ┆ 1.0                ┆ dose                    ┆ given               ┆ original unit dose is not recog… │
+│ 20044587           ┆ 2113-08-26 00:31:00 UTC ┆ dextrose_5_water        ┆ 100.0              ┆ ml                      ┆ given               ┆ success                          │
+│ …                  ┆ …                       ┆ …                       ┆ …                  ┆ …                       ┆ …                   ┆ …                                │
+│ 29974575           ┆ 2131-03-08 11:00:00 UTC ┆ piperacillin_tazobactam ┆ 1.0                ┆ dose                    ┆ given               ┆ original unit dose is not recog… │
+│ 29974575           ┆ 2131-03-08 13:04:00 UTC ┆ heparin                 ┆ 1.0                ┆ dose                    ┆ given               ┆ original unit dose is not recog… │
+│ 29974575           ┆ 2131-03-08 19:08:00 UTC ┆ dextrose_5_water        ┆ 100.0              ┆ ml                      ┆ given               ┆ success                          │
+│ 29974575           ┆ 2131-03-08 19:08:00 UTC ┆ piperacillin_tazobactam ┆ 1.0                ┆ dose                    ┆ given               ┆ original unit dose is not recog… │
+│ 29974575           ┆ 2131-03-08 21:08:00 UTC ┆ heparin                 ┆ 1.0                ┆ dose                    ┆ given               ┆ original unit dose is not recog… │
+└────────────────────┴─────────────────────────┴─────────────────────────┴────────────────────┴─────────────────────────┴─────────────────────┴──────────────────────────────────┘
 ```
 
-(It may have other columns too -- they will be ignored unless included in the
-configuration.)
+(It has other columns too, such as the dose and unit as charted, `med_dose` and
+`med_dose_unit` -- they will be ignored unless included in the configuration.)
 
 For each `hospitalization_id`, you want to insert tokens corresponding to
 `med_category` with respective `med_dose_converted` (after preprocessing,
-`med_dose_converted` is unique within each `med_category`.) However, you only
-want to include these tokens if the medication was actually administered
+`med_dose_unit_converted` is unique within each `med_category`.) However, you
+only want to include these tokens if the medication was actually administered
 `pl.col("mar_action_category") == "given"` and the conversion during
 preprocessing completed successfully (`pl.col("_convert_status") == "success"`).
 
@@ -49,30 +50,36 @@ preprocessing completed successfully (`pl.col("_convert_status") == "success"`).
         time: admin_dttm
     ```
 
-2. Now when collation is run, codes such as `MED-INT//morphine`,
-   `MED-INT//sodium_bicarbonate`, `MED-INT//dextrose`, `MED-INT//hydromorphone`
+    (The shipped collation config already has this entry, along with one that
+    keeps the doses clifpy couldn't convert as codes without values.)
+
+2. Now when collation is run, codes such as `MED-INT//propofol`,
+   `MED-INT//sodium_chloride`, `MED-INT//dextrose_5_water`, `MED-INT//morphine`
    will be generated and inserted into the `meds.parquet` file along with
    `med_dose_converted` in the `numeric_value` column:
 
     ```
-    ┌────────────┬─────────────────────┬────────────────────────────────┬───────────────┬────────────┐
-    │ subject_id ┆ time                ┆ code                           ┆ numeric_value ┆ text_value │
-    │ ---        ┆ ---                 ┆ ---                            ┆ ---           ┆ ---        │
-    │ str        ┆ datetime[μs]        ┆ str                            ┆ f32           ┆ str        │
-    ╞════════════╪═════════════════════╪════════════════════════════════╪═══════════════╪════════════╡
-    │ 20008851   ┆ 2111-01-19 21:00:00 ┆ MED-INT//morphine              ┆ 2.5           ┆ null       │
-    │ 20008851   ┆ 2111-01-19 22:00:00 ┆ MED-INT//morphine              ┆ 2.5           ┆ null       │
-    │ 20008851   ┆ 2111-01-20 00:00:00 ┆ MED-INT//morphine              ┆ 2.5           ┆ null       │
-    │ 20008851   ┆ 2111-01-20 00:15:00 ┆ MED-INT//morphine              ┆ 2.5           ┆ null       │
-    │ 20008851   ┆ 2111-01-20 01:45:00 ┆ MED-INT//sodium_bicarbonate    ┆ 50.0          ┆ null       │
-    │ …          ┆ …                   ┆ …                              ┆ …             ┆ …          │
-    │ 29966638   ┆ 2110-09-15 18:54:00 ┆ MED-INT//dextrose              ┆ 100.0         ┆ null       │
-    │ 29966638   ┆ 2110-09-15 18:54:00 ┆ MED-INT//dextrose_in_water_d5w ┆ 100.0         ┆ null       │
-    │ 29966638   ┆ 2110-09-15 22:00:00 ┆ MED-INT//dextrose              ┆ 100.0         ┆ null       │
-    │ 29966638   ┆ 2110-09-15 22:00:00 ┆ MED-INT//dextrose_in_water_d5w ┆ 100.0         ┆ null       │
-    │ 29966638   ┆ 2110-09-16 02:51:00 ┆ MED-INT//hydromorphone         ┆ 0.5           ┆ null       │
-    └────────────┴─────────────────────┴────────────────────────────────┴───────────────┴────────────┘
+    ┌────────────┬─────────────────────────┬───────────────────────────┬───────────────┬────────────┐
+    │ subject_id ┆ time                    ┆ code                      ┆ numeric_value ┆ text_value │
+    │ ---        ┆ ---                     ┆ ---                       ┆ ---           ┆ ---        │
+    │ str        ┆ datetime[μs, UTC]       ┆ str                       ┆ f32           ┆ str        │
+    ╞════════════╪═════════════════════════╪═══════════════════════════╪═══════════════╪════════════╡
+    │ 20044587   ┆ 2113-08-25 21:29:00 UTC ┆ MED-INT//propofol         ┆ 10.000001     ┆ null       │
+    │ 20044587   ┆ 2113-08-25 22:13:00 UTC ┆ MED-INT//propofol         ┆ 10.000001     ┆ null       │
+    │ 20044587   ┆ 2113-08-25 23:08:00 UTC ┆ MED-INT//sodium_chloride  ┆ 300.0         ┆ null       │
+    │ 20044587   ┆ 2113-08-26 00:31:00 UTC ┆ MED-INT//dextrose_5_water ┆ 100.0         ┆ null       │
+    │ 20044587   ┆ 2113-08-26 00:53:00 UTC ┆ MED-INT//morphine         ┆ 2.0           ┆ null       │
+    │ …          ┆ …                       ┆ …                         ┆ …             ┆ …          │
+    │ 29974575   ┆ 2131-03-07 19:08:00 UTC ┆ MED-INT//dextrose_5_water ┆ 100.0         ┆ null       │
+    │ 29974575   ┆ 2131-03-08 03:00:00 UTC ┆ MED-INT//dextrose_5_water ┆ 100.0         ┆ null       │
+    │ 29974575   ┆ 2131-03-08 03:30:00 UTC ┆ MED-INT//magnesium        ┆ 2.0           ┆ null       │
+    │ 29974575   ┆ 2131-03-08 11:00:00 UTC ┆ MED-INT//dextrose_5_water ┆ 100.0         ┆ null       │
+    │ 29974575   ┆ 2131-03-08 19:08:00 UTC ┆ MED-INT//dextrose_5_water ┆ 100.0         ┆ null       │
+    └────────────┴─────────────────────────┴───────────────────────────┴───────────────┴────────────┘
     ```
+
+    The cefazolin given at 00:31, charted as `1 dose`, is left out, since its
+    conversion didn't succeed.
 
 3. When tokenization is run, these codes will be picked up and processed as usual
    — with one caveat if you've raised `min_training_ct` above its default of `0`:

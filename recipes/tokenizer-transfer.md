@@ -1,13 +1,53 @@
 ## Tokenizer transfer: learn a tokenizer on one dataset and then apply it to a second dataset
 
-In this example, we'll train a tokenizer on mimic and apply it to ucmc.
+In this example, we'll split the [MIMIC-IV demo](mimic-iv-demo.md) in two by when
+its patients were treated, learn a tokenizer on the earlier patients, and apply
+it to the later ones, as you might apply a model to data newer than any it was
+trained on. The second dataset could just as well come from another hospital. The
+commands run from the demo's working directory, once its step 3 has made the CLIF
+tables.
 
-0. Set the paths to your raw datasets:
+0. Split the CLIF tables in two. MIMIC-IV shifts each patient's dates by its own
+   amount, but the `anchor_year_group` of its `patients` table places each
+   patient's care, roughly, in a span of three real years: 2011–2013 for 43 of
+   the demo's patients, and 2014–2016 for the other 57. This script writes each
+   group's rows of every table to a directory of its own next to the demo's,
+   `data-raw/demo-2011-2013` and `data-raw/demo-2014-2016`; run it with the
+   Python that cocoa is installed in, which has polars:
 
     ```sh
-    raw_mimic="/path/to/data-raw/mimic-2.1.0"
-    raw_ucmc="/path/to/data-raw/ucmc-2.1.0"
+    cat > split_by_years.py <<'EOF'
+    import pathlib
+    import sys
+
+    import polars as pl
+
+    clif, patients = map(pathlib.Path, sys.argv[1:])
+    years = pl.read_csv(patients, schema_overrides={"subject_id": pl.String}).select(
+        pl.col("subject_id").alias("patient_id"), "anchor_year_group"
+    )
+    hosp = pl.read_parquet(clif / "clif_hospitalization.parquet")
+    ids = hosp.join(years, on="patient_id")
+
+    for (group,), rows in ids.group_by("anchor_year_group"):
+        # e.g. data-raw/demo-2011-2013
+        out = clif.with_name(clif.name + "-" + group.replace(" ", ""))
+        out.mkdir(exist_ok=True)
+        for table in clif.glob("*.parquet"):
+            df = pl.read_parquet(table)
+            # patient and code_status have only a patient_id
+            key = "hospitalization_id" if "hospitalization_id" in df else "patient_id"
+            df.join(rows.select(key).unique(), on=key, how="semi").write_parquet(
+                out / table.name
+            )
+    EOF
+
+    python split_by_years.py data-raw/demo \
+        mimic-iv-clinical-database-demo-2.2/hosp/patients.csv.gz
     ```
+
+    The earlier patients have 147 of the demo's hospitalizations, and the
+    later 128.
 
 1. Run collation on each dataset separately with the same config. Keeping
    `default_timezone` the same across both matters if you tokenize with clock
@@ -16,13 +56,13 @@ In this example, we'll train a tokenizer on mimic and apply it to ucmc.
 
     ```sh
     cocoa collate \
-        --raw-data-home ${raw_mimic} \
-        --processed-data-home ./processed/mimic \
+        --raw-data-home data-raw/demo-2011-2013 \
+        --processed-data-home processed/demo-2011-2013 \
         --verbose
 
     cocoa collate \
-        --raw-data-home ${raw_ucmc} \
-        --processed-data-home ./processed/ucmc \
+        --raw-data-home data-raw/demo-2014-2016 \
+        --processed-data-home processed/demo-2014-2016 \
         --verbose
     ```
 
@@ -30,32 +70,40 @@ In this example, we'll train a tokenizer on mimic and apply it to ucmc.
 
     ```sh
     cocoa tokenize \
-      --processed-data-home ./processed/mimic
+      --processed-data-home processed/demo-2011-2013
     ```
+
+    It learns 974 tokens from the 87 hospitalizations of the earlier patients'
+    training split.
 
 3. Supply the `--tokenizer-home` argument to the `tokenize` command to load the
    previously learned tokenizer (with fixed vocabulary and binning cutpoints):
 
     ```sh
     cocoa tokenize \
-      --tokenizer-home ./processed/mimic/tokenizer.yaml \
-      --processed-data-home ./processed/ucmc \
+      --tokenizer-home processed/demo-2011-2013/tokenizer.yaml \
+      --processed-data-home processed/demo-2014-2016 \
       --verbose
     ```
 
-    The vocabulary arrives frozen, so ucmc's own word frequencies never enter
-    into it: `min_training_ct` was applied once, to mimic's training split, and
-    is not reconsidered here. A code that is common in ucmc but was too rare in
-    mimic to be learned tokenizes to `UNK`, the same as a code mimic never saw at
-    all. The `counts` in `tokenizer.yaml` likewise stay as mimic recorded them.
+    The vocabulary arrives frozen, so the later patients' own word frequencies
+    never enter into it: `min_training_ct` was applied once, to the earlier
+    patients' training split, and is not reconsidered here. A code that is common
+    in the later data but was too rare in the earlier data to be learned
+    tokenizes to `UNK`, the same as a code the earlier data never saw at all. The
+    `counts` in `tokenizer.yaml` likewise stay as the earlier data recorded them.
+    Here 553 of the later timelines' 152,080 tokens, about 0.4%, are `UNK`, most
+    of them codes that no earlier training hospitalization had, such as the
+    infusion `MED-CTS//octreotide` and the ventilator mode
+    `RESP//pressure_control`.
 
 4. Proceed as usual:
 
     ```sh
     cocoa winnow \
-      --processed-data-home ./processed/mimic \
+      --processed-data-home processed/demo-2011-2013 \
       --verbose
 
     cocoa winnow \
-      --processed-data-home ./processed/ucmc
+      --processed-data-home processed/demo-2014-2016
     ```

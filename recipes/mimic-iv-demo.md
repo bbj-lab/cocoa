@@ -232,16 +232,20 @@ cocoa winnow -p processed/demo --verbose
 Then draw one timeline:
 
 ```sh
-cocoa visualize 27708593 -p processed/demo --show-winnowing --open
+cocoa visualize 27708593 -p processed/demo --open
 ```
 
 `cocoa visualize` serves the page until you press Ctrl-C; to keep it as a file
 instead, pass `--export-html timeline.html` (or `--export-pdf timeline.pdf`).
 Hospitalization 27708593 is the earliest admission in the held-out split, a
 week-long elective neurosurgical stay with 17 hours in the surgical ICU. The page
-draws its events in lanes by kind, and `--show-winnowing` marks the cut and sums
-up, near the bottom, which outcomes fall on each side: here the ICU transfer, a
-first hypotension and tachycardia, and `sepsis_onset` all come after it.
+draws its events in lanes by kind:
+
+<img src="https://raw.githubusercontent.com/burkh4rt/cocoa/master/img/vis-screenshot.png" alt="timeline of training hospitalization 21759936, with the labs at one time listed" width="700"/>
+
+Lanes can be displayed interactively:
+
+<img src="https://raw.githubusercontent.com/burkh4rt/cocoa/master/img/vis-screenshot-2.png" alt="timeline of held-out hospitalization 27708593, with the vitals lane opened" width="700"/>
 
 ### Next steps
 

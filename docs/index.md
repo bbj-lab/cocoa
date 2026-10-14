@@ -42,8 +42,8 @@ hide:
 
     ---
 
-    Task-oriented guides for common workflows, from tokenizer transfer to
-    date-based inference.
+    Task-oriented guides for common workflows, from an end-to-end run on the
+    public MIMIC-IV demo to tokenizer transfer and date-based inference.
 
     [:octicons-arrow-right-24: Recipes](recipes/index.md)
 

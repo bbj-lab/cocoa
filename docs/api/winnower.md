@@ -1,14 +1,13 @@
 # Winnower
 
-The `Winnower` is the final stage of the pipeline. It prepares held-out timelines
-for evaluation: it splits each timeline at a configurable cut-point into a
-**past** portion (the context a model is given) and a **future** portion (what
-the model must predict), and it attaches outcome labels. Its behavior is driven
-by a winnowing config (`winnowing.yaml`).
+The `Winnower` is the final stage of the pipeline. It prepares timelines for
+evaluation: it splits each timeline at a configurable cut-point into a **past**
+portion (the context a model is given) and a **future** portion (what the model
+must predict), and it attaches outcome labels. Its behavior is driven by a
+winnowing config (`winnowing.yaml`).
 
 The name is apt — the winnower also **filters out** subjects that cannot be
-fairly evaluated, for example timelines that end before the outcome horizon is
-reached.
+fairly evaluated: those whose timelines never reach the cut-point.
 
 ## What it produces
 
@@ -26,11 +25,12 @@ processed-data directory's files there too, so that it is a complete processed
 dataset of its own. It skips subdirectories, and any `*_for_inference.parquet`
 already in the processed-data directory, which may have been winnowed under
 another configuration. This lets one tokenized dataset be winnowed under several
-configurations side by side:
+configurations side by side, as here on the
+[MIMIC-IV demo](../recipes/mimic-iv-demo.md):
 
 ```sh
-cocoa winnow -p ./processed/mimic -o ./processed/mimic/winnowed-24h
-cocoa winnow -p ./processed/mimic -o ./processed/mimic/winnowed-icu \
+cocoa winnow -p processed/demo -o processed/demo/winnowed-24h
+cocoa winnow -p processed/demo -o processed/demo/winnowed-icu \
     '~threshold.duration_s' threshold.first_occurrence=XFR-IN//icu
 ```
 
@@ -43,8 +43,8 @@ these steps:
    timelines for the requested split and compute elapsed times.
 2. [`run_thresholding`][cocoa.winnower.Winnower.run_thresholding] — compute
    `last_valid`, the cut-point between past and future. This is derived either
-   from an elapsed-time horizon or from the first occurrence of a token of
-   interest. Timelines that never reach the cut-point are dropped.
+   from a duration after the timeline's first event or from the first occurrence
+   of a token of interest. Timelines that never reach the cut-point are dropped.
 3. [`add_outcome_flags`][cocoa.winnower.Winnower.add_outcome_flags] — for each
    configured outcome token, add `*_past` and `*_future` boolean labels (for
    example `DSCG//expired_past` and `DSCG//expired_future`), so you can tell

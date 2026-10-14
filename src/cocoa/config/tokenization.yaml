@@ -5,6 +5,7 @@ fused: !!bool true
 include_numeric_values: !!bool false
 min_training_ct: !!int 0 # words rarer than this in training become UNK; 0 disables it
 include_hours_to_end_time: !!bool false
+shuffle_rows: !!bool false # shuffle the order of subjects in tokens_times.parquet
 
 ordering:
   - BOS

@@ -21,7 +21,9 @@ two files to the processed-data directory:
 
 - `meds.parquet` — the collated events for every subject.
 - `subject_splits.parquet` — a `train` / `tuning` / `held_out` assignment for
-  each subject, partitioned by first event time and the fractions in the config.
+  each subject, made by ordering subjects (or, with `group_id`, groups) by their
+  earliest reference `start_time`, ties broken by id, and cutting that order at
+  the fractions in the config.
 
 ## How it works
 
@@ -32,7 +34,10 @@ two files to the processed-data directory:
    type into standardized token rows — building the `code` string, casting
    values, and optionally restricting events to the reference window.
 3. [`get_all`][cocoa.collator.Collator.get_all] concatenates every configured
-   entry into the full event stream.
+   entry into the full event stream, then
+   [`drop_events_outside_window`][cocoa.collator.Collator.drop_events_outside_window]
+   drops events further than `max_lookback_days` before or `max_lookahead_days`
+   after their subject's reference window, if either is set.
 4. [`get_subject_splits`][cocoa.collator.Collator.get_subject_splits] assigns the
    data splits.
 

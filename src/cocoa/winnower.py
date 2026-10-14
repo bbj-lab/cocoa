@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 
 """
-prepares held-out data for evaluation,
-adding flags to disqualify certain subjects from evaluation
+prepares timelines for evaluation,
+splitting each into a past and a future and flagging outcomes on either side
 """
 
 import fnmatch
@@ -10,7 +10,6 @@ import pathlib
 import shutil
 from typing import Any
 
-import numpy as np
 import polars as pl
 from omegaconf import OmegaConf
 
@@ -19,9 +18,9 @@ from cocoa.configurable import Configurable
 
 class Winnower(Configurable):
     """
-    filters held-out timelines for evaluation;
-    assigns flags to disqualify certain subjects from evaluation,
-    e.g. those whose timelines ends prior to the outcome horizon
+    splits the timelines of the configured splits at a threshold into a past and
+    a future, dropping those that never reach it, and flags which outcome tokens
+    fall on each side; `save_all` writes {split}_for_inference.parquet
     """
 
     default_file = "winnowing.yaml"
@@ -51,7 +50,6 @@ class Winnower(Configurable):
             for x in self.tkzr_cfg.lookup.keys()
             if any(fnmatch.fnmatch(x, p) for p in self.cfg.outcome_tokens)
         ]
-        self.rng = np.random.default_rng(seed=42)
 
         self.logger.info("Winnower initialized...")
         self.logger.info(f"{self.processed_data_home=}")
@@ -62,7 +60,7 @@ class Winnower(Configurable):
 
     def load_frame(self, split: str = "held_out") -> pl.LazyFrame:
         """
-        loads held_out timelines, and performs some preliminary calculations;
+        loads the timelines of `split`, and performs some preliminary calculations;
         these are lazily evaluated, so only completed if used
         """
         return (
@@ -169,7 +167,7 @@ class Winnower(Configurable):
         )
 
     def prepare_winnowed_frame(self, split: str = "held_out") -> pl.LazyFrame:
-        """loads held-out data, splits at time threshold, and prepares labels"""
+        """loads a split's timelines, cuts them at the threshold, and flags outcomes"""
         return (
             self.load_frame(split=split)
             .pipe(self.run_thresholding)

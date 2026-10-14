@@ -19,7 +19,8 @@ from cocoa.configurable import Configurable
 class Tokenizer(Configurable):
     """
     converts collated data to tokenized timelines,
-    learning bins and lookup table on training data
+    learning bins and lookup table on training data;
+    `save_all` writes tokens_times.parquet and tokenizer.yaml
     """
 
     default_file = "tokenization.yaml"
@@ -52,6 +53,7 @@ class Tokenizer(Configurable):
         return bool(self.cfg.get("fused", True))
 
     def get_data(self) -> pl.LazyFrame:
+        """lazily loads the collated events, and the subject splits alongside"""
         self.logger.info(f"Loading collated data with {self.processed_data_home=}")
         self.subject_splits = pl.scan_parquet(
             self.processed_data_home / "subject_splits.parquet"
@@ -132,6 +134,7 @@ class Tokenizer(Configurable):
                         for i in range(1, self.cfg.n_bins)
                     ]
                 )
+                .sort("code")  # so tokenizer.yaml lists bins the same way every run
             ).collect()
         return self.bins
 
@@ -279,8 +282,9 @@ class Tokenizer(Configurable):
                 .otherwise(pl.col("priority").fill_null(n))
             )
             # thanks, @lukesolo-ml! numeric_value only breaks ties between otherwise
-            # identical tokens, so that numeric_values is the same every run
-            .sort("time", "priority", "to_tokenize", "numeric_value")
+            # identical tokens, so that numeric_values is the same every run; and
+            # subject_id orders the rows of subjects that open at the same instant
+            .sort("time", "priority", "to_tokenize", "numeric_value", "subject_id")
             .explode("to_tokenize", empty_as_null=False)
             .join(
                 self.get_lookup(pt).lazy(),
@@ -318,6 +322,17 @@ class Tokenizer(Configurable):
             ),
         )
 
+    def shuffle_rows(self, df: pl.LazyFrame) -> pl.LazyFrame:
+        """shuffle the order of subjects' timelines if configured"""
+        if self.cfg.get("shuffle_rows", False):
+            return (
+                df.with_row_index("_idx")
+                .with_columns(pl.col("_idx").hash(seed=42))
+                .sort("_idx")
+                .drop("_idx")
+            )
+        return df
+
     def get_all(self, verbose: bool = False) -> pl.LazyFrame:
         """run all steps to convert collated data to tokenized timelines"""
         df = self.get_data()  # load data
@@ -327,6 +342,7 @@ class Tokenizer(Configurable):
         df = self.insert_time_spacers(df)  # insert time spacer codes when configured
         df = self.get_pretokenized(df).cache()  # pretokenize
         df = self.tokenize_data(df)  # collect tokens into timelines
+        df = self.shuffle_rows(df)  # shuffle the timelines if configured
 
         if verbose:
             self.logger.summarize_tokens_times(df, self.subject_splits, self.lookup)

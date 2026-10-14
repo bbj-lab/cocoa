@@ -23,7 +23,7 @@
     license-files = [ "LICEN[CS]E.*" ]
     name = "cocoa-tokenizer"
     readme = { file = "README.md", content-type = "text/markdown" }
-    requires-python = ">=3.10"
+    requires-python = ">=3.11"
     version = "26.10.1"
 
     [project.scripts]
@@ -45,7 +45,7 @@
             "mkdocs-callouts>=1.10",
             "mkdocs-git-revision-date-localized-plugin>=0.5",
         ]
-        test = [ "pytest>=7.0", "tomli>=1.0; python_version < '3.11'" ]
+        test = [ "pytest>=7.0" ]
 
 [build-system]
     build-backend = "setuptools.build_meta"

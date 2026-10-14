@@ -41,7 +41,8 @@ class SubjectNotFoundError(LookupError):
 class Visualizer(Configurable):
     """
     gathers one subject's timeline, vocabulary, and pass-through columns
-    from a processed data directory and renders them as html
+    from a processed data directory and renders them as html or pdf;
+    `save` and `save_pdf` write them to files
     """
 
     default_file = "visualization.yaml"

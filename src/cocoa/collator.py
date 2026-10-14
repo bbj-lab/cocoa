@@ -15,6 +15,11 @@ from cocoa.configurable import Configurable
 
 
 class Collator(Configurable):
+    """
+    collates raw tables into one frame of events, as configured;
+    `save_all` writes meds.parquet and subject_splits.parquet
+    """
+
     default_file = "collation.yaml"
 
     def __init__(
@@ -39,6 +44,11 @@ class Collator(Configurable):
         assert self.time_unit in (units := ("ms", "us", "ns")), (
             f"default_time_unit={self.time_unit!r} must be one of {units}"
         )
+        for k in ("max_lookback_days", "max_lookahead_days"):
+            v = self.cfg.get(k, None)
+            assert v is None or (isinstance(v, (int, float)) and v >= 0), (
+                f"{k}={v!r} must be a non-negative number of days or null"
+            )
 
         self.logger.info("Collator initialized...")
         self.logger.info(f"{self.raw_data_home=}")
@@ -120,12 +130,12 @@ class Collator(Configurable):
         **kwargs: Any,
     ) -> pl.LazyFrame:
         """
-        lazy-load the table `table`.parquet and perform some standard ETL
-        tasks in the following order if specified:
+        lazy-load the table `table`.parquet (or else `table`.csv) and perform
+        some standard ETL tasks in the following order if specified:
         1. fix subject_id to `subject_id_str`
         2. perform a filter operation
         3. add columns
-        4. perform an aggregation by `key` or self.cfg["subfject_id"]
+        4. perform an aggregation by `key` or self.cfg["subject_id"]
         """
         if (f := self.raw_data_home / f"{table}.parquet").exists():
             df = pl.scan_parquet(f)
@@ -198,7 +208,10 @@ class Collator(Configurable):
         agg_expr: str | collections.abc.Sequence[str] | None = None,
         key: str | None = None,
     ) -> pl.LazyFrame:
-        """create tokens corresponding to a configured event"""
+        """
+        collate one configured entry into rows of
+        subject_id, time, code, numeric_value, and text_value
+        """
         df = (
             self.get_reference_frame()
             if table == "REFERENCE"
@@ -288,19 +301,64 @@ class Collator(Configurable):
 
         return df
 
+    def drop_events_outside_window(self, df: pl.LazyFrame) -> pl.LazyFrame:
+        """
+        drop events more than `max_lookback_days` before their subject's
+        start_time or more than `max_lookahead_days` after its end_time;
+        a day is 24 hours of elapsed time, and an unset limit, a null bound,
+        or a subject missing from the reference frame leaves that side open
+        """
+        lookback = self.cfg.get("max_lookback_days", None)
+        lookahead = self.cfg.get("max_lookahead_days", None)
+        if lookback is None and lookahead is None:
+            return df
+        keep = []
+        if lookback is not None:
+            earliest = pl.col("start_time") - pl.duration(
+                days=lookback, time_unit=self.time_unit
+            )
+            keep.append((pl.col("time") >= earliest).fill_null(True))
+        if lookahead is not None:
+            latest = pl.col("end_time") + pl.duration(
+                days=lookahead, time_unit=self.time_unit
+            )
+            keep.append((pl.col("time") <= latest).fill_null(True))
+        bounds = self.get_reference_frame().select(
+            pl.col(self.cfg["subject_id"]).cast(pl.String).alias("subject_id"),
+            pl.col(self.cfg["reference"]["start_time"]).alias("start_time"),
+            pl.col(self.cfg["reference"]["end_time"]).alias("end_time"),
+        )
+        return (
+            df.join(
+                bounds,
+                on="subject_id",
+                how="left",
+                validate="m:1",
+                maintain_order="left",
+            )
+            .filter(keep)
+            .drop("start_time", "end_time")
+        )
+
     def get_all(self) -> pl.LazyFrame:
-        """get all tokens for all events as configured"""
-        return pl.concat(
-            (self.get_entry(**entry) for entry in self.cfg.get("entries", []))
+        """
+        concatenate every configured entry into one stream of events,
+        dropping any outside the configured lookback and lookahead
+        """
+        return self.drop_events_outside_window(
+            pl.concat(
+                (self.get_entry(**entry) for entry in self.cfg.get("entries", []))
+            )
         )
 
     def get_subject_splits(self) -> pl.DataFrame:
         """get the subject splits as configured"""
+        key = self.cfg.get("group_id", self.cfg["subject_id"])
         partition = (
             self.get_reference_frame()
-            .group_by(self.cfg.get("group_id", self.cfg["subject_id"]))
+            .group_by(key)
             .agg(pl.col(self.cfg.reference.start_time).min().alias("first_time"))
-            .sort("first_time")
+            .sort("first_time", key)  # id breaks ties, so every run splits alike
             .with_row_index()
         ).collect()
         split_idx = (

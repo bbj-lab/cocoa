@@ -52,7 +52,7 @@ template, css, js, icon, and fonts live in
 ## Commands
 
 ```sh
-# Dev install (Python >= 3.10)
+# Dev install (Python >= 3.11)
 python -m venv .venv && . .venv/bin/activate
 pip install -e '.[all]'          # all = dev + docs + test extras
 
@@ -96,11 +96,12 @@ name, a code description); a test that needs them writes its own config, as
 `VIZ_CFG` in [tests/test_visualizer.py](tests/test_visualizer.py) does.
 
 Most modules also keep an `if __name__ == "__main__"` block that self-tests
-against a local processed dataset (e.g. `./processed/mimic/`); run a module
-directly (`python -m cocoa.tokenizer`) to exercise it against real data — the
-tokenizer block also asserts round-trip save/load equality, and the visualizer
-block asserts the page references no external URLs. When you change behavior,
-add/update a pytest case first.
+against a local processed dataset (e.g. `./processed/mimic/`, for which
+[recipes/mimic-iv-demo.md](recipes/mimic-iv-demo.md) builds a public stand-in,
+`./processed/demo/`); run a module directly (`python -m cocoa.tokenizer`) to
+exercise it against real data — the tokenizer block also asserts round-trip
+save/load equality, and the visualizer block asserts the page references no
+external URLs. When you change behavior, add/update a pytest case first.
 
 ## Architecture notes
 
@@ -125,6 +126,18 @@ add/update a pytest case first.
 - **Polars everywhere**, lazy by default. Frames are built as `LazyFrame` and
   written with `sink_parquet(..., engine="streaming")` to stay memory-bounded;
   `--verbose` forces collection for stats and can OOM on large data.
+- **Reruns write the same files.** polars' `sort` is unstable and `group_by`
+  returns groups in no set order, so a sort that decides an output's order needs
+  keys that leave ties only between rows identical in every column written.
+  `get_subject_splits` sorts groups on `(first_time, id)`; `tokenize_data` on
+  `(time, priority, to_tokenize, numeric_value, subject_id)`, which also orders
+  the rows of `tokens_times.parquet` (by first token, then `subject_id`); and
+  `get_bins` on `code`, so `created_dttm` is the only line of `tokenizer.yaml`
+  that changes between runs. Row order in `meds.parquet` and
+  `subject_splits.parquet` still varies; nothing reads them by position.
+  `shuffle_rows` (off by default) then reorders the rows of
+  `tokens_times.parquet` with `Tokenizer.shuffle_rows`, a lazy sort on a hash of
+  the row index with a fixed seed, so reruns stay identical.
 - **Config-embedded expressions**: `filter_expr` / `with_col_expr` / `agg_expr`
   in a collation config are Polars expression _strings_ `eval`'d via
   `Collator.slightly_safer_eval`. This is intentionally powerful and **not a
@@ -136,6 +149,14 @@ add/update a pytest case first.
   multiplied by a join — comparing the whole collated event (`subject_id`,
   `time`, `code`, `numeric_value`, `text_value`). Two _entries_ that emit the
   same event still contribute a row each to `get_all`'s concat. Off by default.
+- **`max_lookback_days` / `max_lookahead_days` window the whole event stream.**
+  `Collator.drop_events_outside_window` runs once at the end of `get_all`, left-
+  joining each event to its subject's reference `start_time`/`end_time`
+  (`validate="m:1"`, so a reference table with a repeated `subject_id` raises
+  rather than duplicating events). Limits are inclusive, in 24-hour days of
+  elapsed time, built at `default_time_unit`. An unset limit, a null bound, or a
+  subject absent from the reference frame keeps the event. Both are `null`
+  (off) by default.
 - **Vocabulary/bins are frozen after training.** `UNK` is always token `0`. Reuse
   a learned tokenizer across datasets with
   `cocoa tokenize --tokenizer-home <path>/tokenizer.yaml` (see
@@ -230,9 +251,9 @@ add/update a pytest case first.
   (none runs here), use a simpler one like `dict[str, Any]` or leave it off.
   Spell out `X | None` whenever the default is `None`, and hint a list read from
   a config `collections.abc.Sequence`, since OmegaConf hands it over as a
-  `ListConfig`. Annotations are evaluated at import on Python 3.10, so quote
-  forward references and skip 3.11+ names like `typing.Self`; in `cli.py`, typer
-  reads a command's parameter annotations, so changing one changes the CLI.
+  `ListConfig`. Annotations are evaluated at import on Python 3.11, so quote
+  forward references and skip 3.12+ names like `typing.override`; in `cli.py`,
+  typer reads a command's parameter annotations, so changing one changes the CLI.
 - **Config changes stay backward compatible with what's on PyPI** as far as
   possible. A config that worked with a released version, and lacks a key added
   since, must keep working exactly as it did under that release. A `-c` config
@@ -246,8 +267,9 @@ add/update a pytest case first.
     - read a new key with `cfg.get(key, fallback)`, where the fallback reproduces
       the previous behavior, whatever the shipped default sets. Never use
       `cfg.key` / `cfg["key"]`, which raise on a missing key.
-      `drop_duplicate_events`, `default_time_unit`, `min_training_ct`, and
-      `include_hours_to_end_time` all follow this pattern.
+      `drop_duplicate_events`, `default_time_unit`, `min_training_ct`,
+      `include_hours_to_end_time`, `shuffle_rows`, and `max_lookback_days` /
+      `max_lookahead_days` all follow this pattern.
     - don't rename a key, repurpose it, or change what an existing value means.
       If a key has to change, keep accepting the old spelling.
     - the `cfg` block saved in `tokenizer.yaml` is a config too, and copies
@@ -278,7 +300,15 @@ add/update a pytest case first.
   [docs/recipes/](docs/recipes/)), the per-module pages in
   [docs/api/](docs/api/), and the shipped default configs in sync when behavior
   changes. The README is the PyPI long description, and the recipes are the
-  primary user-facing docs.
+  primary user-facing docs. [recipes/mimic-iv-demo.md](recipes/mimic-iv-demo.md)
+  runs the shipped defaults end to end on the public MIMIC-IV demo and quotes
+  what they make of it (event and split counts, vocabulary size, timeline
+  lengths, the first held-out hospitalization). The other docs take their
+  examples from the same run: the README's output tables and bin edges, the docs'
+  paths (`data-raw/demo`, `processed/demo`), and the counts quoted
+  by the other recipes, which run variants of it (split by `anchor_year_group`,
+  or collated in `America/New_York`). So rerun it, and refresh those, after
+  changing a shipped config, binning, or splitting.
 
 ## Gotchas
 
@@ -289,8 +319,10 @@ add/update a pytest case first.
 - `combine-datasets` does **not** refuse to merge processed dirs whose tokenizer
   configs differ. It diffs the yamls (ignoring `created_dttm`) and logs a warning
   with the diff, but still combines the parquets and writes the _first_ input's
-  `tokenizer.yaml`, so check its output for `Configuration mismatch`. It also
-  handles a legacy Int64-token schema from tokenizers `<= 26.4.0`. Only
+  `tokenizer.yaml`, so check its output for `Configuration mismatch`. A dir
+  tokenized with `--tokenizer-home` records `is_training: false` where its source
+  records `true`, so combining the two always warns, about that key alone. It
+  also handles a legacy Int64-token schema from tokenizers `<= 26.4.0`. Only
   `tokenizer.yaml` is written to the processed dir, so a `default_timezone` or
   `default_time_unit` mismatch escapes that config diff and instead surfaces as a
   polars `SchemaError` on the datetime columns — which the legacy-schema fallback

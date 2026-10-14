@@ -76,6 +76,7 @@ nav:
       - Visualizer: api/visualizer.md
   - Recipes:
       - Overview: recipes/index.md
+      - MIMIC-IV Demo: recipes/mimic-iv-demo.md
       - Configure New Token: recipes/configure-new-token.md
       - Date-Based Generative Inference: recipes/date-based-generative-inference.md
       - Tokenizer Transfer: recipes/tokenizer-transfer.md

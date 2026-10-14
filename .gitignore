@@ -7,6 +7,7 @@ dist
 build
 site
 .claude
+mimic-iv-demo
 
 # Created by https://www.toptal.com/developers/gitignore/api/python,pycharm+all,visualstudiocode,macos,windows,linux
 # Edit at https://www.toptal.com/developers/gitignore?templates=python,pycharm+all,visualstudiocode,macos,windows,linux

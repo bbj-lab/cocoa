@@ -27,8 +27,10 @@ Install the latest release from PyPI:
 pip install cocoa-tokenizer
 ```
 
-This installs the `cocoa` command. To work from source instead (e.g. for
-development):
+This installs the `cocoa` command. To see it run end to end on public data,
+follow the
+[MIMIC-IV demo](https://github.com/bbj-lab/cocoa/blob/master/recipes/mimic-iv-demo.md).
+To work from source instead (e.g. for development):
 
 ```sh
 git clone git@github.com:bbj-lab/cocoa.git

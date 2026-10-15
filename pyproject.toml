@@ -9,8 +9,6 @@
     ]
     dependencies = [
         "deepdiff>=6.6",
-        # deepdiff 9.1 pins cachebox<6, which has no 3.15 wheels and won't build there
-        "deepdiff!=9.1.*; python_version >= '3.15'",
         "numpy>=1.23.2",
         "omegaconf>=2.2.1",
         "polars>=1.36.1",
@@ -46,7 +44,7 @@
             "mkdocs-callouts>=1.10",
             "mkdocs-git-revision-date-localized-plugin>=0.5",
         ]
-        test = [ "pytest>=7.0", "pytest-cov>=5" ]
+        test = [ "pytest>=7.0" ]
 
 [build-system]
     build-backend = "setuptools.build_meta"
@@ -90,11 +88,3 @@
     log_level = "INFO"
     pythonpath = [ "src", "tests" ]
     testpaths = [ "tests" ]
-
-[tool.coverage.run]
-    branch      = true
-    source_pkgs = [ "cocoa" ]
-
-[tool.coverage.report]
-    # the __main__ blocks self-test against local real data, which ci lacks
-    exclude_also = [ 'if __name__ == "__main__":' ]

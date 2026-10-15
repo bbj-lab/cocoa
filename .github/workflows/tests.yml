@@ -1,0 +1,39 @@
+name: tests
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # if this list changes length, update after_n_builds in codecov.yml
+        python-version: ["3.11", "3.12", "3.13", "3.14", "3.15"]
+    permissions:
+      contents: read
+      id-token: write # lets codecov authenticate the upload by oidc
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - run: pip install -e '.[test]'
+      - run: pytest --cov --cov-report=xml
+        continue-on-error: true # failing tests don't fail the job
+      - uses: codecov/codecov-action@v7
+        with:
+          files: coverage.xml
+          disable_search: true
+          name: python-${{ matrix.python-version }}
+          fail_ci_if_error: false
+          # no CODECOV_TOKEN secret needed; the action uploads fork prs tokenless
+          use_oidc: true

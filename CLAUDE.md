@@ -74,14 +74,26 @@ ruff check . --fix
 
 # Tests (pytest, synthetic data only)
 pytest
+pytest --cov --cov-report=term-missing  # with line coverage, as CI measures it
 
 # Docs (mkdocs-material, published to readthedocs)
 mkdocs build
 mkdocs serve --dev-addr 127.0.0.1:8001
 ```
 
-There's a pytest suite in [tests/](tests/) — run it with `pytest`; there's still
-no CI. [tests/synth.py](tests/synth.py) generates synthetic CLIF-like raw data,
+There's a pytest suite in [tests/](tests/) — run it with `pytest`, or
+`pytest --cov` for coverage. CI
+([.github/workflows/tests.yml](.github/workflows/tests.yml)) runs it on Python
+3.11 through 3.15 for pushes to `master` and for pull requests, and uploads each
+run's coverage to Codecov by OIDC, so no token secret is needed.
+[codecov.yml](codecov.yml) waits for all five uploads (`after_n_builds`; keep it
+equal to the matrix size) and is informational only: its statuses always pass,
+and neither failing tests (`continue-on-error`) nor a failed upload fail the job.
+On 3.15, [pyproject.toml](pyproject.toml) excludes deepdiff 9.1, whose
+`cachebox<6` has no 3.15 wheels and won't build there. Coverage counts
+`src/cocoa` only and skips the `__main__` blocks (see `[tool.coverage]` in
+[pyproject.toml](pyproject.toml)).
+[tests/synth.py](tests/synth.py) generates synthetic CLIF-like raw data,
 and [tests/conftest.py](tests/conftest.py) turns it into shared fixtures: a
 session-scoped `pipeline` (collate → tokenize → winnow once with shipped
 defaults) and a per-test `runner` for re-running individual stages with

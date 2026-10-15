@@ -3,8 +3,8 @@
 [MIMIC-IV](https://mimic.mit.edu) holds the deidentified health records of
 patients at the Beth Israel Deaconess Medical Center in Boston, and only
 credentialed users can download it. Its
-[Clinical Database Demo](https://physionet.org/content/mimic-iv-demo/2.2/), 100
-of those patients with their 275 hospitalizations, is open to anyone. cocoa's
+[Clinical Database Demo](https://physionet.org/content/mimic-iv-demo/2.2/) [^1],
+100 of those patients with their 275 hospitalizations, is open to anyone. cocoa's
 shipped configs are written for
 [CLIF](https://clif-icu.com/data-dictionary/data-dictionary-2.1.0), the Common
 Longitudinal ICU data Format, so in this example we'll convert the demo to CLIF
@@ -45,13 +45,6 @@ This unpacks the MIMIC-IV tables, as compressed csv files, under
 are shifted into the future to deidentify them (admissions run from 2110 to
 2201), each patient's by its own amount, so that times line up within a patient
 but not across patients.
-
-The demo is released under the
-[Open Data Commons Open Database License v1.0](https://physionet.org/content/mimic-iv-demo/view-license/2.2/),
-which asks you to say where anything you share came from, and to share a database
-derived from it (the CLIF tables or the timelines, say) under the same license.
-If you publish anything made from it, cite it, along with MIMIC-IV and PhysioNet,
-as [its page](https://physionet.org/content/mimic-iv-demo/2.2/) asks.[^1]
 
 ### 2. Convert it to CLIF
 

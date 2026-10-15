@@ -322,6 +322,30 @@ def test_winnowing_threshold_follows_instants_not_wall_clock(runner):
     assert got[CHICAGO].inference("train").height == 0
 
 
+def test_start_time_threshold_follows_instants_not_wall_clock(runner):
+    """
+    24h after a noon admission is noon the next day in utc, but 13:00 in
+    chicago across the spring forward, where the last reading then lands
+    exactly on the cut
+    """
+    hosp = hospitalization(D(2024, 3, 9, 12, 0), D(2024, 3, 12, 0, 0))
+    times = vitals(D(2024, 3, 9, 14, 0), D(2024, 3, 10, 13, 0))
+    win_cfg = default_cfg("winnowing")
+    win_cfg["threshold"] = {"after_start_time_s": 24 * 3600}
+    win_cfg["splits"] = ["train"]  # minimal_collation_cfg puts everyone in train
+    got = {
+        zone: run_minimal(
+            runner, zone, hosp, times, naive_times=True, winnowing=win_cfg
+        )
+        for zone in ("UTC", CHICAGO)
+    }
+    kept = got["UTC"].inference("train")
+    assert kept.height == 1
+    assert kept["last_valid"].to_list() == [2]  # BOS and the first reading
+    # the last reading falls at the cut, not after it
+    assert got[CHICAGO].inference("train").height == 0
+
+
 def clock_run(runner, zone, hosp=None, vits=None, **kwargs):
     """tokenize a minimal dataset with clocks under `default_timezone=zone`"""
     tkzr_cfg = default_cfg("tokenization")

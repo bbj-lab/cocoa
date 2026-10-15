@@ -181,6 +181,7 @@ def test_winnowing_default_matches_the_documented_values(tmp_path, tkzr_home):
     cfg = build("winnowing", tmp_path, tkzr_home).cfg
     assert cfg.threshold.duration_s == 86400
     assert "first_occurrence" not in cfg.threshold  # commented out in the yaml
+    assert "after_start_time_s" not in cfg.threshold  # ditto
     assert "horizon_after_threshold_s" not in cfg  # ditto
     assert list(cfg.splits) == ["train", "tuning", "held_out"]
     assert {"XFR-IN//icu", "RESP//imv", "DSCG//expired", "LABEL//*"} <= set(

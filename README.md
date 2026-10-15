@@ -487,8 +487,9 @@ and flagging the outcome tokens on either side. It:
 
 1. Loads the tokenized timelines of each split it is configured to prepare.
 2. Splits each subject's timeline at a configurable threshold, either a duration
-   after the timeline's first event or the first occurrence of a specified token,
-   separating events into "past" (before the threshold) and "future" (after it).
+   after the timeline's first event, a duration after the subject's start time,
+   or the first occurrence of a specified token, separating events into "past"
+   (before the threshold) and "future" (after it).
 3. Checks for the presence of outcome tokens in both the past and future periods.
 4. Filters out subjects whose timelines never reach the threshold, ensuring
    subjects have sufficient observation time.
@@ -503,9 +504,17 @@ that specifies:
   outcome indicating whether that token appears in the past or future period.
 - `threshold` — defines how the threshold is set. Currently supported options are
   as follows:
-    - `duration_s` (integer) thresholds after a given duration (in seconds)
+    - `duration_s` (integer) thresholds a given duration (in seconds) after the
+      timeline's first event
+    - `after_start_time_s` (integer) thresholds a given duration (in seconds)
+      after the subject's start time, the `start_time` of the
+      [reference table](#reference-table); see
+      [below](#duration_s-vs-after_start_time_s) for how it differs from
+      `duration_s`
     - `first_occurrence` (token string) thresholds after the first occurrence of
       the provided token
+
+  Set only one of them: given several, the winnower uses the first in this list.
 - `horizon_after_threshold_s` is an optional parameter that allows you to set a
   prediction window (in seconds) after the threshold is triggered
 - `splits` — an optional list selecting which splits to prepare (defaults to
@@ -520,8 +529,9 @@ outcome_tokens: # supports patterns with fnmatch
     - DSCG//expired # discharge due to death
     - LABEL//* # any kind of label token
 threshold:
-    # choose one and only one of the following
-    duration_s: !!int 86400 # 24h
+    # choose one and only one of the following (given several, the first wins)
+    duration_s: !!int 86400 # 24h after the timeline's first event
+    # after_start_time_s: !!int 86400 # 24h after the subject's start_time
     # first_occurrence: XFR-IN//icu
 
 horizon_after_threshold_s: !!int 2592000 # 30d outcome window after prediction threshold
@@ -531,6 +541,36 @@ splits: # select which splits to prepare
     - tuning
     - held_out
 ```
+
+### `duration_s` vs. `after_start_time_s`
+
+Both thresholds cut a timeline a set number of seconds after some time, but not
+after the same time:
+
+- `duration_s` counts from the timeline's **first event**, the time of its `BOS`
+  token, so every past spans the same stretch of record. Where the cut falls in
+  a stay depends on what was recorded first: a timeline that opens before its
+  admission is cut that much earlier in the stay, and one that opens after it,
+  that much later.
+- `after_start_time_s` counts from the subject's **start time**: the reference
+  table's `start_time` column (`admission_dttm` in the shipped collation
+  config), as `subject_splits.parquet` records it. Every stay is cut at the same
+  point, such as 24 hours after admission, whatever the timeline holds, and
+  events recorded before the start time land in the past.
+
+The two cut a timeline at the same point only if it opens at its start time. With
+the shipped collation config, which times its `REFERENCE` entries at
+`admission_dttm`, no timeline opens after its admission, but many open before
+it: on the demo, 203 of the 275 timelines do, by as much as a day, 180 of them
+with an arrival in the emergency department (`XFR-IN//ed`). Held-out
+hospitalization 29079034 arrives there 20 hours before its admission, so
+`duration_s: 86400` cuts it less than 4 hours into its stay, with 57 tokens in
+its past, where `after_start_time_s: 86400` cuts it a day in, with 197.
+
+Under either, an event at exactly the cut falls in the future, and a timeline is
+kept only if it runs past the cut. Under `after_start_time_s`, it must also begin
+before the cut, since its past would otherwise be empty; under `duration_s`, the
+past always holds `BOS`.
 
 ### Outputs
 
@@ -551,12 +591,16 @@ under several configurations, each into its own directory:
 
 ```sh
 cocoa winnow -p processed/demo -o processed/demo/winnowed-24h
+cocoa winnow -p processed/demo -o processed/demo/winnowed-admit-24h \
+    '~threshold.duration_s' threshold.after_start_time_s=86400
 cocoa winnow -p processed/demo -o processed/demo/winnowed-icu \
     '~threshold.duration_s' threshold.first_occurrence=XFR-IN//icu
 ```
 
 On the demo, the first keeps 50 of the 55 held-out hospitalizations, those whose
-timelines run past 24 hours, and the second 26, those with a transfer to the ICU.
+timelines run past 24 hours; the second the same 50, which also run past 24 hours
+after admission, though it cuts 24 of them later; and the third 26, those with a
+transfer to the ICU.
 
 ## Usage
 
@@ -807,9 +851,11 @@ list, and `{train_frac: 0.5}` a block, merged into any block already there.
 A few things to know:
 
 - Setting a key to `null` doesn't switch it off where its presence is what
-  counts. The winnower uses whichever of `threshold.duration_s` and
-  `threshold.first_occurrence` is there, so switching between them takes `~` on
-  one and setting the other, as above.
+  counts. The winnower uses whichever of `threshold.duration_s`,
+  `threshold.after_start_time_s`, and `threshold.first_occurrence` is there (the
+  first in that order, if several are), so switching between them takes `~` on
+  one and setting the other, as above. Setting `threshold.after_start_time_s`
+  alone changes nothing, since the shipped `threshold.duration_s` outranks it.
 - Lists are replaced whole: `entries` can't be edited one item at a time, so a
   change to an entry calls for a config file.
 - YAML decides each value's type, so quote what has to stay a string:

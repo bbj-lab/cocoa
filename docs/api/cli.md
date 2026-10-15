@@ -78,6 +78,8 @@ under several configurations, give each run its own output directory:
 
 ```sh
 cocoa winnow -p processed/demo -o processed/demo/winnowed-24h
+cocoa winnow -p processed/demo -o processed/demo/winnowed-admit-24h \
+    '~threshold.duration_s' threshold.after_start_time_s=86400
 cocoa winnow -p processed/demo -o processed/demo/winnowed-icu \
     '~threshold.duration_s' threshold.first_occurrence=XFR-IN//icu
 ```

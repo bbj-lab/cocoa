@@ -222,6 +222,18 @@ falls on each side:
 cocoa winnow -p processed/demo --verbose
 ```
 
+The cut comes 24 hours after a timeline's first event, not its admission. Most
+of the demo's timelines open before their admission, 180 of them with an arrival
+in the emergency department, so many are cut less than a day into the stay. To
+cut each one 24 hours after its admission instead, swap the threshold for
+`after_start_time_s`, which counts from the subject's start time; this keeps
+166, 30, and 50:
+
+```sh
+cocoa winnow -p processed/demo -o processed/demo/winnowed-admit-24h \
+    '~threshold.duration_s' threshold.after_start_time_s=86400
+```
+
 Then draw one timeline:
 
 ```sh

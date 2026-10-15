@@ -25,9 +25,9 @@ default config in [src/cocoa/config/](src/cocoa/config/):
    **on training data only**, then freezes them. Adds BOS/EOS, optional
    clock/time-spacer tokens. → `tokens_times.parquet`, `tokenizer.yaml`
 3. **Winnow** ([winnower.py](src/cocoa/winnower.py)) — split held-out timelines
-   at a threshold (a duration or the first occurrence of a token) into
-   past/future and flag outcome tokens for evaluation. →
-   `{split}_for_inference.parquet`
+   at a threshold (a duration after the first event or after the start time, or
+   the first occurrence of a token) into past/future and flag outcome tokens for
+   evaluation. → `{split}_for_inference.parquet`
 
 Data flows strictly stage-to-stage through files in `--processed-data-home`. The
 one exception is `cocoa winnow --output-home` (`-o`;
@@ -117,8 +117,7 @@ external URLs. When you change behavior, add/update a pytest case first.
   sets a key, adding it if absent, so a typo adds a stray key rather than
   failing; `~key` deletes one; a Hydra-style leading `+`/`++` is ignored.
   Deletion matters where a key's presence is what counts (the winnower's
-  `threshold.duration_s` vs. `threshold.first_occurrence`), since `key=null`
-  leaves it present. `cocoa pipeline` routes each override to the stage its first
+  `threshold` keys), since `key=null` leaves it present. `cocoa pipeline` routes each override to the stage its first
   key names (`collation.`, `tokenization.`, `winnowing.`) and checks all three
   through `Configurable.load_cfg` before collating. Under `--tokenizer-home`,
   `Tokenizer.from_yaml` passes the saved config as kwargs, so it wins over
@@ -180,6 +179,18 @@ external URLs. When you change behavior, add/update a pytest case first.
   conditionally has to be named there too, or it rides along unsplit the way
   `numeric_values` does. The visualizer also reads such columns by name, so it
   only displays the ones it knows about.
+- **Winnowing thresholds are picked by presence**, in `run_thresholding`'s
+  order: `threshold.duration_s` (or the legacy top-level `horizon_s`), then
+  `threshold.after_start_time_s`, then `threshold.first_occurrence`; the first
+  present wins, so switching from the shipped `duration_s` takes
+  `~threshold.duration_s`. `duration_s` counts from each timeline's first event
+  (its `BOS`), `after_start_time_s` from its subject's `start_time` in
+  `subject_splits.parquet` (the collation config's `reference.start_time`); they
+  agree only on timelines that open at their start time, and most of the demo's
+  open earlier, in the emergency department. Under both, the past is the tokens
+  strictly before the cut and a kept timeline ends after it; `after_start_time_s`
+  also drops timelines that begin at or after the cut, so every past still opens
+  with `BOS`.
 - **Codes** are `PREFIX//value`. The value is lowercased, whitespace and commas
   become `_`, and runs of `_` collapse to one; the prefix is left as written, and
   `text_value` is only lowercased with whitespace→`_`. The `ordering` list in the

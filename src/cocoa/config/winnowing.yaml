@@ -8,8 +8,9 @@ outcome_tokens: # supports patterns with fnmatch
   - LABEL//*
 
 threshold:
-  # choose one and only one of the following
-  duration_s: !!int 86400 # 24h
+  # choose one and only one of the following (given several, the first wins)
+  duration_s: !!int 86400 # 24h after the timeline's first event
+  # after_start_time_s: !!int 86400 # 24h after the subject's start_time
   # first_occurrence: XFR-IN//icu
 
 # horizon_after_threshold_s: !!int 864000 # 10d outcome window after prediction threshold

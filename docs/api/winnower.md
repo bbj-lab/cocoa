@@ -30,6 +30,8 @@ configurations side by side, as here on the
 
 ```sh
 cocoa winnow -p processed/demo -o processed/demo/winnowed-24h
+cocoa winnow -p processed/demo -o processed/demo/winnowed-admit-24h \
+    '~threshold.duration_s' threshold.after_start_time_s=86400
 cocoa winnow -p processed/demo -o processed/demo/winnowed-icu \
     '~threshold.duration_s' threshold.first_occurrence=XFR-IN//icu
 ```
@@ -42,13 +44,31 @@ these steps:
 1. [`load_frame`][cocoa.winnower.Winnower.load_frame] — load the tokenized
    timelines for the requested split and compute elapsed times.
 2. [`run_thresholding`][cocoa.winnower.Winnower.run_thresholding] — compute
-   `last_valid`, the cut-point between past and future. This is derived either
-   from a duration after the timeline's first event or from the first occurrence
-   of a token of interest. Timelines that never reach the cut-point are dropped.
+   `last_valid`, the cut-point between past and future. This is derived from a
+   duration after the timeline's first event (`threshold.duration_s`), a duration
+   after the subject's start time (`threshold.after_start_time_s`), or the first
+   occurrence of a token of interest (`threshold.first_occurrence`); given
+   several, the first in that order wins. Timelines that never reach the
+   cut-point are dropped, and under `after_start_time_s`, so are those that begin
+   at or after it, which would have no past.
 3. [`add_outcome_flags`][cocoa.winnower.Winnower.add_outcome_flags] — for each
    configured outcome token, add `*_past` and `*_future` boolean labels (for
    example `DSCG//expired_past` and `DSCG//expired_future`), so you can tell
    whether an outcome truly falls within the prediction window.
+
+<!-- prettier-ignore-start -->
+!!! note "`duration_s` vs. `after_start_time_s`"
+
+    `duration_s` counts from each timeline's first event, the time of its `BOS`
+    token, while `after_start_time_s` counts from the subject's `start_time` in
+    `subject_splits.parquet`, the reference table's start time (`admission_dttm`
+    in the shipped collation config). They cut a timeline at the same point only
+    if it opens at its start time. One that opens earlier, as most of the demo's
+    do, with an arrival in the emergency department, is cut that much earlier in
+    its stay by `duration_s`; `after_start_time_s` cuts every stay at the same
+    point, such as 24 hours after admission. See
+    [`duration_s` vs. `after_start_time_s`](../index.md#duration_s-vs-after_start_time_s).
+<!-- prettier-ignore-end -->
 
 <!-- prettier-ignore-start -->
 !!! note "Depends on tokenizer artifacts"

@@ -83,7 +83,8 @@ class Winnower(Configurable):
     def run_thresholding(self, df: pl.LazyFrame) -> pl.LazyFrame:
         """
         evaluates configurable criteria for establishing a cut-point "last_valid";
-        drops timelines that do not reach that point
+        drops timelines that do not reach that point, and under after_start_time_s,
+        those that begin at or after it too, which would have no past
         """
         if "horizon_s" in self.cfg or "duration_s" in self.cfg.get("threshold", {}):
             # run duration-based thresholding
@@ -91,6 +92,20 @@ class Winnower(Configurable):
             return df.filter(pl.col("s_total_duration") > horizon_s).with_columns(
                 last_valid=pl.col("s_elapsed")
                 .list.eval(pl.element() < horizon_s)
+                .list.sum()
+            )
+        elif "after_start_time_s" in self.cfg.get("threshold", {}):
+            # run thresholding at a set time after each subject's start_time, as
+            # subject_splits.parquet records it, not after its timeline's first event
+            cut = pl.col("start_time") + pl.duration(
+                seconds=self.cfg.threshold.after_start_time_s,
+                time_unit=df.collect_schema()["start_time"].time_unit,
+            )
+            return df.filter(
+                pl.col("times").list.first() < cut, pl.col("times").list.last() > cut
+            ).with_columns(
+                last_valid=pl.concat_list(cut, "times")
+                .list.eval(pl.element() < pl.element().first())
                 .list.sum()
             )
         elif "first_occurrence" in self.cfg.get("threshold", {}):

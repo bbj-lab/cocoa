@@ -31,16 +31,7 @@ This installs the `cocoa` command. To see it run end to end on public data,
 follow the
 [MIMIC-IV demo](https://github.com/bbj-lab/cocoa/blob/master/recipes/mimic-iv-demo.md).
 The examples below come from that demo and use its paths: it reads CLIF tables
-from `data-raw/demo` and writes processed data to `processed/demo`. To work from
-source instead (e.g. for development):
-
-```sh
-git clone git@github.com:bbj-lab/cocoa.git
-cd cocoa
-python -m venv .venv
-. .venv/bin/activate
-pip install -e .
-```
+from `data-raw/demo` and writes processed data to `processed/demo`.
 
 ## (1) Collation
 

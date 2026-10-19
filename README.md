@@ -913,6 +913,12 @@ A few more things to know:
 > For common use cases, check out the [recipes](https://github.com/bbj-lab/cocoa/blob/master/recipes/README.md) section!
 <!-- prettier-ignore-end -->
 
+## Contributing
+
+Contributions are welcome, from bug reports and typo fixes to new features. To
+get started, see the
+[contributing guide](https://github.com/bbj-lab/cocoa/blob/master/CONTRIBUTING.md).
+
 [^1]:
     M. Burkhart, B. Ramadan, Z. Liao, K. Chhikara, J. Rojas, W. Parker, & B.
     Beaulieu-Jones, Foundation models for electronic health records:

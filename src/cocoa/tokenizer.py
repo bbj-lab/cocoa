@@ -169,6 +169,9 @@ class Tokenizer(Configurable):
         """
         if self.cfg.get("insert_spacers", False):
             spcrs = dict(self.cfg.spacers)
+            breaks = list(spcrs.values())[1:]
+            if len(set(breaks)) < len(breaks):
+                raise ValueError(f"spacer boundaries must be distinct: {spcrs}")
             return pl.concat(
                 [
                     df,
@@ -186,12 +189,14 @@ class Tokenizer(Configurable):
                         "time",
                         pl.concat_str(
                             pl.lit("TIME//"),
-                            pl.col("tdiff_mins")
-                            .cut(
-                                breaks=list(spcrs.values())[1:],
-                                labels=list(spcrs.keys()),
-                            )
-                            .cast(pl.String),
+                            # the right-closed bin a gap falls in is the number of
+                            # breaks it exceeds, in any order, as polars' `cut` had it
+                            pl.sum_horizontal(
+                                pl.lit(0, pl.UInt32),
+                                *(pl.col("tdiff_mins") > b for b in breaks),
+                            ).replace_strict(
+                                dict(enumerate(spcrs)), return_dtype=pl.String
+                            ),
                         ).alias("code"),
                     ),
                 ],

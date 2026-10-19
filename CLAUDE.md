@@ -80,11 +80,18 @@ mkdocs build
 mkdocs serve --dev-addr 127.0.0.1:8001
 ```
 
-There's a pytest suite in [tests/](tests/) — run it with `pytest`; there's still
-no CI. [tests/synth.py](tests/synth.py) generates synthetic CLIF-like raw data,
-and [tests/conftest.py](tests/conftest.py) turns it into shared fixtures: a
-session-scoped `pipeline` (collate → tokenize → winnow once with shipped
-defaults) and a per-test `runner` for re-running individual stages with
+There's a pytest suite in [tests/](tests/) — run it with `pytest`. CI
+([.github/workflows/tests.yml](.github/workflows/tests.yml)) runs it on every
+push and pull request, and weekly, on Python 3.11 through 3.15, and once more on
+3.11 with each dependency at the lowest version [pyproject.toml](pyproject.toml)
+allows; it also lints with `ruff check`, but doesn't check formatting. Keep the
+matrix in step with `requires-python`, and raise a floor in `pyproject.toml` when
+code starts needing a newer dependency, or the lowest job fails. On 3.15,
+`pyproject.toml` excludes deepdiff 9.1, whose `cachebox<6` has no 3.15 wheels and
+won't build there. [tests/synth.py](tests/synth.py) generates synthetic CLIF-like
+raw data, and [tests/conftest.py](tests/conftest.py) turns it into shared
+fixtures: a session-scoped `pipeline` (collate → tokenize → winnow once with
+shipped defaults) and a per-test `runner` for re-running individual stages with
 overridden configs in an isolated tmp dir — no real patient data needed. Test
 files mostly mirror `src/cocoa` modules, except tokenizer coverage is split into
 core behavior (`test_tokenizer.py`), serialization/transfer
@@ -93,7 +100,11 @@ plus cross-cutting suites for subject splits, timezones, and full pipeline
 integration. Beyond the fixtures running the shipped defaults, no test should
 depend on a shipped config carrying dataset-specific items (a lane, a prefix
 name, a code description); a test that needs them writes its own config, as
-`VIZ_CFG` in [tests/test_visualizer.py](tests/test_visualizer.py) does.
+`VIZ_CFG` in [tests/test_visualizer.py](tests/test_visualizer.py) does. A test
+that reads console output passes it through `plain()` from
+[tests/conftest.py](tests/conftest.py) first: typer styles its help and errors
+whenever `GITHUB_ACTIONS` is set, and rich styles everything under `FORCE_COLOR`
+or `PY_COLORS`, so substring checks on the raw text pass locally but fail in CI.
 
 Most modules also keep an `if __name__ == "__main__"` block that self-tests
 against a local processed dataset (e.g. `./processed/mimic/`, for which

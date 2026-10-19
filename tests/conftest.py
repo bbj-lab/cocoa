@@ -12,6 +12,7 @@ import dataclasses
 import functools
 import importlib.resources as resources
 import pathlib
+import re
 import shutil
 
 import polars as pl
@@ -24,6 +25,15 @@ from cocoa.tokenizer import Tokenizer
 from cocoa.winnower import Winnower
 
 STAGES = ("collation", "tokenization", "winnowing")
+
+# rich styles its output when it takes stdout for a terminal, as under FORCE_COLOR
+# or PY_COLORS, and so does typer's help under GITHUB_ACTIONS: csi and osc escapes
+ANSI = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)")
+
+
+def plain(text: str) -> str:
+    """`text` without ansi escapes, as a terminal would show it"""
+    return ANSI.sub("", text)
 
 
 def default_cfg(stage: str) -> dict:

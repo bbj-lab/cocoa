@@ -13,7 +13,7 @@ import warnings
 
 import polars as pl
 import pytest
-from conftest import default_cfg, write_cfg
+from conftest import default_cfg, plain, write_cfg
 from omegaconf import OmegaConf
 from polars.testing import assert_frame_equal
 from typer.testing import CliRunner
@@ -55,7 +55,7 @@ def run(*args):
 
 def squashed(text: str) -> str:
     """text with all whitespace dropped: rich wraps long paths mid-token"""
-    return re.sub(r"\s+", "", text)
+    return re.sub(r"\s+", "", plain(text))
 
 
 def prefixes(meds: pl.DataFrame) -> set:
@@ -704,7 +704,7 @@ def test_visualize_exports_a_pdf_for_a_subject(pipeline, tmp_path):
     assert result.exit_code == 0, result.output
     assert out.read_bytes().startswith(b"%PDF-")
     assert "timeline.pdf" in squashed(result.output)
-    assert "Serving" not in result.output
+    assert "Serving" not in plain(result.output)
 
 
 def test_visualize_exports_html_and_pdf_together(pipeline, tmp_path):
@@ -739,7 +739,7 @@ def test_visualize_names_the_prefixes_no_lane_claims(
         "visualize", sid, "-p", pipeline.path, "-c", path, "-e", tmp_path / "t.html"
     )
     assert result.exit_code == 0, result.output
-    output = " ".join(result.output.split())
+    output = " ".join(plain(result.output).split())
     if said is None:
         assert "without a configured lane" not in output
     else:
@@ -762,4 +762,4 @@ def test_visualize_shows_winnowing_only_when_asked(pipeline, tmp_path):
 def test_visualize_an_unknown_subject_exits_nonzero(pipeline, tmp_path):
     result = run("visualize", "nobody", "-p", pipeline.path, "-e", tmp_path / "x.html")
     assert result.exit_code == 1
-    assert "No timeline" in result.output
+    assert "No timeline" in plain(result.output)

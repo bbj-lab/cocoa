@@ -25,9 +25,9 @@ default config in [src/cocoa/config/](src/cocoa/config/):
    **on training data only**, then freezes them. Adds BOS/EOS, optional
    clock/time-spacer tokens. → `tokens_times.parquet`, `tokenizer.yaml`
 3. **Winnow** ([winnower.py](src/cocoa/winnower.py)) — split held-out timelines
-   at a threshold (a duration or the first occurrence of a token) into
-   past/future and flag outcome tokens for evaluation. →
-   `{split}_for_inference.parquet`
+   at a threshold (a duration after the first event or after the start time, or
+   the first occurrence of a token) into past/future and flag outcome tokens for
+   evaluation. → `{split}_for_inference.parquet`
 
 Data flows strictly stage-to-stage through files in `--processed-data-home`. The
 one exception is `cocoa winnow --output-home` (`-o`;
@@ -80,11 +80,18 @@ mkdocs build
 mkdocs serve --dev-addr 127.0.0.1:8001
 ```
 
-There's a pytest suite in [tests/](tests/) — run it with `pytest`; there's still
-no CI. [tests/synth.py](tests/synth.py) generates synthetic CLIF-like raw data,
-and [tests/conftest.py](tests/conftest.py) turns it into shared fixtures: a
-session-scoped `pipeline` (collate → tokenize → winnow once with shipped
-defaults) and a per-test `runner` for re-running individual stages with
+There's a pytest suite in [tests/](tests/) — run it with `pytest`. CI
+([.github/workflows/tests.yml](.github/workflows/tests.yml)) runs it on every
+push and pull request, and weekly, on Python 3.11 through 3.15, and once more on
+3.11 with each dependency at the lowest version [pyproject.toml](pyproject.toml)
+allows; it also lints with `ruff check`, but doesn't check formatting. Keep the
+matrix in step with `requires-python`, and raise a floor in `pyproject.toml` when
+code starts needing a newer dependency, or the lowest job fails. On 3.15,
+`pyproject.toml` excludes deepdiff 9.1, whose `cachebox<6` has no 3.15 wheels and
+won't build there. [tests/synth.py](tests/synth.py) generates synthetic CLIF-like
+raw data, and [tests/conftest.py](tests/conftest.py) turns it into shared
+fixtures: a session-scoped `pipeline` (collate → tokenize → winnow once with
+shipped defaults) and a per-test `runner` for re-running individual stages with
 overridden configs in an isolated tmp dir — no real patient data needed. Test
 files mostly mirror `src/cocoa` modules, except tokenizer coverage is split into
 core behavior (`test_tokenizer.py`), serialization/transfer
@@ -93,7 +100,11 @@ plus cross-cutting suites for subject splits, timezones, and full pipeline
 integration. Beyond the fixtures running the shipped defaults, no test should
 depend on a shipped config carrying dataset-specific items (a lane, a prefix
 name, a code description); a test that needs them writes its own config, as
-`VIZ_CFG` in [tests/test_visualizer.py](tests/test_visualizer.py) does.
+`VIZ_CFG` in [tests/test_visualizer.py](tests/test_visualizer.py) does. A test
+that reads console output passes it through `plain()` from
+[tests/conftest.py](tests/conftest.py) first: typer styles its help and errors
+whenever `GITHUB_ACTIONS` is set, and rich styles everything under `FORCE_COLOR`
+or `PY_COLORS`, so substring checks on the raw text pass locally but fail in CI.
 
 Most modules also keep an `if __name__ == "__main__"` block that self-tests
 against a local processed dataset (e.g. `./processed/mimic/`, for which
@@ -117,8 +128,7 @@ external URLs. When you change behavior, add/update a pytest case first.
   sets a key, adding it if absent, so a typo adds a stray key rather than
   failing; `~key` deletes one; a Hydra-style leading `+`/`++` is ignored.
   Deletion matters where a key's presence is what counts (the winnower's
-  `threshold.duration_s` vs. `threshold.first_occurrence`), since `key=null`
-  leaves it present. `cocoa pipeline` routes each override to the stage its first
+  `threshold` keys), since `key=null` leaves it present. `cocoa pipeline` routes each override to the stage its first
   key names (`collation.`, `tokenization.`, `winnowing.`) and checks all three
   through `Configurable.load_cfg` before collating. Under `--tokenizer-home`,
   `Tokenizer.from_yaml` passes the saved config as kwargs, so it wins over
@@ -180,6 +190,18 @@ external URLs. When you change behavior, add/update a pytest case first.
   conditionally has to be named there too, or it rides along unsplit the way
   `numeric_values` does. The visualizer also reads such columns by name, so it
   only displays the ones it knows about.
+- **Winnowing thresholds are picked by presence**, in `run_thresholding`'s
+  order: `threshold.duration_s` (or the legacy top-level `horizon_s`), then
+  `threshold.after_start_time_s`, then `threshold.first_occurrence`; the first
+  present wins, so switching from the shipped `duration_s` takes
+  `~threshold.duration_s`. `duration_s` counts from each timeline's first event
+  (its `BOS`), `after_start_time_s` from its subject's `start_time` in
+  `subject_splits.parquet` (the collation config's `reference.start_time`); they
+  agree only on timelines that open at their start time, and most of the demo's
+  open earlier, in the emergency department. Under both, the past is the tokens
+  strictly before the cut and a kept timeline ends after it; `after_start_time_s`
+  also drops timelines that begin at or after the cut, so every past still opens
+  with `BOS`.
 - **Codes** are `PREFIX//value`. The value is lowercased, whitespace and commas
   become `_`, and runs of `_` collapse to one; the prefix is left as written, and
   `text_value` is only lowercased with whitespace→`_`. The `ordering` list in the

@@ -15,7 +15,7 @@ import statistics
 import polars as pl
 import pytest
 import synth
-from conftest import default_cfg
+from conftest import default_cfg, plain
 from rich.logging import RichHandler
 
 from cocoa.logger import TL_TGT_DISP_LEN, Logger
@@ -124,7 +124,7 @@ def captured(capsys, fn, *args) -> str:
     """whatever `fn` alone writes to stdout"""
     capsys.readouterr()
     fn(*args)
-    out = capsys.readouterr().out
+    out = plain(capsys.readouterr().out)
     assert out, f"{fn} wrote nothing to stdout"
     return out
 
@@ -172,7 +172,7 @@ def test_logger_writes_each_record_once_with_a_branded_prefix(capsys):
 def test_records_below_info_are_not_emitted(capsys, logger, level, times):
     capsys.readouterr()
     getattr(logger, level)(f"marker-{level}")
-    assert capsys.readouterr().out.count(f"marker-{level}") == times
+    assert plain(capsys.readouterr().out).count(f"marker-{level}") == times
 
 
 def test_records_bypass_the_root_logger(capsys, caplog, logger):
@@ -181,7 +181,7 @@ def test_records_bypass_the_root_logger(capsys, caplog, logger):
     with caplog.at_level(logging.DEBUG):
         logger.info("marker-unpropagated")
     assert caplog.records == []
-    assert "marker-unpropagated" in capsys.readouterr().out
+    assert "marker-unpropagated" in plain(capsys.readouterr().out)
 
 
 # -------------------------------------------------------------------- expressions
@@ -593,7 +593,7 @@ def test_collator_save_all_verbose_reports_the_collated_frame(runner, capsys):
     dest = runner.dir()
     capsys.readouterr()
     runner.collate(dest=dest, verbose=True)
-    out = capsys.readouterr().out
+    out = plain(capsys.readouterr().out)
     height = pl.read_parquet(dest / "meds.parquet").height
     assert message(out, "total rows:") == f"total rows: {height}"
     for label in (
@@ -610,7 +610,7 @@ def test_collator_save_all_verbose_reports_the_collated_frame(runner, capsys):
 def test_collator_save_all_quietly_skips_the_summary(runner, capsys):
     capsys.readouterr()
     runner.collate()
-    out = capsys.readouterr().out
+    out = plain(capsys.readouterr().out)
     assert any(m.startswith("Collator initialized") for m in records(out))
     assert not [m for m in records(out) if m.startswith("total rows:")]
 
@@ -619,7 +619,7 @@ def test_tokenizer_save_all_verbose_reports_the_timelines(runner, capsys):
     dest = runner.seed_collated()
     capsys.readouterr()
     runner.tokenize(processed=dest, verbose=True)
-    out = capsys.readouterr().out
+    out = plain(capsys.readouterr().out)
     height = pl.read_parquet(dest / "tokens_times.parquet").height
     assert message(out, "total rows:") == f"total rows: {height}"
     for label in ("timeline length stats:", "timeline duration stats:"):
@@ -632,7 +632,7 @@ def test_tokenizer_save_all_quietly_skips_the_summary(runner, capsys):
     dest = runner.seed_collated()
     capsys.readouterr()
     runner.tokenize(processed=dest)
-    out = capsys.readouterr().out
+    out = plain(capsys.readouterr().out)
     assert any(m.startswith("Loading collated data") for m in records(out))
     assert not [m for m in records(out) if m.startswith("total rows:")]
 
@@ -643,7 +643,7 @@ def test_winnower_save_all_verbose_reports_every_split(
     dest = seed_winnower(runner, pipeline)
     capsys.readouterr()
     runner.winnow(processed=dest, verbose=True)
-    msgs = records(capsys.readouterr().out)
+    msgs = records(plain(capsys.readouterr().out))
     headers = [m for m in msgs if m.startswith("Prepared split")]
     assert [
         re.match(r"Prepared split (\S+) for inference:", m).group(1) for m in headers
@@ -665,7 +665,7 @@ def test_winnower_save_all_quietly_skips_the_summary(runner, pipeline, capsys):
     dest = seed_winnower(runner, pipeline)
     capsys.readouterr()
     runner.winnow(processed=dest)
-    out = capsys.readouterr().out
+    out = plain(capsys.readouterr().out)
     assert any(m.startswith("Winnower initialized") for m in records(out))
     assert not [m for m in records(out) if m.startswith("Prepared split")]
 

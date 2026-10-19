@@ -75,7 +75,7 @@ def spacer_label(spacers: dict, gap_minutes: int) -> str | None:
     bounds = list(spacers.values())
     if gap_minutes < min(bounds):
         return None
-    # polars `cut` is right-closed, so a gap landing exactly on a boundary
+    # spacer bins are right-closed, so a gap landing exactly on a boundary
     # keeps the *lower* label (60 minutes is still `15m-1h`, not `1h-2h`)
     return list(spacers)[sum(1 for b in bounds[1:] if gap_minutes > b)]
 
@@ -469,6 +469,38 @@ def test_custom_spacers_mapping_supplies_the_bucket_labels(runner):
         "VTL//e4",
         "EOS",
     ]
+
+
+def test_a_one_entry_spacers_mapping_labels_every_gap_from_its_bound(runner):
+    p = runner.minimal(
+        hospitalizations=stay(24),
+        vitals=vitals(
+            [JAN1 + m * MIN for m in (0, 5, 15, 136, 137)]  # gaps 5, 10, 121, 1
+        ),
+        tokenization=tok_cfg(insert_spacers=True, spacers={"gap": 10}),
+    )
+    assert read(p)[0] == [
+        "BOS",
+        "VTL//e0",
+        "VTL//e1",
+        "TIME//gap",
+        "VTL//e2",
+        "TIME//gap",
+        "VTL//e3",
+        "VTL//e4",
+        "EOS",
+    ]
+
+
+def test_a_repeated_spacer_boundary_is_refused(runner):
+    with pytest.raises(ValueError, match="distinct"):
+        runner.minimal(
+            hospitalizations=stay(24),
+            vitals=vitals([JAN1 + m * MIN for m in (0, 5, 65)]),
+            tokenization=tok_cfg(
+                insert_spacers=True, spacers={"a": 5, "b": 60, "c": 60}
+            ),
+        )
 
 
 def test_spacer_token_carries_no_numeric_value(runner):

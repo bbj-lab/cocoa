@@ -11,6 +11,7 @@ import shutil
 
 import polars as pl
 import pytest
+import synth
 from conftest import default_cfg
 from omegaconf.errors import ConfigAttributeError, ConfigKeyError
 from polars.exceptions import PanicException
@@ -18,6 +19,14 @@ from polars.exceptions import PanicException
 SPLITS = ("train", "tuning", "held_out")
 DAY_S = 86400
 HORIZON_S = 18000  # 5h; short enough to truncate every synthetic future
+HOUR_S = 3600
+ADMIT = datetime.datetime(2024, 1, 1, 8, 0, 0)
+# seconds after admission of each subject's readings: H0 opens before its
+# admission and H1 after it
+OFF_START = {
+    "H0": (-2 * HOUR_S, 23 * HOUR_S, 25 * HOUR_S),
+    "H1": (3 * HOUR_S, 25 * HOUR_S, 28 * HOUR_S),
+}
 INPUTS = ("tokens_times.parquet", "subject_splits.parquet", "tokenizer.yaml")
 # the non-wildcard entries of the shipped default outcome_tokens
 LITERAL_OUTCOMES = ("XFR-IN//icu", "RESP//imv", "DSCG//expired", "ASMT//cam_total_yes")
@@ -54,6 +63,41 @@ def offsets(times) -> list:
 
 def inference_files(path) -> set:
     return {p.name for p in pathlib.Path(path).glob("*_for_inference.parquet")}
+
+
+def minimal_at(runner, readings: dict, unit: str = "us"):
+    """
+    collate and tokenize subjects all admitted at ADMIT, each with unbinned
+    readings at the given seconds after it, everyone in train
+    """
+    return runner.minimal(
+        hospitalizations=[
+            {
+                "hospitalization_id": h,
+                "admission_dttm": ADMIT,
+                "discharge_dttm": ADMIT + datetime.timedelta(days=3),
+            }
+            for h in readings
+        ],
+        vitals=[
+            {
+                "hospitalization_id": h,
+                "recorded_dttm": ADMIT + datetime.timedelta(seconds=s),
+            }
+            for h, ss in readings.items()
+            for s in ss
+        ],
+        collation=synth.minimal_collation_cfg(default_time_unit=unit),
+    )
+
+
+def winnow_train(runner, processed, threshold: dict) -> pl.DataFrame:
+    """winnow the training split of a minimal dataset at `threshold`"""
+    runner.winnow(
+        cfg={"outcome_tokens": ["VTL//*"], "threshold": threshold, "splits": ["train"]},
+        processed=processed.path,
+    )
+    return processed.inference("train")
 
 
 def outcomes(pipeline) -> set:
@@ -416,6 +460,99 @@ def test_unreachable_duration_threshold_writes_an_empty_frame(runner, pipeline):
     assert "DSCG//expired_future" in d.columns
 
 
+# --- start-time thresholding ----------------------------------------------
+
+
+@pytest.mark.parametrize("unit", ("ms", "us", "ns"))
+def test_after_start_time_counts_from_the_start_time_not_the_first_event(runner, unit):
+    """
+    H0 opens 2h before its admission and H1 3h after it, so 24h after the first
+    event is 22h after admission for H0 and 27h for H1, while after_start_time_s
+    cuts both 24h after admission
+    """
+    p = minimal_at(runner, OFF_START, unit)
+    past = {}
+    for key in ("duration_s", "after_start_time_s"):
+        d = winnow_train(runner, p, {key: DAY_S})
+        past[key] = {
+            r["subject_id"]: [
+                (t - r["start_time"]).total_seconds() / HOUR_S
+                for t in r["times"][: r["last_valid"]]
+            ]
+            for r in d.iter_rows(named=True)
+        }
+    # BOS shares the time of the first reading
+    assert past["duration_s"] == {"H0": [-2, -2], "H1": [3, 3, 25]}
+    assert past["after_start_time_s"] == {"H0": [-2, -2, 23], "H1": [3, 3]}
+
+
+def test_after_start_time_keeps_only_timelines_spanning_the_cut(runner):
+    """
+    as under duration_s, a timeline must end after the cut, with an event at
+    exactly the cut in the future; it must also begin before the cut, which
+    under duration_s it always does
+    """
+    readings = {
+        "H0": (0, DAY_S),  # ends at the cut
+        "H1": (0, DAY_S, DAY_S + 1),  # ends just after it
+        "H2": (DAY_S, 2 * DAY_S + 1),  # opens at it
+    }
+    p = minimal_at(runner, readings)
+    d = winnow_train(runner, p, {"duration_s": DAY_S})
+    assert sorted(d["subject_id"]) == ["H1", "H2"]
+    d = winnow_train(runner, p, {"after_start_time_s": DAY_S})
+    assert d["subject_id"].to_list() == ["H1"]
+    r = d.row(0, named=True)
+    assert offsets(r["times"]) == [0, 0, DAY_S, DAY_S + 1, DAY_S + 1]
+    assert r["last_valid"] == 2  # BOS and the reading at admission
+    assert p.decode(r["tokens_future"]) == ["VTL//heart_rate", "VTL//heart_rate", "EOS"]
+
+
+@pytest.mark.parametrize("extra", ({}, {"horizon_after_threshold_s": HORIZON_S}))
+def test_after_start_time_agrees_with_duration_on_timelines_opening_at_the_start(
+    runner, pipeline, extra
+):
+    """every synthetic timeline opens at its admission, where the two coincide"""
+    rows = pipeline.tokens_times.join(pipeline.splits, on="subject_id")
+    assert (rows["times"].list.first() == rows["start_time"]).all()
+    by_start = rewinnow(
+        runner, pipeline, threshold={"after_start_time_s": DAY_S}, **extra
+    )
+    assert by_start.height > 0
+    assert by_start.equals(rewinnow(runner, pipeline, **extra))
+
+
+@pytest.mark.parametrize("shift_h", (-6, 6))
+def test_after_start_time_follows_the_start_time_in_subject_splits(
+    runner, pipeline, shift_h
+):
+    """
+    moving every start_time moves the cut with it, though no event moves;
+    a stay whose last event lands exactly on the moved cut is dropped
+    """
+    dest = seed(runner, pipeline)
+    f = dest / "subject_splits.parquet"
+    pl.read_parquet(f).with_columns(
+        pl.col("start_time") + datetime.timedelta(hours=shift_h)
+    ).write_parquet(f)
+    runner.winnow(
+        cfg=cfg(splits=["held_out"], threshold={"after_start_time_s": DAY_S}),
+        processed=dest,
+    )
+    d = pl.read_parquet(dest / "held_out_for_inference.parquet")
+    m, cut_h = pipeline.manifest, 24 + shift_h
+    held_out = set(m.subjects_in_split("held_out"))
+    assert held_out & {s for s, h in m.los_hours.items() if h == cut_h}, (
+        "no held-out stay ends exactly at the cut"
+    )
+    assert set(d["subject_id"]) == held_out & set(m.long_stay_subjects(cut_h))
+    for r in d.iter_rows(named=True):
+        # synthetic timelines open at their admission
+        assert r["last_valid"] == sum(
+            1 for o in offsets(r["times"]) if o < cut_h * HOUR_S
+        )
+
+
 # --- horizon after the threshold ------------------------------------------
 
 
@@ -497,6 +634,23 @@ def test_legacy_horizon_s_overrides_threshold_duration_s(runner, pipeline):
     assert set(d["subject_id"]) == expected
     for r in d.iter_rows(named=True):
         assert r["last_valid"] == sum(1 for o in offsets(r["times"]) if o < 43200)
+
+
+def test_given_several_thresholds_the_first_in_order_wins(runner):
+    """
+    duration_s outranks after_start_time_s, which outranks first_occurrence,
+    however the config orders them
+    """
+    p = minimal_at(runner, OFF_START)
+    by_duration = winnow_train(runner, p, {"duration_s": DAY_S})
+    by_start = winnow_train(runner, p, {"after_start_time_s": DAY_S})
+    assert not by_duration.equals(by_start)
+    assert winnow_train(
+        runner, p, {"after_start_time_s": DAY_S, "duration_s": DAY_S}
+    ).equals(by_duration)
+    assert winnow_train(
+        runner, p, {"first_occurrence": "VTL//heart_rate", "after_start_time_s": DAY_S}
+    ).equals(by_start)
 
 
 # --- reproducibility ------------------------------------------------------

@@ -9,6 +9,8 @@
     ]
     dependencies = [
         "deepdiff>=6.6",
+        # deepdiff 9.1 pins cachebox<6, which has no 3.15 wheels and won't build there
+        "deepdiff!=9.1.*; python_version >= '3.15'",
         "numpy>=1.23.2",
         "omegaconf>=2.2.1",
         "polars>=1.36.1",

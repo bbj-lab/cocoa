@@ -74,6 +74,7 @@ ruff check . --fix
 
 # Tests (pytest, synthetic data only)
 pytest
+pytest --cov                       # with line and branch coverage, as CI measures it
 
 # Docs (mkdocs-material, published to readthedocs)
 mkdocs build
@@ -86,12 +87,19 @@ push and pull request, and weekly, on Python 3.11 through 3.15, and once more on
 3.11 with each dependency at the lowest version [pyproject.toml](pyproject.toml)
 allows; it also lints with `ruff check`, but doesn't check formatting. Keep the
 matrix in step with `requires-python`, and raise a floor in `pyproject.toml` when
-code starts needing a newer dependency, or the lowest job fails. On 3.15,
-`pyproject.toml` excludes deepdiff 9.1, whose `cachebox<6` has no 3.15 wheels and
-won't build there. [tests/synth.py](tests/synth.py) generates synthetic CLIF-like
-raw data, and [tests/conftest.py](tests/conftest.py) turns it into shared
-fixtures: a session-scoped `pipeline` (collate → tokenize → winnow once with
-shipped defaults) and a per-test `runner` for re-running individual stages with
+code starts needing a newer dependency, or the lowest job fails. Each matrix job
+also uploads its coverage to [Codecov](https://app.codecov.io/gh/bbj-lab/cocoa)
+by OIDC, so no token secret is needed (fork PRs upload tokenless). Coverage is
+informational only: the upload step can't fail the job (`continue-on-error`), and
+[codecov.yml](codecov.yml) makes its statuses always pass and waits for all five
+uploads before reporting (`after_n_builds`; keep it equal to the matrix size).
+Coverage counts `src/cocoa` only and skips the `__main__` blocks (see
+`[tool.coverage]` in [pyproject.toml](pyproject.toml)). On 3.15, `pyproject.toml`
+excludes deepdiff 9.1, whose `cachebox<6` has no 3.15 wheels and won't build
+there. [tests/synth.py](tests/synth.py) generates synthetic CLIF-like raw data,
+and [tests/conftest.py](tests/conftest.py) turns it into shared fixtures: a
+session-scoped `pipeline` (collate → tokenize → winnow once with shipped
+defaults) and a per-test `runner` for re-running individual stages with
 overridden configs in an isolated tmp dir — no real patient data needed. Test
 files mostly mirror `src/cocoa` modules, except tokenizer coverage is split into
 core behavior (`test_tokenizer.py`), serialization/transfer

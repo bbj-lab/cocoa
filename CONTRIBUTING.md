@@ -101,7 +101,9 @@ Open a pull request against `master` on
   so that a maintainer can update your branch before merging.
 - CI runs `pytest` on every supported Python version, and again with each
   dependency at the lowest version [pyproject.toml](pyproject.toml) allows, and
-  it runs `ruff check`. Please make sure these pass.
+  it runs `ruff check`. Please make sure these pass. It also reports test
+  coverage to [Codecov](https://app.codecov.io/gh/bbj-lab/cocoa), which is for
+  information only and never fails a check; run `pytest --cov` to see it locally.
 - A maintainer will review your pull request and may ask questions or suggest
   changes. Mark each conversation as resolved once you've addressed it.
 

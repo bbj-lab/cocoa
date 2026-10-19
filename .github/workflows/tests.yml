@@ -20,10 +20,14 @@ jobs:
     name: pytest (python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write # lets the codecov upload authenticate by oidc, with no secret
     strategy:
       fail-fast: false
       matrix:
-        # from requires-python in pyproject.toml through the newest release
+        # from requires-python in pyproject.toml through the newest release;
+        # if this list changes length, update after_n_builds in codecov.yml
         python-version: ["3.11", "3.12", "3.13", "3.14", "3.15"]
     steps:
       - uses: actions/checkout@v7
@@ -31,7 +35,16 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - run: pip install '.[test]'
-      - run: pytest
+      - run: pytest --cov --cov-report=term --cov-report=xml
+      - uses: codecov/codecov-action@v7
+        # coverage is informational: nothing in this step can fail the job
+        continue-on-error: true
+        with:
+          files: coverage.xml
+          disable_search: true
+          name: python-${{ matrix.python-version }}
+          # fork prs can't get an oidc token; the action uploads those tokenless
+          use_oidc: true
 
   pytest-lowest:
     # each dependency at the oldest version pyproject.toml allows

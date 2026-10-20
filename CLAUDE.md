@@ -49,12 +49,23 @@ names, code descriptions), but it only reads the stages' outputs. Its page
 template, css, js, icon, and fonts live in
 [src/cocoa/assets/](src/cocoa/assets/).
 
+Ahead of the stages, **`cocoa get-demo`** ([demo.py](src/cocoa/demo.py)) writes
+the public data the docs run on: the MIMIC-IV demo's CLIF tables, which
+[clifpy](https://pypi.org/project/clifpy/) ships in its package, to a raw data
+dir, along with the four tables the shipped collation config reads that clifpy
+derives from them. clifpy comes from the optional `demo` extra and is imported
+only when the command runs, so the rest of cocoa never needs it.
+
 ## Commands
 
 ```sh
 # Dev install (Python >= 3.11)
 python -m venv .venv && . .venv/bin/activate
 pip install -e '.[all]'          # all = dev + docs + test extras
+pip install -e '.[all,demo]'     # plus clifpy, for cocoa get-demo (Python <= 3.14)
+
+# The MIMIC-IV demo's CLIF tables, from clifpy, to start from
+cocoa get-demo -r data-raw/demo [--verbose]
 
 # Run the pipeline (or a single stage: collate | tokenize | winnow)
 cocoa pipeline -r <raw-data-home> -p <processed-data-home> [--verbose]
@@ -96,8 +107,15 @@ uploads before reporting (`after_n_builds`; keep it equal to the matrix size).
 Coverage counts `src/cocoa` only and skips the `__main__` blocks (see
 `[tool.coverage]` in [pyproject.toml](pyproject.toml)). On 3.15, `pyproject.toml`
 excludes deepdiff 9.1, whose `cachebox<6` has no 3.15 wheels and won't build
-there. [tests/synth.py](tests/synth.py) generates synthetic CLIF-like raw data,
-and [tests/conftest.py](tests/conftest.py) turns it into shared fixtures: a
+there. The matrix jobs also install the `demo` extra, except on 3.15: clifpy pins
+pandas 2.3.3, which has no 3.15 wheels. The lowest job leaves it out too, since
+pyarrow, which clifpy imports, needs numpy 2 without declaring it, and fails to
+import at cocoa's numpy floor. [tests/test_demo.py](tests/test_demo.py) runs
+`cocoa get-demo` on clifpy's real tables where clifpy is installed, skips those
+tests where it isn't, and fails them where it won't import; its other tests use a
+stand-in `clifpy` package and run everywhere. [tests/synth.py](tests/synth.py)
+generates synthetic CLIF-like raw data, and
+[tests/conftest.py](tests/conftest.py) turns it into shared fixtures: a
 session-scoped `pipeline` (collate → tokenize → winnow once with shipped
 defaults) and a per-test `runner` for re-running individual stages with
 overridden configs in an isolated tmp dir — no real patient data needed. Test
@@ -177,8 +195,8 @@ external URLs. When you change behavior, add/update a pytest case first.
   (`validate="m:1"`, so a reference table with a repeated `subject_id` raises
   rather than duplicating events). Limits are inclusive, in 24-hour days of
   elapsed time, built at `default_time_unit`. An unset limit, a null bound, or a
-  subject absent from the reference frame keeps the event. Both are `null`
-  (off) by default.
+  subject absent from the reference frame keeps the event. Both are `null` (off)
+  by default.
 - **Vocabulary/bins are frozen after training.** `UNK` is always token `0`. Reuse
   a learned tokenizer across datasets with
   `cocoa tokenize --tokenizer-home <path>/tokenizer.yaml` (see
@@ -202,8 +220,8 @@ external URLs. When you change behavior, add/update a pytest case first.
   conditionally has to be named there too, or it rides along unsplit the way
   `numeric_values` does. The visualizer also reads such columns by name, so it
   only displays the ones it knows about.
-- **Winnowing thresholds are picked by presence**, in `run_thresholding`'s
-  order: `threshold.duration_s` (or the legacy top-level `horizon_s`), then
+- **Winnowing thresholds are picked by presence**, in `run_thresholding`'s order:
+  `threshold.duration_s` (or the legacy top-level `horizon_s`), then
   `threshold.after_start_time_s`, then `threshold.first_occurrence`; the first
   present wins, so switching from the shipped `duration_s` takes
   `~threshold.duration_s`. `duration_s` counts from each timeline's first event
@@ -269,6 +287,19 @@ external URLs. When you change behavior, add/update a pytest case first.
   tz-naive branch pins the unit in its cast. Downstream stages take their times
   and durations from that column, so the unit propagates to
   `tokens_times.parquet` and the inference frames without further configuration.
+- **`cocoa get-demo` takes clifpy's demo as clifpy ships it.** `demo.copy_tables`
+  copies every `clif_*.parquet` under clifpy's `data/clif_demo/` (not its
+  subdirectories, such as the `3.0/` on clifpy's main branch), dropping the
+  `__index_level_0__` column pandas left in 2.1.0's tables. `demo.derive_tables`
+  then runs clifpy's respiratory-support waterfall, its dose conversions, and its
+  SOFA scores, as the CLIF-MIMIC ETL's `scripts/clifpy_tables.py` does, with the
+  preferred units of coreopsis's `run_clifpy.py` (`CONTINUOUS_UNITS`,
+  `INTERMITTENT_UNITS`), so each medication's converted doses share one unit.
+  SOFA rows are timed at each stay's last record, which in clifpy's tables
+  usually comes hours before discharge, not after it, as in the ETL's. clifpy's
+  output is swallowed unless `--verbose`; its logs go to a temporary directory,
+  and `demo.release_logs` closes the handlers clifpy leaves on its loggers so
+  that the directory can be removed.
 
 ## Conventions
 
@@ -335,14 +366,16 @@ external URLs. When you change behavior, add/update a pytest case first.
   [docs/api/](docs/api/), and the shipped default configs in sync when behavior
   changes. The README is the PyPI long description, and the recipes are the
   primary user-facing docs. [recipes/mimic-iv-demo.md](recipes/mimic-iv-demo.md)
-  runs the shipped defaults end to end on the public MIMIC-IV demo and quotes
-  what they make of it (event and split counts, vocabulary size, timeline
-  lengths, the first held-out hospitalization). The other docs take their
-  examples from the same run: the README's output tables and bin edges, the docs'
-  paths (`data-raw/demo`, `processed/demo`), and the counts quoted
-  by the other recipes, which run variants of it (split by `anchor_year_group`,
-  or collated in `America/New_York`). So rerun it, and refresh those, after
-  changing a shipped config, binning, or splitting.
+  runs the shipped defaults end to end on the MIMIC-IV demo, as `cocoa get-demo`
+  writes it from clifpy, and quotes what they make of it (event and split counts,
+  vocabulary size, timeline lengths, the first held-out hospitalization). The
+  other docs take their examples from the same run: the README's output tables
+  and bin edges, the docs' paths (`data-raw/demo`, `processed/demo`), and the
+  counts quoted by the other recipes, which run variants of it (split by
+  `anchor_year_group`, or collated in `America/New_York`). So rerun it, and
+  refresh those, after changing a shipped config, binning, splitting, or what
+  `cocoa get-demo` derives, and when raising the clifpy floor: the recipe names
+  the clifpy release its numbers come from, and another may ship other tables.
 
 ## Gotchas
 

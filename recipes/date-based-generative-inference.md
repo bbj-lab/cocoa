@@ -17,7 +17,7 @@ To prepare data for inference at first midnight after admission (here on the
     `CLCK//00` marks local midnight in that zone (`UTC` if unset). The demo's
     CLIF tables are in UTC, but MIMIC-IV's times are Boston's, so step 3 collates
     them in `America/New_York`. (For MIMIC-IV's shifted years, polars keeps that
-    zone on standard time all year, as the ETL did in converting to UTC, so
+    zone on standard time all year, as the demo's conversion to UTC did, so
     `CLCK//00` falls at midnight as MIMIC-IV records it.)
 
 2. In your winnowing config (e.g. `winnowing.yaml`), threshold at the first
@@ -40,8 +40,8 @@ To prepare data for inference at first midnight after admission (here on the
       collation.default_timezone=America/New_York
     ```
 
-    Only timelines that reach a midnight are kept: on the demo, 184 of the 187
-    training hospitalizations, 32 of the 33 tuning, and 54 of the 55 held out.
+    Only timelines that reach a midnight are kept: on the demo, 202 of the 208
+    training hospitalizations, 38 of the 39 tuning, and 62 of the 63 held out.
     The held-out one left out, 22380825, is a five-hour stay. Hospitalization
     27708593, admitted at 07:15, is cut at midnight that night, before its
     transfer to the ICU and its first tachycardia.

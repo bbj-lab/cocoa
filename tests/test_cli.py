@@ -31,6 +31,7 @@ COMMANDS = (
     "pipeline",
     "combine-datasets",
     "visualize",
+    "get-demo",
 )
 
 ARTIFACTS = (
@@ -263,6 +264,15 @@ HELP_TEXT = {
             "Config overrides",
         ),
         ("--raw-data-home", "--tokenizer-home"),
+    ),
+    "get-demo": (
+        (
+            "Write the MIMIC-IV demo's CLIF tables, from clifpy",
+            "--raw-data-home",
+            "--verbose",
+            "demo extra",
+        ),
+        ("--processed-data-home", "Config overrides"),
     ),
 }
 
@@ -815,6 +825,7 @@ def test_verbose_pipeline_reports_statistics_for_every_stage(runner, flag):
         (("winnow",), "--processed-data-home"),
         (("pipeline", "-r", "{raw}"), "--processed-data-home"),
         (("combine-datasets", "{out}"), "--output-data-dir"),
+        (("get-demo",), "--raw-data-home"),
     ],
 )
 def test_missing_required_option_exits_nonzero(runner, args, missing):

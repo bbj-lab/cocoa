@@ -35,6 +35,10 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - run: pip install '.[test]'
+      # for the tests of `cocoa get-demo`, which skip without it; clifpy pins pandas
+      # 2.3.3, which has no wheels past python 3.14
+      - run: pip install '.[demo]'
+        if: matrix.python-version != '3.15'
       - run: pytest --cov --cov-report=term --cov-report=xml
       - uses: codecov/codecov-action@v7
         # coverage is informational: nothing in this step can fail the job
@@ -57,5 +61,7 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install uv
+      # not the demo extra: pyarrow, which clifpy imports, needs numpy 2, newer than
+      # cocoa's floor, without declaring it, so clifpy would fail to import
       - run: uv pip install --system --resolution lowest-direct '.[test]'
       - run: pytest

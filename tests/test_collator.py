@@ -1520,12 +1520,14 @@ def test_an_augmentation_table_is_aggregated_by_its_key_before_the_join(runner):
     }
 
 
-def test_an_augmentation_agg_expr_that_needs_an_order_but_has_no_time_raises(runner):
+@pytest.mark.parametrize("engine", ("in-memory", "streaming"))
+def test_an_augmentation_agg_expr_without_a_time_takes_the_table_order(runner, engine):
     """
-    BUG (current behaviour asserted): load_table sorts on `time` before any
-    aggregation, even where, as in an augmentation table or the reference block,
-    none is configured; the sort on None raises, unless polars drops it ahead of
-    an aggregation that ignores order, such as a max, which then works
+    with no `time` to sort on, as an augmentation table or the reference block may
+    lack, the agg_expr sees rows as the table lists them, so P0's last weight is
+    its earlier one; load_table sorted on None here, which raised, or under polars
+    2.0's streaming engine was skipped, unless polars dropped it ahead of an
+    aggregation that ignores order, such as a max
     """
     collator = hand_collator(
         runner,
@@ -1533,8 +1535,11 @@ def test_an_augmentation_agg_expr_that_needs_an_order_but_has_no_time_raises(run
         schemas={"clif_patient_weight": WEIGHTS},
         reference=reference_with(PATIENTS, LATEST_WEIGHT),
     )
-    with pytest.raises(pl.exceptions.PolarsError):
-        collator.get_reference_frame().collect()
+    frame = collator.get_reference_frame().collect(engine=engine)
+    assert dict(zip(frame["hospitalization_id"], frame["weight_kg"])) == {
+        "H0": 70.0,
+        "H1": 80.0,
+    }
 
 
 def test_the_reference_block_takes_the_options_of_a_table(runner):

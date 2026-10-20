@@ -137,7 +137,8 @@ class Collator(Configurable):
         1. fix subject_id to `subject_id_str`
         2. perform a filter operation
         3. add columns
-        4. perform an aggregation by `key` or self.cfg["subject_id"]
+        4. perform an aggregation by `key` or self.cfg["subject_id"], over rows
+           sorted on `time` if given, else in the table's order
         """
         if frame is not None:
             df = frame
@@ -165,7 +166,7 @@ class Collator(Configurable):
             )
         if agg_expr is not None:
             df = (
-                df.sort(time)
+                (df.sort(time) if time is not None else df)
                 .group_by(key if key is not None else self.cfg["subject_id"])
                 .agg(
                     self.slightly_safer_eval(agg_expr)

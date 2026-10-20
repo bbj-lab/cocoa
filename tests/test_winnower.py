@@ -15,7 +15,6 @@ import pytest
 import synth
 from conftest import Processed, default_cfg, write_cfg
 from omegaconf.errors import ConfigAttributeError, ConfigKeyError
-from polars.exceptions import PanicException
 
 from cocoa.tokenizer import Tokenizer
 from cocoa.winnower import Winnower
@@ -232,36 +231,38 @@ def test_null_splits_raises_type_error(runner, pipeline):
     assert inference_files(dest) == set()
 
 
-def test_a_split_without_subjects_gets_an_empty_file(runner):
-    """everyone is in train, yet tuning and held_out get files, with no rows"""
+@pytest.mark.parametrize("horizon", ({}, {"horizon_after_threshold_s": HOUR_S}))
+@pytest.mark.parametrize(
+    "threshold",
+    (
+        {"duration_s": DAY_S},
+        {"after_start_time_s": DAY_S},
+        {"first_occurrence": "VTL//heart_rate"},
+    ),
+)
+def test_a_split_without_subjects_gets_an_empty_file(runner, threshold, horizon):
+    """
+    everyone is in train, yet tuning and held_out get files, with no rows, typed
+    as train's are; polars slices a list to List(Null) on an empty frame, which
+    panicked flagging outcomes, under first_occurrence and, from polars 2.0, under
+    after_start_time_s, until the winnower cast each slice back to its type
+    """
     p = minimal_at(runner, OFF_START)
     assert set(p.splits["split"]) == {"train"}
-    for threshold in ({"duration_s": DAY_S}, {"after_start_time_s": DAY_S}):
-        runner.winnow(
-            cfg={
-                "outcome_tokens": ["VTL//*"],
-                "threshold": threshold,
-                "splits": list(SPLITS),
-            },
-            processed=p.path,
-        )
-        train = p.inference("train")
-        assert train.height > 0
-        for split in ("tuning", "held_out"):
-            d = p.inference(split)
-            assert d.height == 0 and d.schema == train.schema, (threshold, split)
-    # BUG (current behaviour asserted): under first_occurrence an empty split
-    # panics flagging outcomes in its empty frame, where the other thresholds
-    # write one; a split without the threshold token does the same (see below)
-    with pytest.raises(PanicException):
-        runner.winnow(
-            cfg={
-                "outcome_tokens": ["VTL//*"],
-                "threshold": {"first_occurrence": "VTL//heart_rate"},
-                "splits": ["tuning"],
-            },
-            processed=p.path,
-        )
+    runner.winnow(
+        cfg={
+            "outcome_tokens": ["VTL//*"],
+            "threshold": threshold,
+            "splits": list(SPLITS),
+            **horizon,
+        },
+        processed=p.path,
+    )
+    train = p.inference("train")
+    assert train.height > 0
+    for split in ("tuning", "held_out"):
+        d = p.inference(split)
+        assert d.height == 0 and d.schema == train.schema, split
 
 
 def test_output_home_keeps_two_winnowings_of_one_dataset_apart(runner, pipeline):
@@ -716,12 +717,11 @@ def test_first_occurrence_of_unknown_token_raises_config_key_error(runner, pipel
         rewinnow(runner, pipeline, threshold={"first_occurrence": "NOT-A//token"})
 
 
-def test_first_occurrence_absent_from_the_split_panics(runner, pipeline):
+def test_first_occurrence_absent_from_the_split_writes_an_empty_frame(runner, pipeline):
     """
-    BUG (current behaviour asserted): when no subject in the split carries the
-    threshold token the filtered frame is empty, last_valid comes out null and
-    polars panics rather than writing an empty frame -- unlike the duration
-    threshold below, which handles the same situation
+    when no subject in the split carries the threshold token, the filtered frame
+    is empty, and the split gets a file with no rows, as under the unreachable
+    duration threshold below
     """
     used = set()
     for row in pipeline.tokens_times.filter(
@@ -730,8 +730,9 @@ def test_first_occurrence_absent_from_the_split_panics(runner, pipeline):
         used |= {int(t) for t in row}
     absent = sorted(k for k, i in pipeline.vocab.items() if i not in used)
     assert absent, "every vocabulary token occurs in held_out"
-    with pytest.raises(PanicException):
-        rewinnow(runner, pipeline, threshold={"first_occurrence": absent[0]})
+    d = rewinnow(runner, pipeline, threshold={"first_occurrence": absent[0]})
+    assert d.height == 0
+    assert d.schema == pipeline.inference("held_out").schema
 
 
 def test_unreachable_duration_threshold_writes_an_empty_frame(runner, pipeline):

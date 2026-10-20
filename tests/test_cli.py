@@ -3,10 +3,12 @@
 """the typer cli: help, stage invocations, config overrides, verbose output"""
 
 import collections
+import errno
 import importlib.metadata
 import pathlib
 import re
 import shutil
+import socket
 import subprocess
 import sys
 import warnings
@@ -19,7 +21,8 @@ from polars.testing import assert_frame_equal
 from typer.testing import CliRunner
 
 import cocoa.cli
-from cocoa.cli import app
+import cocoa.visualizer
+from cocoa.cli import STAGES, app, route_overrides
 
 COMMANDS = (
     "collate",
@@ -77,6 +80,73 @@ def bins_of(processed) -> dict:
     """the bin break points recorded in a processed dir's tokenizer.yaml"""
     cfg = OmegaConf.load(pathlib.Path(processed) / "tokenizer.yaml").bins
     return {k: list(v) for k, v in dict(cfg).items()}
+
+
+def undated(page: str) -> str:
+    """a rendered page without the moment it was rendered, which it records"""
+    page, n = re.subn(r'"generated":"[^"]*"', '"generated":""', page)
+    assert n == 1, "the page should record when it was rendered"
+    return page
+
+
+def interrupt() -> None:
+    """serve_forever, as Ctrl-C ends it"""
+    raise KeyboardInterrupt
+
+
+class FakeServer:
+    """a stand-in for the page's http server: it never binds, and serving ends
+    at once, with `stop`"""
+
+    def __init__(self, page: str, server_port: int, stop) -> None:
+        self.page, self.server_port, self.stop = page, server_port, stop
+        self.closed = False
+
+    def serve_forever(self) -> None:
+        raise self.stop
+
+    def server_close(self) -> None:
+        self.closed = True
+
+
+class Serving:
+    """what `visualize` asks of its server and browser, both faked"""
+
+    def __init__(self) -> None:
+        self.asked: list[tuple[str, int]] = []  # (host, port) of every try
+        self.refusals: list[OSError] = []  # raised, in turn, instead of serving
+        self.stop = KeyboardInterrupt  # how serving ends
+        self.servers: list[FakeServer] = []
+        self.opened: list[str] = []  # urls opened in a browser
+
+    def make_server(self, page: str, host: str, port: int) -> FakeServer:
+        self.asked.append((host, port))
+        if self.refusals:
+            raise self.refusals.pop(0)
+        # as binding port 0 has the os pick one
+        self.servers.append(FakeServer(page, port or 49152, self.stop))
+        return self.servers[-1]
+
+
+@pytest.fixture(autouse=True)
+def no_serving(monkeypatch):
+    """a test that would serve a page or open a browser fails rather than block,
+    unless it fakes them itself, as `serving` does"""
+
+    def refuse(*args, **kwargs):
+        raise AssertionError("tests mustn't serve pages or open browsers")
+
+    monkeypatch.setattr(cocoa.cli, "make_server", refuse)
+    monkeypatch.setattr(cocoa.cli.webbrowser, "open", refuse)
+
+
+@pytest.fixture
+def serving(monkeypatch) -> Serving:
+    """`visualize`'s http server and web browser, faked"""
+    fake = Serving()
+    monkeypatch.setattr(cocoa.cli, "make_server", fake.make_server)
+    monkeypatch.setattr(cocoa.cli.webbrowser, "open", fake.opened.append)
+    return fake
 
 
 @pytest.fixture(scope="module")
@@ -384,6 +454,19 @@ def test_winnowing_config_override_limits_the_prepared_splits(runner, tokenized,
     assert "tuning_for_inference.parquet" not in out
 
 
+def test_winnow_without_splits_prepares_and_prints_held_out_alone(tokenized):
+    """a config lacking `splits` prepares held_out only, as every release has"""
+    result = run("winnow", "-p", tokenized, "~splits")
+    assert result.exit_code == 0, result.output
+    assert [p.name for p in tokenized.glob("*_for_inference.parquet")] == [
+        "held_out_for_inference.parquet"
+    ]
+    out = squashed(result.output)
+    assert squashed(f"{tokenized.resolve()}/held_out_for_inference.parquet") in out
+    assert "train_for_inference.parquet" not in out
+    assert "tuning_for_inference.parquet" not in out
+
+
 @pytest.mark.parametrize(
     "command,args",
     [
@@ -445,6 +528,75 @@ def test_pipeline_checks_every_stage_before_running_any(runner, raw_data):
     assert isinstance(result.exception, ValueError), result.output
     assert "splits" in str(result.exception)
     assert not (dest / "meds.parquet").exists()
+
+
+@pytest.mark.parametrize(
+    "overrides, routed",
+    [
+        (None, {}),
+        (
+            [
+                "tokenization.n_bins=5",
+                "collation.subject_splits.train_frac=0.5",
+                "tokenization.fused=false",
+            ],
+            {
+                "collation": ["subject_splits.train_frac=0.5"],
+                "tokenization": ["n_bins=5", "fused=false"],
+            },
+        ),
+        (
+            [
+                "~winnowing.threshold.duration_s",
+                "+winnowing.threshold.first_occurrence=XFR-IN//icu",
+                "++tokenization.n_bins=5",
+            ],
+            {
+                "winnowing": [
+                    "~threshold.duration_s",
+                    "+threshold.first_occurrence=XFR-IN//icu",
+                ],
+                "tokenization": ["++n_bins=5"],
+            },
+        ),
+    ],
+    ids=["none", "plain", "operators"],
+)
+def test_pipeline_routes_overrides_in_order_keeping_their_operators(overrides, routed):
+    """a leading ~, +, or ++ comes before the stage's name, and stays on"""
+    assert route_overrides(overrides) == {s: routed.get(s, []) for s in STAGES}
+
+
+@pytest.mark.parametrize(
+    "stage, key",
+    [
+        ("collation", "subject_splits"),
+        ("tokenization", "n_bins"),
+        ("winnowing", "splits"),
+    ],
+)
+def test_pipeline_checks_overrides_against_the_configs_it_is_given(
+    runner, raw_data, stage, key
+):
+    """a key the given config lacks can't be deleted, though the shipped default
+    has it, and the pipeline says so before running a stage"""
+    cfg = default_cfg(stage)
+    del cfg[key]
+    path = write_cfg(runner.root / f"{stage}.yaml", cfg)
+    dest = runner.dir()
+    result = run(
+        "pipeline",
+        f"--{stage}-config",
+        path,
+        "-r",
+        raw_data.root,
+        "-p",
+        dest,
+        f"~{stage}.{key}",
+    )
+    assert result.exit_code == 1, result.output
+    assert squashed("Running full pipeline") not in squashed(result.output)
+    assert not list(dest.iterdir())
 
 
 def test_pipeline_honours_all_three_config_overrides(runner, raw_data):
@@ -521,6 +673,38 @@ def test_tokenizer_home_reuses_the_learned_vocabulary(runner, pipeline_run, flag
     out = squashed(result.output)
     assert squashed("Using pretrained tokenizer") in out
     assert squashed(f"Vocabulary size: {len(source)} tokens") in out
+    assert squashed("-c and overrides don't apply") not in out
+
+
+@pytest.mark.parametrize("via", ["config", "overrides"])
+def test_tokenizer_home_uses_the_saved_config_as_written(runner, pipeline_run, via):
+    """a tokenizer.yaml from 26.6 records no include_hours_to_end_time, and
+    neither -c nor the overrides fill it in, nor change what the yaml records,
+    like n_bins: the saved config is frozen, as `tokenize` says"""
+    old = OmegaConf.load(pipeline_run.path / "tokenizer.yaml")
+    for key in ("min_training_ct", "include_hours_to_end_time", "shuffle_rows"):
+        del old.cfg[key]  # each added to the shipped config since 26.6
+    src = runner.root / "tokenizer_26_6.yaml"
+    src.write_text(OmegaConf.to_yaml(old))
+    if via == "config":
+        cfg = default_cfg("tokenization")
+        cfg.update(include_hours_to_end_time=True, n_bins=4)
+        args = ("-c", write_cfg(runner.root / "asked.yaml", cfg))
+    else:
+        args = ("include_hours_to_end_time=true", "n_bins=4")
+    dest = runner.seed_collated()
+    result = run("tokenize", "-t", src, "-p", dest, *args)
+    assert result.exit_code == 0, result.output
+    assert squashed(
+        "Its saved config is used as written, so -c and overrides don't apply."
+    ) in squashed(result.output)
+    assert (
+        "hours_to_end_time"
+        not in pl.read_parquet(dest / "tokens_times.parquet").columns
+    )
+    assert OmegaConf.load(dest / "tokenizer.yaml").cfg == old.cfg
+    assert lookup_of(dest) == lookup_of(pipeline_run.path)
+    assert bins_of(dest) == bins_of(pipeline_run.path)
 
 
 @pytest.mark.parametrize("flag", ["-o", "--output-data-dir"])
@@ -577,6 +761,12 @@ def test_quiet_collate_omits_the_summary_statistics(runner):
     out = squashed(result.output)
     assert squashed("total rows:") not in out
     assert squashed("subjects by split") not in out
+
+
+def test_quiet_pipeline_omits_every_stage_s_summary_statistics(pipeline_run):
+    out = squashed(pipeline_run.result.output)
+    for said in ("unique subjects:", "timeline length stats", "Prepared split"):
+        assert squashed(said) not in out, said
 
 
 @pytest.mark.parametrize("flag", ["-v", "--verbose"])
@@ -763,3 +953,107 @@ def test_visualize_an_unknown_subject_exits_nonzero(pipeline, tmp_path):
     result = run("visualize", "nobody", "-p", pipeline.path, "-e", tmp_path / "x.html")
     assert result.exit_code == 1
     assert "No timeline" in plain(result.output)
+
+
+@pytest.mark.parametrize(
+    "args, host, port",
+    [
+        ((), "127.0.0.1", 8765),
+        (("--host", "localhost", "--port", "0", "--open"), "localhost", 0),
+    ],
+    ids=["defaults", "given"],
+)
+def test_visualize_serves_the_page_it_would_export_until_interrupted(
+    pipeline, tmp_path, serving, args, host, port
+):
+    sid = pipeline.tokens_times["subject_id"][0]
+    result = run("visualize", sid, "-p", pipeline.path, *args)
+    assert result.exit_code == 0, result.output
+    assert serving.asked == [(host, port)]
+    [server] = serving.servers
+    exported = tmp_path / "timeline.html"
+    assert run("visualize", sid, "-p", pipeline.path, "-e", exported).exit_code == 0
+    assert undated(server.page) == undated(exported.read_text())
+    url = f"http://{host}:{server.server_port}/"  # the port bound, if 0 was asked
+    out = squashed(result.output)
+    assert squashed(f"Serving: {url}") in out
+    assert serving.opened == ([url] if "--open" in args else [])
+    assert server.closed
+    assert squashed("Stopped serving.") in out
+
+
+def test_visualize_serves_on_a_free_port_when_the_given_one_is_taken(
+    pipeline, monkeypatch
+):
+    asked, started = [], []
+
+    def make_server(page, host, port):
+        asked.append(port)
+        server = cocoa.visualizer.make_server(page, host=host, port=port)
+        server.serve_forever = interrupt
+        started.append(server)
+        return server
+
+    monkeypatch.setattr(cocoa.cli, "make_server", make_server)
+    sid = pipeline.tokens_times["subject_id"][0]
+    with socket.socket() as taken:
+        taken.bind(("127.0.0.1", 0))
+        taken.listen()
+        port = taken.getsockname()[1]
+        result = run("visualize", sid, "-p", pipeline.path, "--port", port)
+    assert result.exit_code == 0, result.output
+    assert asked == [port, 0]
+    [server] = started
+    assert server.server_port not in (0, port)
+    out = squashed(result.output)
+    assert squashed(f"Port {port} is in use; serving on a free one instead.") in out
+    assert squashed(f"Serving: http://127.0.0.1:{server.server_port}/") in out
+    assert server.socket.fileno() == -1  # closed once stopped
+
+
+def test_visualize_reraises_any_other_failure_to_serve(pipeline, serving):
+    """only a port in use earns a second try, on a free one"""
+    serving.refusals.append(PermissionError(errno.EACCES, "Permission denied"))
+    sid = pipeline.tokens_times["subject_id"][0]
+    result = run("visualize", sid, "-p", pipeline.path, "--port", "80")
+    assert isinstance(result.exception, OSError), result.output
+    assert result.exception.errno == errno.EACCES
+    assert serving.asked == [("127.0.0.1", 80)]
+    assert "Serving" not in plain(result.output)
+
+
+def test_visualize_closes_the_server_however_serving_ends(pipeline, serving):
+    serving.stop = RuntimeError("serving failed")
+    sid = pipeline.tokens_times["subject_id"][0]
+    result = run("visualize", sid, "-p", pipeline.path)
+    assert result.exception is serving.stop
+    [server] = serving.servers
+    assert server.closed
+    assert "Stopped serving" not in plain(result.output)
+
+
+def test_visualize_an_unknown_subject_serves_nothing_and_is_named_verbatim(
+    pipeline, serving
+):
+    """the error is printed as is, though rich would take [nobody] for markup"""
+    result = run("visualize", "[nobody]", "-p", pipeline.path)
+    assert result.exit_code == 1
+    assert squashed("No timeline for subject_id='[nobody]'") in squashed(result.output)
+    assert serving.asked == []
+
+
+@pytest.mark.parametrize(
+    "argv, code, said",
+    [(["-h"], 0, f"v{cocoa.cli.__version__}"), (["frobnicate"], 2, "No such command")],
+    ids=["help", "unknown-command"],
+)
+def test_main_runs_the_cli_on_the_command_line_arguments(
+    monkeypatch, capsys, argv, code, said
+):
+    """`main`, the `cocoa` console script, exits with the command's status"""
+    monkeypatch.setattr(sys, "argv", ["cocoa", *argv])
+    with pytest.raises(SystemExit) as exited:
+        cocoa.cli.main()
+    assert exited.value.code == code
+    captured = capsys.readouterr()
+    assert squashed(said) in squashed(captured.out + captured.err)

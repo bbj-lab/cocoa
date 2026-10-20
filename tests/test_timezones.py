@@ -9,7 +9,7 @@ import zoneinfo
 import polars as pl
 import pytest
 import synth
-from conftest import default_cfg
+from conftest import Processed, default_cfg
 from omegaconf import OmegaConf
 
 UTC = datetime.timezone.utc
@@ -60,6 +60,14 @@ def recast_time_unit(root: pathlib.Path, unit: str) -> pathlib.Path:
             if isinstance(t, pl.Datetime)
         ).write_parquet(f)
     return root
+
+
+def as_csv(raw: pathlib.Path, table: str, *exprs: pl.Expr) -> str:
+    """rewrite a raw table as csv, its columns edited by `exprs`; returns the text"""
+    parquet, csv = raw / f"{table}.parquet", raw / f"{table}.csv"
+    pl.read_parquet(parquet).with_columns(*exprs).write_csv(csv)
+    parquet.unlink()
+    return csv.read_text()
 
 
 def with_prefix(words, prefix: str) -> list:
@@ -113,6 +121,17 @@ def test_meds_time_zone_matches_configured_default_timezone(runner, zone):
     # the raw times are naive: each is read as a wall clock reading in `zone`
     assert first_times(meds) == {
         hid: localized(admit, zone) for hid, admit in runner.raw.admission.items()
+    }
+    # and so are the reference times subject_splits.parquet records
+    splits = pl.read_parquet(dest / "subject_splits.parquet")
+    assert splits.schema["start_time"] == pl.Datetime("us", zone)
+    assert splits.schema["end_time"] == pl.Datetime("us", zone)
+    assert {
+        s: (a, d)
+        for s, a, d in splits.select("subject_id", "start_time", "end_time").iter_rows()
+    } == {
+        hid: (localized(runner.raw.admission[hid], zone), localized(dis, zone))
+        for hid, dis in runner.raw.discharge.items()
     }
 
 
@@ -188,6 +207,9 @@ def test_configured_time_unit_travels_through_the_pipeline(runner, unit):
     assert processed.meds.schema["time"] == stored
     assert processed.tokens_times.schema["times"].inner == stored
     assert processed.inference().schema["times"].inner == stored
+    # the reference times too, from subject_splits.parquet into the inference frames
+    for frame in (processed.splits, processed.inference()):
+        assert frame.schema["start_time"] == frame.schema["end_time"] == stored
 
 
 def test_an_unsupported_time_unit_is_rejected(runner):
@@ -198,16 +220,117 @@ def test_an_unsupported_time_unit_is_rejected(runner):
         runner.collate(cfg=cfg)
 
 
-def test_ambiguous_naive_local_time_takes_the_later_instant(runner):
-    """2024-11-03 01:30 happens twice in chicago; the CST reading wins"""
-    reading = D(2024, 11, 3, 1, 30)
-    processed = run_minimal(
-        runner,
-        CHICAGO,
-        hospitalization(D(2024, 11, 3, 0, 0), D(2024, 11, 4, 0, 0)),
-        vitals(reading),
-        naive_times=True,
+def collate_at_units(runner, cfg, units: dict) -> dict:
+    """
+    collate CLOCK_HOSP and one CLOCK_VITS reading, each table's datetimes
+    rewritten as `units` gives them, a (unit, zone) pair per table; returns
+    the stored meds time and subject_splits start_time, each (dtype, values)
+    """
+    raw = synth.write_minimal_dataset(
+        runner.dir(), hospitalizations=CLOCK_HOSP, vitals=CLOCK_VITS[:1], tz="UTC"
     )
+    for table, (unit, zone) in units.items():
+        f = raw / f"{table}.parquet"
+        df = pl.read_parquet(f)
+        df.with_columns(
+            pl.col(c).dt.cast_time_unit(unit).dt.replace_time_zone(zone)
+            for c, t in df.schema.items()
+            if isinstance(t, pl.Datetime)
+        ).write_parquet(f)
+    dest = runner.dir()
+    runner.collate(cfg=cfg, raw=raw, dest=dest)
+    meds = pl.read_parquet(dest / "meds.parquet")
+    splits = pl.read_parquet(dest / "subject_splits.parquet")
+    return {
+        "time": (meds.schema["time"], meds["time"].to_list()),
+        "start_time": (splits.schema["start_time"], splits["start_time"].to_list()),
+    }
+
+
+@pytest.mark.parametrize("omitted", [True, False], ids=["omitted", "null"])
+def test_without_a_default_time_unit_naive_times_are_stored_in_microseconds(
+    runner, omitted
+):
+    """as in 26.9.0, before the key, which cast every naive column to us"""
+    cfg = synth.minimal_collation_cfg()
+    if not omitted:
+        cfg["default_time_unit"] = None
+    got = collate_at_units(
+        runner, cfg, {"clif_hospitalization": ("ns", None), "clif_vitals": ("ms", None)}
+    )
+    assert got == {
+        "time": (
+            pl.Datetime("us", "UTC"),
+            [CLOCK_VITS[0]["recorded_dttm"].replace(tzinfo=UTC)],
+        ),
+        "start_time": (
+            pl.Datetime("us", "UTC"),
+            [CLOCK_HOSP[0]["admission_dttm"].replace(tzinfo=UTC)],
+        ),
+    }
+
+
+def test_without_a_default_time_unit_tz_aware_times_lose_their_own_unit(runner):
+    """
+    BUG (current behaviour asserted): 26.9.0, before the key, converted a
+    tz-aware column's zone but kept its unit, so tables all tz-aware at ns, as
+    pandas 2 writes them, collated to ns there and collate to us here, though a
+    config without the key should keep working as it did; pinning one unit
+    does fix 26.9.0's failure on tables of mixed units
+    """
+    got = collate_at_units(
+        runner,
+        synth.minimal_collation_cfg(),
+        {"clif_hospitalization": ("ns", "UTC"), "clif_vitals": ("ns", "UTC")},
+    )
+    assert got["time"][0] == got["start_time"][0] == pl.Datetime("us", "UTC")
+
+
+@pytest.mark.parametrize(
+    "unit,fraction_ns", [("ms", 123_000_000), ("us", 123_456_000), ("ns", 123_456_321)]
+)
+def test_csv_times_are_parsed_at_the_configured_time_unit(runner, unit, fraction_ns):
+    """
+    a csv carries times as text, read at default_time_unit: ns keeps all nine
+    digits of the fraction, us the first six and ms three (the rest round
+    down, so truncating and rounding agree)
+    """
+    reading = CLOCK_VITS[0]["recorded_dttm"]
+    raw = synth.write_minimal_dataset(
+        runner.dir(), hospitalizations=CLOCK_HOSP, vitals=[CLOCK_VITS[0]]
+    )
+    finer = pl.col("recorded_dttm").dt.cast_time_unit("ns") + pl.duration(
+        nanoseconds=123_456_321
+    )
+    assert "T03:30:00.123456321," in as_csv(raw, "clif_vitals", finer)
+    dest = runner.dir()
+    runner.collate(
+        cfg=synth.minimal_collation_cfg(default_time_unit=unit), raw=raw, dest=dest
+    )
+    meds = pl.read_parquet(dest / "meds.parquet")
+    assert meds.schema["time"] == pl.Datetime(unit, "UTC")
+    whole_s = int(reading.replace(tzinfo=UTC).timestamp())
+    assert meds["time"].dt.epoch("ns").to_list() == [whole_s * 10**9 + fraction_ns]
+
+
+@pytest.mark.parametrize("source", ["parquet", "csv"])
+def test_ambiguous_naive_local_time_takes_the_later_instant(runner, source):
+    """
+    2024-11-03 01:30 happens twice in chicago; the CST reading wins, whether a
+    parquet datetime is localized or a csv's text is parsed
+    """
+    raw = synth.write_minimal_dataset(
+        runner.dir(),
+        hospitalizations=hospitalization(D(2024, 11, 3, 0, 0), D(2024, 11, 4, 0, 0)),
+        vitals=vitals(D(2024, 11, 3, 1, 30)),
+    )
+    if source == "csv":
+        assert "T01:30:00.000000," in as_csv(raw, "clif_vitals")
+    dest = runner.dir()
+    runner.collate(
+        cfg=synth.minimal_collation_cfg(default_timezone=CHICAGO), raw=raw, dest=dest
+    )
+    processed = Processed(dest)
     assert instants(processed) == [D(2024, 11, 3, 7, 30, tzinfo=UTC)]  # 01:30 CST
     assert instants(processed) != [D(2024, 11, 3, 6, 30, tzinfo=UTC)]  # 01:30 CDT
     assert instants(processed, CHICAGO)[0].utcoffset() == datetime.timedelta(hours=-6)
@@ -225,22 +348,33 @@ def test_nonexistent_naive_local_time_raises(runner):
         )
 
 
+@pytest.mark.parametrize(
+    "source", [None, "America/New_York"], ids=["naive", "tz-aware"]
+)
 @pytest.mark.parametrize("omitted", [True, False], ids=["omitted", "null"])
-def test_absent_default_timezone_falls_back_to_utc(runner, omitted):
-    reading = D(2024, 1, 15, 12, 0)
+def test_absent_default_timezone_falls_back_to_utc(runner, omitted, source):
+    """
+    the instants 26.6, before the key, stored as naive utc: a naive reading is
+    taken for utc, and a tz-aware one is converted to it
+    """
+    admit, reading = D(2024, 1, 15, 0, 0), D(2024, 1, 15, 12, 0)
     cfg = synth.minimal_collation_cfg()
     if omitted:
         cfg.pop("default_timezone")
     else:
         cfg["default_timezone"] = None
     processed = runner.minimal(
-        hospitalizations=hospitalization(D(2024, 1, 15, 0, 0), D(2024, 1, 17, 0, 0)),
+        hospitalizations=hospitalization(admit, D(2024, 1, 17, 0, 0)),
         vitals=vitals(reading),
         collation=cfg,
-        naive_times=True,
+        tz=source,
     )
     assert processed.meds.schema["time"] == pl.Datetime("us", "UTC")
-    assert instants(processed) == [reading.replace(tzinfo=UTC)]
+    assert instants(processed) == [localized(reading, source or "UTC")]
+    assert processed.splits.schema["start_time"] == pl.Datetime("us", "UTC")
+    assert processed.splits["start_time"].to_list() == [
+        localized(admit, source or "UTC")
+    ]
 
 
 def test_spacer_tokens_are_identical_across_zones_for_equal_instants(runner):

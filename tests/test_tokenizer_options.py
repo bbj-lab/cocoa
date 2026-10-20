@@ -92,6 +92,37 @@ def clock_marks(first, last, hours) -> list:
     return out
 
 
+MEDS_SCHEMA = {
+    "subject_id": pl.String,
+    "time": pl.Datetime("us", "UTC"),
+    "code": pl.String,
+    "numeric_value": pl.Float32,
+    "text_value": pl.String,
+}
+
+
+def tokenize_meds(runner, events: list, **overrides) -> Processed:
+    """tokenize (subject_id, time, code) rows written to meds.parquet in order"""
+    dest = runner.dir()
+    pl.DataFrame(
+        [(*e, None, None) for e in events], schema=MEDS_SCHEMA, orient="row"
+    ).write_parquet(dest / "meds.parquet")
+    pl.DataFrame(
+        {"subject_id": sorted({e[0] for e in events}), "split": "train"}
+    ).write_parquet(dest / "subject_splits.parquet")
+    runner.tokenize(processed=dest, cfg=tok_cfg(**overrides))
+    return Processed(dest, None)
+
+
+def gapped(*gaps: float, code: str = "AAA//e") -> list:
+    """S0's events, each the given number of minutes after the one before"""
+    t, rows = utc(2024, 1, 1), []
+    for i, gap in enumerate(gaps):
+        t += gap * MIN
+        rows.append(("S0", t, f"{code}{i}"))
+    return rows
+
+
 # a single entry carrying a code, a numeric value and a text value at once
 TEXT_ENTRY = [
     {
@@ -268,6 +299,17 @@ def test_n_bins_two_splits_at_the_median(runner):
     assert read(p)[0] == ["BOS"] + [f"VTL//hr_Q{q}" for q in (0, 0, 1, 1, 1)] + ["EOS"]
 
 
+def test_a_single_bin_is_refused(runner):
+    """
+    BUG (current behaviour asserted): n_bins=1 leaves no break points, and the
+    empty sum of comparisons bin_data then builds is one polars refuses to
+    construct -- pl.sum_horizontal of nothing raises a ComputeError as the plan is
+    built, whatever the data -- where a single bin could put every value in Q0
+    """
+    with pytest.raises(pl.exceptions.PolarsError):
+        tokenize_meds(runner, gapped(0, 60), n_bins=1)
+
+
 # --- numeric values --------------------------------------------------------
 
 
@@ -316,6 +358,54 @@ def test_numeric_values_align_with_the_collated_events(runner):
     assert seen == expected
 
 
+# --- hours to end time -----------------------------------------------------
+
+
+def test_hours_to_end_time_counts_down_to_each_subjects_end_time(runner):
+    """
+    fractional hours from each token to its own subject's end_time (the
+    collation config's reference.end_time, here discharge), going negative past
+    it; a spacer and EOS carry the hours of the instant they sit at
+    """
+    p = runner.minimal(
+        hospitalizations=[stay(10)[0], stay(24)[0]],
+        vitals=[
+            {"hospitalization_id": h, "recorded_dttm": JAN1 + m * MIN, "vital_category": c}
+            for h, c, m in (
+                ("H0", "a", 90),
+                ("H0", "a", 585),
+                ("H0", "a", 720),
+                ("H1", "b", 360),
+                ("H1", "b", 375),
+            )
+        ],
+        tokenization=tok_cfg(include_hours_to_end_time=True, insert_spacers=True),
+    )
+    tt = p.tokens_times
+    assert tt.columns == ["subject_id", "tokens", "times", "hours_to_end_time"]
+    assert {
+        row["subject_id"]: list(zip(p.decode(row["tokens"]), row["hours_to_end_time"]))
+        for row in tt.iter_rows(named=True)
+    } == {
+        "H0": [  # discharged at 10:00
+            ("BOS", 8.5),
+            ("VTL//a", 8.5),
+            ("TIME//6h-12h", 0.25),
+            ("VTL//a", 0.25),
+            ("TIME//2h-6h", -2.0),
+            ("VTL//a", -2.0),
+            ("EOS", -2.0),
+        ],
+        "H1": [  # discharged at midnight
+            ("BOS", 18.0),
+            ("VTL//b", 18.0),
+            ("TIME//5m-15m", 17.75),
+            ("VTL//b", 17.75),
+            ("EOS", 17.75),
+        ],
+    }
+
+
 # --- min_training_ct -------------------------------------------------------
 
 STRUCTURAL = ("BOS", "EOS", "CLCK//", "TIME//")
@@ -333,9 +423,10 @@ def training_counts(p) -> dict:
     return {w: seen[t] for w, t in p.vocab.items()}
 
 
-def test_min_training_ct_zero_keeps_every_word_seen_in_training(runner):
-    """the threshold is off at 0, so every training word earns a token"""
-    tkzr, p = tokenized(runner, min_training_ct=0)
+@pytest.mark.parametrize("min_ct", [0, None], ids=["zero", "null"])
+def test_min_training_ct_zero_keeps_every_word_seen_in_training(runner, min_ct):
+    """the threshold is off at 0, or null, so every training word earns a token"""
+    tkzr, p = tokenized(runner, min_training_ct=min_ct)
     counts = training_counts(p)
     assert min(c for w, c in counts.items() if w != "UNK") == 1
     assert tkzr.lookup.filter(pl.col("count") == 1).height > 0
@@ -352,6 +443,21 @@ def test_min_training_ct_drops_words_below_the_threshold(runner, min_ct):
         if word == "UNK":
             continue
         assert count >= min_ct or word.startswith(STRUCTURAL), word
+
+
+def test_min_training_ct_keeps_a_word_seen_exactly_that_often(runner):
+    """
+    the threshold is inclusive, and it exempts the structural words themselves,
+    not words that merely start like BOS or carry TIME// further in
+    """
+    codes = ["AAA//a"] * 3 + ["AAA//b"] * 2 + ["BOSS//c", "XTIME//d"]
+    p = tokenize_meds(
+        runner,
+        [("S0", utc(2024, 1, 1, h), code) for h, code in enumerate(codes)],
+        min_training_ct=3,
+    )
+    assert p.counts == {"UNK": None, "AAA//a": 3, "BOS": 1, "EOS": 1}
+    assert p.timeline("S0") == ["BOS"] + ["AAA//a"] * 3 + ["UNK"] * 4 + ["EOS"]
 
 
 def test_min_training_ct_maps_the_words_it_drops_to_unk(runner):
@@ -403,6 +509,26 @@ GAP_LABELS = [
     (61, "1h-2h"),
     (120, "1h-2h"),
     (121, "2h-6h"),
+    # and so on, through every shipped boundary
+    (360, "2h-6h"),
+    (361, "6h-12h"),
+    (720, "6h-12h"),
+    (721, "12h-1d"),
+    (1440, "12h-1d"),
+    (1441, "1d-3d"),
+    (4320, "1d-3d"),
+    (4321, "3d-1w"),
+    (10080, "3d-1w"),
+    (10081, "1w-2w"),
+    (20160, "1w-2w"),
+    (20161, "2w-1mt"),
+    (43200, "2w-1mt"),
+    (43201, "1mt-3mt"),
+    (131490, "1mt-3mt"),
+    (131491, "3mt-6mt"),
+    (262980, "3mt-6mt"),
+    (262981, "6mt+"),
+    (2 * 262980, "6mt+"),  # the last bucket is open-ended
 ]
 
 
@@ -426,6 +552,8 @@ def test_no_extra_tokens_are_inserted_by_default(pipeline):
 
 
 def test_spacer_labels_at_and_around_the_configured_boundaries(runner):
+    labels = {label for _, label in GAP_LABELS} - {None}
+    assert labels == set(default_cfg("tokenization")["spacers"])
     times, expected = [JAN1], ["BOS", "VTL//e0"]
     t = JAN1
     for i, (gap, label) in enumerate(GAP_LABELS):
@@ -488,6 +616,35 @@ def test_a_one_entry_spacers_mapping_labels_every_gap_from_its_bound(runner):
         "TIME//gap",
         "VTL//e3",
         "VTL//e4",
+        "EOS",
+    ]
+
+
+def test_spacers_listed_out_of_order_bucket_gaps_as_polars_cut_did(runner):
+    """
+    the smallest bound is the floor wherever it is listed, the bounds after the
+    first split the gaps above it, and the labels name those buckets in listed
+    order, as when polars' `cut` did the bucketing; so `b` here labels a gap of
+    5 minutes, below its own bound
+    """
+    p = tokenize_meds(
+        runner,
+        gapped(0, 4, 5, 10, 61, 121),
+        insert_spacers=True,
+        spacers={"b": 60, "a": 5, "c": 120},
+    )
+    assert p.timeline("S0") == [
+        "BOS",
+        "AAA//e0",
+        "AAA//e1",
+        "TIME//b",
+        "AAA//e2",
+        "TIME//a",
+        "AAA//e3",
+        "TIME//a",
+        "AAA//e4",
+        "TIME//c",
+        "AAA//e5",
         "EOS",
     ]
 
@@ -686,14 +843,6 @@ def test_spacers_are_measured_after_clocks_are_inserted(runner):
     assert stamps[4] == stamps[5] == utc(2024, 1, 2, 0, 20)
 
 
-MEDS_SCHEMA = {
-    "subject_id": pl.String,
-    "time": pl.Datetime("us", "UTC"),
-    "code": pl.String,
-    "numeric_value": pl.Float32,
-    "text_value": pl.String,
-}
-
 # two prefixes share 23:00; the last event shares 00:00 with a clock and EOS
 SPACER_EVENTS = [
     (utc(2024, 1, 1, 21), "AAA//a"),
@@ -701,19 +850,6 @@ SPACER_EVENTS = [
     (utc(2024, 1, 1, 23), "ZZZ//b"),
     (utc(2024, 1, 2, 0), "ZZZ//c"),
 ]
-
-
-def tokenize_meds(runner, events: list, **overrides) -> Processed:
-    """tokenize (subject_id, time, code) rows written to meds.parquet in order"""
-    dest = runner.dir()
-    pl.DataFrame(
-        [(*e, None, None) for e in events], schema=MEDS_SCHEMA, orient="row"
-    ).write_parquet(dest / "meds.parquet")
-    pl.DataFrame(
-        {"subject_id": sorted({e[0] for e in events}), "split": "train"}
-    ).write_parquet(dest / "subject_splits.parquet")
-    runner.tokenize(processed=dest, cfg=tok_cfg(**overrides))
-    return Processed(dest, None)
 
 
 @pytest.mark.parametrize("fused", [True, False])
@@ -829,6 +965,30 @@ def test_ordering_breaks_ties_between_cotemporaneous_prefixes(runner):
     ]
 
 
+@pytest.mark.parametrize(
+    "ordering,at_the_gap",
+    [
+        (["AAA", "BOS", "ZZZ", "EOS"], ["TIME//1h-2h", "AAA//b", "ZZZ//b"]),
+        (["BOS", "AAA", "TIME", "ZZZ", "EOS"], ["AAA//b", "TIME//1h-2h", "ZZZ//b"]),
+    ],
+    ids=["unlisted", "listed"],
+)
+def test_time_takes_its_place_in_ordering_or_else_leads_its_instant(
+    runner, ordering, at_the_gap
+):
+    """
+    left out, a spacer opens its instant ahead of even the first listed prefix;
+    listed, it takes its place among the others like any prefix
+    """
+    rows = [
+        ("S0", utc(2024, 1, 1, 0), "ZZZ//a"),
+        ("S0", utc(2024, 1, 1, 1, 30), "AAA//b"),
+        ("S0", utc(2024, 1, 1, 1, 30), "ZZZ//b"),
+    ]
+    p = tokenize_meds(runner, rows, insert_spacers=True, ordering=ordering)
+    assert p.timeline("S0") == ["BOS", "ZZZ//a", *at_the_gap, "EOS"]
+
+
 def test_empty_ordering_raises_a_polars_schema_error(runner):
     # actual behaviour: an empty ordering makes the priority join key null-typed
     with pytest.raises(pl.exceptions.SchemaError):
@@ -859,9 +1019,51 @@ def test_shuffle_rows_permutes_whole_rows(runner, pipeline):
     )
 
 
+def test_shuffle_rows_orders_rows_the_same_way_on_every_run(runner, pipeline):
+    first, again = (tokenized(runner, shuffle_rows=True)[1] for _ in range(2))
+    assert subject_order(first) != subject_order(pipeline)
+    assert first.tokens_times.equals(again.tokens_times)
+
+
 def test_winnowing_a_shuffled_dataset_finds_the_same_rows(runner, pipeline):
     _, p = tokenized(runner, shuffle_rows=True)
     runner.winnow(processed=p.path)
     got, want = p.inference(), pipeline.inference()
     assert got.height == want.height > 0
     assert got.sort("subject_id").equals(want.sort("subject_id"))
+
+
+# --- keys a config leaves out ----------------------------------------------
+
+# read with a fallback, unlike n_bins and ordering; spacers and clocks are only
+# read when their insert_ key turns them on
+OPTIONAL_KEYS = (
+    "fused",
+    "include_numeric_values",
+    "min_training_ct",
+    "include_hours_to_end_time",
+    "shuffle_rows",
+    "insert_spacers",
+    "spacers",
+    "insert_clocks",
+    "clocks",
+)
+
+
+def test_a_config_leaving_out_every_optional_key_tokenizes_as_shipped(
+    runner, pipeline
+):
+    """
+    each key falls back to what the shipped default sets, which for those added
+    since 26.6.0 (min_training_ct, include_hours_to_end_time, shuffle_rows) is
+    how tokenization ran before they existed
+    """
+    cfg = {k: v for k, v in tok_cfg().items() if k not in OPTIONAL_KEYS}
+    assert sorted(cfg) == ["n_bins", "ordering"]
+    dest = runner.seed_collated()
+    runner.tokenize(processed=dest, cfg=cfg)
+    p = Processed(dest, runner.raw)
+    assert p.tokenizer_yaml.cfg.fused is True
+    assert p.vocab == pipeline.vocab and p.counts == pipeline.counts
+    # the same columns and rows, in the same order
+    assert p.tokens_times.equals(pipeline.tokens_times)

@@ -205,6 +205,14 @@ entry's fields tell the collator which source columns map to these outputs.
 | `key`           | Grouping key used with `agg_expr`. Defaults to `subject_id` when not provided.                                                   |
 | `reference_key` | Join the source table to the reference frame on this key and keep only rows within the subject's `start_time`–`end_time` window. |
 
+An entry with `table: REFERENCE` takes these options too. They apply to the
+reference frame as the [reference block](#reference-table) builds it, so they can
+use the columns its augmentation tables join on, and they find its `start_time`
+and `end_time` already converted to `default_timezone`, where the options of an
+entry over any other table see that table's raw columns. They shape that entry's
+events alone: the other entries, the subject splits, and the lookback and
+lookahead windows still see every row of the reference frame.
+
 **Examples:**
 
 - A simple categorical event from the reference frame:
@@ -683,8 +691,8 @@ with commands:
     │    --tokenizer-home       -t      <str>   Load a previously learned     │
     │                                           tokenizer from this           │
     │                                           tokenizer.yaml file (reuses   │
-    │                                           its frozen vocabulary and     │
-    │                                           bins)                         │
+    │                                           its frozen config,            │
+    │                                           vocabulary, and bins)         │
     │    --verbose              -v              Verbose logging for tokenize; │
     │                                           this may cause memory issues  │
     │                                           with large datasets           │
@@ -861,8 +869,9 @@ A few things to know:
 - YAML decides each value's type, so quote what has to stay a string:
   `'clocks=["00", "12"]'`, since an unquoted `00` is the number 0, and
   `'other_color="#737373"'`, since an unquoted `#` starts a comment.
-- With `--tokenizer-home`, the loaded tokenizer's saved config wins over
-  overrides, as it does over `-c`.
+- With `--tokenizer-home`, the loaded tokenizer's saved config is used as
+  written: it is frozen, so neither overrides nor `-c` apply, and nothing from
+  the shipped default is merged in (`cocoa tokenize` says so when given either).
 - Quote anything starting with `~` in zsh, which otherwise reads it as a
   directory name and fails.
 

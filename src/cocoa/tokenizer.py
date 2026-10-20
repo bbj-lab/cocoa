@@ -415,8 +415,9 @@ class Tokenizer(Configurable):
 
     def from_yaml(self, yaml_str: str, done_training: bool = True) -> "Tokenizer":
         """
-        construct tokenizer from yaml representation
-        places tokenizer into inference mode by default
+        construct tokenizer from yaml representation, its config frozen as saved:
+        read-only, and never merged with the shipped default, a passed config,
+        overrides, or kwargs; places tokenizer into inference mode by default
         """
         data = OmegaConf.create(yaml_str)
         cfg = OmegaConf.to_container(data.cfg)
@@ -424,11 +425,10 @@ class Tokenizer(Configurable):
         # omitting it tokenized unfused
         cfg.setdefault("fused", False)
         tkzr = self.__class__(
-            self.config_file,
-            processed_data_home=self.processed_data_home,
-            is_training=data.is_training,
-            **OmegaConf.merge(self.cfg, cfg),
+            processed_data_home=self.processed_data_home, is_training=data.is_training
         )
+        tkzr.cfg = OmegaConf.create(cfg)
+        OmegaConf.set_readonly(tkzr.cfg, True)
         tkzr.created_dttm = data.created_dttm
         if data.bins is not None:
             tkzr.bins = pl.DataFrame(

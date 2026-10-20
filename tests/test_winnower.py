@@ -6,15 +6,19 @@ outcome tokens in each tense
 """
 
 import datetime
+import os
 import pathlib
 import shutil
 
 import polars as pl
 import pytest
 import synth
-from conftest import default_cfg
+from conftest import Processed, default_cfg, write_cfg
 from omegaconf.errors import ConfigAttributeError, ConfigKeyError
 from polars.exceptions import PanicException
+
+from cocoa.tokenizer import Tokenizer
+from cocoa.winnower import Winnower
 
 SPLITS = ("train", "tuning", "held_out")
 DAY_S = 86400
@@ -55,6 +59,14 @@ def rewinnow(runner, pipeline, split="held_out", **overrides) -> pl.DataFrame:
     return pl.read_parquet(dest / f"{split}_for_inference.parquet")
 
 
+def winnower(runner, processed, **overrides) -> Winnower:
+    """a winnower over `processed` with default keys replaced, not yet run"""
+    return Winnower(
+        winnowing_cfg=runner.cfg_path("winnowing", cfg(**overrides)),
+        processed_data_home=processed,
+    )
+
+
 def offsets(times) -> list:
     """seconds from the first time, in plain python"""
     ts = list(times)
@@ -91,13 +103,58 @@ def minimal_at(runner, readings: dict, unit: str = "us"):
     )
 
 
-def winnow_train(runner, processed, threshold: dict) -> pl.DataFrame:
+def spo2_twice(runner):
+    """
+    H0 reads heart rate at 0h, 2h, and 4h after ADMIT and spo2 at 1h and 3h;
+    H1 reads only heart rate, at 0h and 1h
+    """
+    cats = {
+        "H0": ("heart_rate", "spo2") * 2 + ("heart_rate",),
+        "H1": ("heart_rate",) * 2,
+    }
+    return runner.minimal(
+        hospitalizations=[
+            {
+                "admission_dttm": ADMIT,
+                "discharge_dttm": ADMIT + datetime.timedelta(days=1),
+            }
+        ]
+        * 2,
+        vitals=[
+            {
+                "hospitalization_id": h,
+                "recorded_dttm": ADMIT + datetime.timedelta(hours=n),
+                "vital_category": c,
+            }
+            for h, cs in cats.items()
+            for n, c in enumerate(cs)
+        ],
+    )
+
+
+def winnow_train(runner, processed, threshold: dict, **extra) -> pl.DataFrame:
     """winnow the training split of a minimal dataset at `threshold`"""
     runner.winnow(
-        cfg={"outcome_tokens": ["VTL//*"], "threshold": threshold, "splits": ["train"]},
+        cfg={
+            "outcome_tokens": ["VTL//*"],
+            "threshold": threshold,
+            "splits": ["train"],
+            **extra,
+        },
         processed=processed.path,
     )
     return processed.inference("train")
+
+
+def past_hours(d) -> dict:
+    """each subject's past, as hours after its start_time"""
+    return {
+        r["subject_id"]: [
+            (t - r["start_time"]).total_seconds() / HOUR_S
+            for t in r["times"][: r["last_valid"]]
+        ]
+        for r in d.iter_rows(named=True)
+    }
 
 
 def outcomes(pipeline) -> set:
@@ -111,6 +168,29 @@ def outcomes(pipeline) -> set:
     return labels | set(LITERAL_OUTCOMES)
 
 
+@pytest.fixture(scope="module")
+def extras(tmp_path_factory, pipeline) -> Processed:
+    """
+    the session collation tokenized with both optional per-token columns,
+    hours_to_end_time and numeric_values, and its held_out winnowed by default
+    """
+    dest = tmp_path_factory.mktemp("extras")
+    cfgs = tmp_path_factory.mktemp("extras_cfg")
+    for f in ("meds.parquet", "subject_splits.parquet"):
+        shutil.copy(pipeline.path / f, dest / f)
+    tok = default_cfg("tokenization")
+    tok.update(include_hours_to_end_time=True, include_numeric_values=True)
+    Tokenizer(
+        tokenization_cfg=write_cfg(cfgs / "tokenization.yaml", tok),
+        processed_data_home=dest,
+    ).save_all()
+    Winnower(
+        winnowing_cfg=write_cfg(cfgs / "winnowing.yaml", cfg(splits=["held_out"])),
+        processed_data_home=dest,
+    ).save_all()
+    return Processed(dest, pipeline.manifest)
+
+
 # --- output files ---------------------------------------------------------
 
 
@@ -121,11 +201,67 @@ def test_default_config_writes_one_file_per_configured_split(pipeline):
     }
 
 
-@pytest.mark.parametrize("splits", (["held_out"], ["train", "tuning"]))
+@pytest.mark.parametrize("splits", ([], ["held_out"], ["train", "tuning"]))
 def test_only_configured_splits_are_written(runner, pipeline, splits):
     dest = seed(runner, pipeline)
     runner.winnow(cfg=cfg(splits=splits), processed=dest)
     assert inference_files(dest) == {f"{s}_for_inference.parquet" for s in splits}
+
+
+def test_without_splits_only_held_out_is_prepared(runner, pipeline):
+    c = cfg()
+    del c["splits"]
+    dest = seed(runner, pipeline)
+    runner.winnow(cfg=c, processed=dest)
+    assert inference_files(dest) == {"held_out_for_inference.parquet"}
+    d = pl.read_parquet(dest / "held_out_for_inference.parquet")
+    assert d.equals(pipeline.inference("held_out"))
+
+
+def test_null_splits_raises_type_error(runner, pipeline):
+    """
+    BUG (current behaviour asserted): a splits key whose entries are all
+    commented out reads as null, not as a missing key, so .get hands it back
+    instead of its held_out fallback, and save_all fails iterating it, a
+    TypeError, before writing any split, where the visualizer reads a section
+    emptied this way as none
+    """
+    dest = seed(runner, pipeline)
+    with pytest.raises(TypeError):
+        runner.winnow(cfg=cfg(splits=None), processed=dest)
+    assert inference_files(dest) == set()
+
+
+def test_a_split_without_subjects_gets_an_empty_file(runner):
+    """everyone is in train, yet tuning and held_out get files, with no rows"""
+    p = minimal_at(runner, OFF_START)
+    assert set(p.splits["split"]) == {"train"}
+    for threshold in ({"duration_s": DAY_S}, {"after_start_time_s": DAY_S}):
+        runner.winnow(
+            cfg={
+                "outcome_tokens": ["VTL//*"],
+                "threshold": threshold,
+                "splits": list(SPLITS),
+            },
+            processed=p.path,
+        )
+        train = p.inference("train")
+        assert train.height > 0
+        for split in ("tuning", "held_out"):
+            d = p.inference(split)
+            assert d.height == 0 and d.schema == train.schema, (threshold, split)
+    # BUG (current behaviour asserted): under first_occurrence an empty split
+    # panics flagging outcomes in its empty frame, where the other thresholds
+    # write one; a split without the threshold token does the same (see below)
+    with pytest.raises(PanicException):
+        runner.winnow(
+            cfg={
+                "outcome_tokens": ["VTL//*"],
+                "threshold": {"first_occurrence": "VTL//heart_rate"},
+                "splits": ["tuning"],
+            },
+            processed=p.path,
+        )
 
 
 def test_output_home_keeps_two_winnowings_of_one_dataset_apart(runner, pipeline):
@@ -176,10 +312,19 @@ def test_output_home_skips_subdirectories_and_earlier_winnowings(runner, pipelin
     }
 
 
-@pytest.mark.parametrize("output", (None, "same", "dotted"))
+@pytest.mark.parametrize("output", (None, "same", "dotted", "dotdot", "symlink"))
 def test_output_home_defaults_to_the_processed_dir(runner, pipeline, output):
+    """any spelling of the processed dir is the processed dir, a symlink too"""
     dest = seed(runner, pipeline)
-    output = {"same": dest, "dotted": dest / "."}.get(output)
+    link = runner.root / "link"
+    if output == "symlink":
+        link.symlink_to(dest, target_is_directory=True)
+    output = {
+        "same": dest,
+        "dotted": dest / ".",
+        "dotdot": dest / ".." / dest.name,
+        "symlink": link,
+    }.get(output)
     w = runner.winnow(cfg=cfg(splits=["held_out"]), processed=dest, output=output)
     assert w.output_home == w.processed_data_home == dest.resolve()
     assert w.copy_processed_data() == []
@@ -187,6 +332,47 @@ def test_output_home_defaults_to_the_processed_dir(runner, pipeline, output):
         *INPUTS,
         "held_out_for_inference.parquet",
     }
+
+
+@pytest.mark.parametrize("processed", ("relative", "symlink"))
+def test_output_home_matches_a_relative_or_symlinked_processed_dir(
+    runner, pipeline, monkeypatch, processed
+):
+    """
+    the processed dir is resolved before it's compared, so an output_home
+    naming the same dir is it, and no file is copied onto itself
+    """
+    dest = seed(runner, pipeline)
+    if processed == "relative":
+        monkeypatch.chdir(dest.parent)
+        processed = pathlib.Path(dest.name)
+    else:
+        processed = runner.root / "link"
+        processed.symlink_to(dest, target_is_directory=True)
+    w = runner.winnow(cfg=cfg(splits=["held_out"]), processed=processed, output=dest)
+    assert w.processed_data_home == w.output_home == dest.resolve()
+    assert w.copy_processed_data() == []
+    assert {f.name for f in dest.iterdir()} == {
+        *INPUTS,
+        "held_out_for_inference.parquet",
+    }
+
+
+def test_processed_and_output_homes_expand_a_leading_tilde(
+    runner, pipeline, monkeypatch
+):
+    dest = seed(runner, pipeline)
+    for var in ("HOME", "USERPROFILE"):  # the latter on windows
+        monkeypatch.setenv(var, str(runner.root))
+    w = Winnower(
+        winnowing_cfg=runner.cfg_path("winnowing", cfg(splits=["held_out"])),
+        processed_data_home=f"~/{dest.name}",
+        output_home="~/out",
+    )
+    assert w.processed_data_home == dest.resolve()
+    assert w.output_home == (runner.root / "out").resolve()
+    w.save_all()
+    assert inference_files(runner.root / "out") == {"held_out_for_inference.parquet"}
 
 
 @pytest.mark.parametrize("split", SPLITS)
@@ -288,19 +474,11 @@ def test_past_and_future_concatenate_to_the_timeline(pipeline, split):
         assert list(r["s_elapsed_past"]) == list(r["s_elapsed"])[: r["last_valid"]]
 
 
-def _with_hours(runner):
-    """a full run whose tokenization carries hours_to_end_time"""
-    tok = default_cfg("tokenization")
-    tok["include_hours_to_end_time"] = True
-    return runner.full(tokenization=tok)
-
-
-def test_hours_to_end_time_is_split_like_the_tokens(runner):
-    processed = _with_hours(runner)
-    d = processed.inference("held_out")
+def test_hours_to_end_time_is_split_like_the_tokens(extras):
+    d = extras.inference("held_out")
     assert d.height > 0
     assert {"hours_to_end_time_past", "hours_to_end_time_future"} <= set(d.columns)
-    ends = dict(processed.splits.select("subject_id", "end_time").iter_rows())
+    ends = dict(extras.splits.select("subject_id", "end_time").iter_rows())
     for r in d.iter_rows(named=True):
         past, future = (
             list(r["hours_to_end_time_past"]),
@@ -313,13 +491,8 @@ def test_hours_to_end_time_is_split_like_the_tokens(runner):
         assert past + future == [(end - t).total_seconds() / 3600 for t in r["times"]]
 
 
-def test_horizon_after_threshold_truncates_hours_to_end_time_too(runner):
-    processed = _with_hours(runner)
-    runner.winnow(
-        cfg=cfg(splits=["held_out"], horizon_after_threshold_s=HORIZON_S),
-        processed=processed.path,
-    )
-    d = pl.read_parquet(processed.path / "held_out_for_inference.parquet")
+def test_horizon_after_threshold_truncates_hours_to_end_time_too(runner, extras):
+    d = rewinnow(runner, extras, horizon_after_threshold_s=HORIZON_S)
     assert d.height > 0
     shortened = 0
     for r in d.iter_rows(named=True):
@@ -329,6 +502,26 @@ def test_horizon_after_threshold_truncates_hours_to_end_time_too(runner):
         assert future == whole[: len(future)]
         shortened += len(future) < len(whole)
     assert shortened == d.height, "the horizon truncated nothing"
+
+
+def test_numeric_values_ride_along_unsplit(runner, extras):
+    """
+    add_outcome_flags splits only the per-token columns it names, and
+    numeric_values is not one: it passes through whole, aligned with tokens,
+    even under a horizon
+    """
+    whole = extras.tokens_times.select("subject_id", "numeric_values")
+    assert whole["numeric_values"].explode(empty_as_null=False).drop_nulls().len() > 0
+    for d in (
+        extras.inference("held_out"),
+        rewinnow(runner, extras, horizon_after_threshold_s=HORIZON_S),
+    ):
+        assert d.height > 0
+        assert not [c for c in d.columns if c.startswith("numeric_values_")]
+        got = d.select("subject_id", "numeric_values").sort("subject_id")
+        ref = whole.filter(pl.col("subject_id").is_in(got["subject_id"].to_list()))
+        assert got.equals(ref.sort("subject_id"))
+        assert (d["numeric_values"].list.len() == d["tokens"].list.len()).all()
 
 
 @pytest.mark.parametrize("split", SPLITS)
@@ -371,6 +564,78 @@ def test_unmatched_literal_pattern_contributes_nothing(runner, pipeline):
     assert set(w.grokked_outcome_tokens) == labels | {"DSCG//expired"}
     d = pl.read_parquet(dest / "held_out_for_inference.parquet")
     assert not [c for c in d.columns if c.startswith("NOPE")]
+
+
+@pytest.mark.parametrize(
+    "patterns, expected, near",
+    (
+        # a literal is that word alone, not every word it begins
+        (["VTL//heart_rate"], {"VTL//heart_rate"}, {"VTL//heart_rate_Q0"}),
+        # ? is exactly one character
+        (["XFR-IN//???"], {"XFR-IN//icu"}, {"XFR-IN//ed", "XFR-IN//ward"}),
+        (
+            ["DSCG//[eh]*"],
+            {"DSCG//expired", "DSCG//home", "DSCG//hospice"},
+            {"DSCG//skilled_nursing_facility"},
+        ),
+        (["DSCG//[!eh]*"], {"DSCG//skilled_nursing_facility"}, {"DSCG//home"}),
+        # a word that several patterns match is an outcome once
+        (
+            ["XFR-*//icu", "XFR-IN//*", "XFR-IN//icu"],
+            {f"XFR-IN//{x}" for x in ("ed", "icu", "stepdown", "ward")}
+            | {"XFR-OUT//icu"},
+            {"XFR-OUT//ed"},
+        ),
+        (["NOPE//*"], set(), set()),
+        # case counts, and a fused bin's suffix is uppercase; fnmatch passes
+        # both sides through os.path.normcase, which folds case on windows
+        pytest.param(
+            ["VTL//heart_rate_Q[01]", "VTL//heart_rate_q[23]"],
+            {"VTL//heart_rate_Q0", "VTL//heart_rate_Q1"},
+            {"VTL//heart_rate_Q2", "VTL//heart_rate_Q3"},
+            marks=pytest.mark.skipif(
+                os.path.normcase("A") != "A", reason="fnmatch folds case here"
+            ),
+        ),
+    ),
+    ids=(
+        "literal",
+        "any-char",
+        "char-set",
+        "not-char-set",
+        "overlapping",
+        "unmatched",
+        "case",
+    ),
+)
+def test_outcome_patterns_are_matched_with_fnmatch(
+    runner, pipeline, patterns, expected, near
+):
+    """`near` holds words a looser reading of the patterns would also match"""
+    assert near <= set(pipeline.vocab)
+    w = winnower(runner, pipeline.path, outcome_tokens=patterns)
+    assert sorted(w.grokked_outcome_tokens) == sorted(expected)
+    schema = w.prepare_winnowed_frame().collect_schema()
+    assert {c for c, t in schema.items() if t == pl.Boolean} == {
+        f"{t}_{tense}" for t in expected for tense in ("past", "future")
+    }
+
+
+def test_a_lone_star_makes_every_word_an_outcome(runner, pipeline):
+    w = winnower(runner, pipeline.path, outcome_tokens=["*"])
+    assert sorted(w.grokked_outcome_tokens) == sorted(pipeline.vocab)
+    assert {"UNK", "BOS", "EOS"} <= set(w.grokked_outcome_tokens)
+
+
+def test_outcome_tokens_has_no_fallback(runner, pipeline):
+    """unlike splits, a config must give outcome_tokens, or the winnower fails"""
+    c = cfg()
+    del c["outcome_tokens"]
+    with pytest.raises(ConfigAttributeError):
+        Winnower(
+            winnowing_cfg=runner.cfg_path("winnowing", c),
+            processed_data_home=pipeline.path,
+        )
 
 
 @pytest.mark.parametrize("split", SPLITS)
@@ -428,6 +693,22 @@ def test_first_occurrence_ends_the_past_with_the_triggering_token(runner, pipeli
         assert r["XFR-IN//icu_past"] and not r["XFR-IN//icu_future"]
 
 
+def test_first_occurrence_cuts_after_the_earliest_of_several(runner):
+    """H0's second spo2 reading lands in its future; H1 never reads spo2"""
+    p = spo2_twice(runner)
+    d = winnow_train(runner, p, {"first_occurrence": "VTL//spo2"})
+    assert d["subject_id"].to_list() == ["H0"]
+    r = d.row(0, named=True)
+    assert p.decode(r["tokens_past"]) == ["BOS", "VTL//heart_rate", "VTL//spo2"]
+    assert p.decode(r["tokens_future"]) == [
+        "VTL//heart_rate",
+        "VTL//spo2",
+        "VTL//heart_rate",
+        "EOS",
+    ]
+    assert r["VTL//spo2_past"] and r["VTL//spo2_future"]
+
+
 def test_first_occurrence_of_unknown_token_raises_config_key_error(runner, pipeline):
     # a threshold token outside the vocabulary is looked up in tokenizer.yaml
     # with no guard, so it surfaces as omegaconf's "Missing key ..." (a KeyError)
@@ -471,19 +752,41 @@ def test_after_start_time_counts_from_the_start_time_not_the_first_event(runner,
     cuts both 24h after admission
     """
     p = minimal_at(runner, OFF_START, unit)
-    past = {}
-    for key in ("duration_s", "after_start_time_s"):
-        d = winnow_train(runner, p, {key: DAY_S})
-        past[key] = {
-            r["subject_id"]: [
-                (t - r["start_time"]).total_seconds() / HOUR_S
-                for t in r["times"][: r["last_valid"]]
-            ]
-            for r in d.iter_rows(named=True)
-        }
+    past = {
+        key: past_hours(winnow_train(runner, p, {key: DAY_S}))
+        for key in ("duration_s", "after_start_time_s")
+    }
     # BOS shares the time of the first reading
     assert past["duration_s"] == {"H0": [-2, -2], "H1": [3, 3, 25]}
     assert past["after_start_time_s"] == {"H0": [-2, -2, 23], "H1": [3, 3]}
+
+
+def test_after_start_time_cuts_that_long_after_the_start_time(runner):
+    """
+    cut at admission, only H0 began before the cut; cut 26h after it, only H1
+    runs past it, H0's last reading being at 25h
+    """
+    p = minimal_at(runner, OFF_START)
+    past = {
+        h: past_hours(winnow_train(runner, p, {"after_start_time_s": h * HOUR_S}))
+        for h in (0, 26)
+    }
+    assert past == {0: {"H0": [-2, -2]}, 26: {"H1": [3, 3, 25]}}
+
+
+def test_after_start_time_cuts_at_the_precision_of_the_start_time(runner):
+    """
+    at ns, a start_time moved 500 ns later moves the cut as far, so a reading a
+    day after admission, at the cut before, falls just before it, in the past
+    """
+    p = minimal_at(runner, {"H0": (0, DAY_S, DAY_S + 1)}, "ns")
+    at_start = {"after_start_time_s": DAY_S}
+    assert winnow_train(runner, p, at_start)["last_valid"].to_list() == [2]
+    f = p.path / "subject_splits.parquet"
+    pl.read_parquet(f).with_columns(
+        pl.col("start_time") + pl.duration(nanoseconds=500)
+    ).write_parquet(f)
+    assert winnow_train(runner, p, at_start)["last_valid"].to_list() == [3]
 
 
 def test_after_start_time_keeps_only_timelines_spanning_the_cut(runner):
@@ -600,6 +903,28 @@ def test_horizon_after_threshold_clears_outcomes_beyond_it(runner, pipeline):
         assert tok not in list(r["tokens_future"])
 
 
+def test_horizon_after_threshold_keeps_an_event_at_its_very_end(runner):
+    """
+    the window opens at the last event of the past, here H0's first spo2
+    reading at 1h, so a window of 2h closes on its second, at 3h, and keeps it
+    """
+    p = spo2_twice(runner)
+    for horizon_s, future in (
+        (2 * HOUR_S, ["VTL//heart_rate", "VTL//spo2"]),
+        (2 * HOUR_S - 1, ["VTL//heart_rate"]),
+    ):
+        d = winnow_train(
+            runner,
+            p,
+            {"first_occurrence": "VTL//spo2"},
+            horizon_after_threshold_s=horizon_s,
+        )
+        r = d.row(0, named=True)
+        assert p.decode(r["tokens_past"]) == ["BOS", "VTL//heart_rate", "VTL//spo2"]
+        assert p.decode(r["tokens_future"]) == future, horizon_s
+        assert r["VTL//spo2_future"] == ("VTL//spo2" in future)
+
+
 # --- threshold configuration errors ---------------------------------------
 
 
@@ -615,11 +940,22 @@ def test_no_threshold_criterion_raises_not_implemented(runner, pipeline, thresho
         runner.winnow(cfg=c, processed=dest)
 
 
-def test_legacy_horizon_s_without_a_threshold_block_raises(runner, pipeline):
+@pytest.mark.parametrize(
+    "threshold",
+    (None, {"after_start_time_s": DAY_S}, {"first_occurrence": "XFR-IN//icu"}),
+    ids=("no-block", "after_start_time_s", "first_occurrence"),
+)
+def test_legacy_horizon_s_without_threshold_duration_s_raises(
+    runner, pipeline, threshold
+):
     # BUG: run_thresholding reads self.cfg.threshold.duration_s as the eager
-    # default of .get("horizon_s", ...), so horizon_s alone cannot be used
+    # default of .get("horizon_s", ...), so horizon_s alone cannot be used, nor
+    # beside the other thresholds, which it outranks
     c = cfg(splits=["held_out"], horizon_s=43200)
-    del c["threshold"]
+    if threshold is None:
+        del c["threshold"]
+    else:
+        c["threshold"] = threshold
     dest = seed(runner, pipeline)
     with pytest.raises(ConfigAttributeError):
         runner.winnow(cfg=c, processed=dest)
@@ -642,15 +978,35 @@ def test_given_several_thresholds_the_first_in_order_wins(runner):
     however the config orders them
     """
     p = minimal_at(runner, OFF_START)
+    first = {"first_occurrence": "VTL//heart_rate"}
     by_duration = winnow_train(runner, p, {"duration_s": DAY_S})
     by_start = winnow_train(runner, p, {"after_start_time_s": DAY_S})
+    by_first = winnow_train(runner, p, first)
     assert not by_duration.equals(by_start)
+    assert not by_first.equals(by_duration) and not by_first.equals(by_start)
     assert winnow_train(
         runner, p, {"after_start_time_s": DAY_S, "duration_s": DAY_S}
     ).equals(by_duration)
+    assert winnow_train(runner, p, {**first, "after_start_time_s": DAY_S}).equals(
+        by_start
+    )
+    assert winnow_train(runner, p, {**first, "duration_s": DAY_S}).equals(by_duration)
     assert winnow_train(
-        runner, p, {"first_occurrence": "VTL//heart_rate", "after_start_time_s": DAY_S}
-    ).equals(by_start)
+        runner, p, {**first, "after_start_time_s": DAY_S, "duration_s": DAY_S}
+    ).equals(by_duration)
+
+
+@pytest.mark.filterwarnings("ignore:Comparisons with None")
+def test_a_null_threshold_still_outranks_the_ones_after_it(runner, pipeline):
+    """
+    as the README warns, a threshold set to null, as by the override
+    threshold.duration_s=null, is still present, so it still beats the next:
+    a null duration_s compares each duration with null and keeps no stay
+    """
+    after = {"after_start_time_s": DAY_S}
+    assert rewinnow(runner, pipeline, threshold=after).height > 0
+    nulled = rewinnow(runner, pipeline, threshold={"duration_s": None, **after})
+    assert nulled.height == 0
 
 
 # --- reproducibility ------------------------------------------------------

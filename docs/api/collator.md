@@ -31,8 +31,10 @@ two files to the processed-data directory:
    per-subject "spine" (for example, a hospital stay with a start and end time),
    optionally joining in augmentation tables.
 2. [`get_entry`][cocoa.collator.Collator.get_entry] turns one configured event
-   type into standardized token rows — building the `code` string, casting
-   values, and optionally restricting events to the reference window.
+   type into standardized token rows — loading its table (or, for a `REFERENCE`
+   entry, starting from the reference frame) and applying its options, building
+   the `code` string, casting values, and optionally restricting events to the
+   reference window.
 3. [`get_all`][cocoa.collator.Collator.get_all] concatenates every configured
    entry into the full event stream, then
    [`drop_events_outside_window`][cocoa.collator.Collator.drop_events_outside_window]

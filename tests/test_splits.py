@@ -12,6 +12,8 @@ import pytest
 import synth
 from conftest import default_cfg
 
+from cocoa.collator import Collator
+
 DAY = datetime.timedelta(days=1)
 HOUR = datetime.timedelta(hours=1)
 STAY_BASE = datetime.datetime(2024, 3, 1, 8, 0, 0)
@@ -418,7 +420,7 @@ def test_degenerate_fractions_are_accepted_as_given(runner, fracs, expected):
     assert _map(df) == dict(zip(("HA", "HB", "HC", "HD"), expected))
 
 
-@pytest.mark.parametrize("missing", ["tuning_frac", "subject_splits"])
+@pytest.mark.parametrize("missing", ["train_frac", "tuning_frac", "subject_splits"])
 def test_missing_split_fractions_raise(runner, missing):
     """the fractions are read as attributes, so an absent key is not defaulted"""
     cfg = synth.minimal_collation_cfg(
@@ -491,6 +493,100 @@ def test_no_group_id_splits_one_patients_stays_apart(runner):
     assert _map(df) == {"H0": "train", "H1": "train", "H2": "tuning", "H3": "tuning"}
 
 
+def test_group_id_may_name_a_column_of_an_augmentation_table(runner):
+    """
+    the groups are drawn from the augmented reference frame, so a key that
+    only clif_patient carries works: PA and PC share a household, which trains
+    as one group, where grouping by patient would hold HC out
+    """
+    spec = (
+        ("HA", "PA", 0, 1),
+        ("HB", "PB", 10, 11),
+        ("HC", "PC", 20, 21),
+        ("HD", "PD", 30, 31),
+    )
+    raw = _spec_raw(runner, spec)
+    households = {"PA": "F1", "PB": "F2", "PC": "F1", "PD": "F3"}
+    patients = raw / "clif_patient.parquet"
+    pl.read_parquet(patients).with_columns(
+        household_id=pl.col("patient_id").replace_strict(households)
+    ).write_parquet(patients)
+    cfg = synth.minimal_collation_cfg(group_id="household_id", subject_splits=THIRDS)
+    cfg["reference"]["augmentation_tables"] = [
+        {"table": "clif_patient", "key": "patient_id", "validation": "m:1"}
+    ]
+    # 3 households, bounds int(3 * cumsum([0.34, 0.33])) -> (1, 2)
+    assert _map(_splits_of(runner.collate(cfg=cfg, raw=raw))) == {
+        "HA": "train",
+        "HC": "train",
+        "HB": "tuning",
+        "HD": "held_out",
+    }
+
+
+def test_a_null_group_id_does_not_switch_grouping_off(runner):
+    """
+    group_id is read by its presence, not its value, as the README warns of
+    such keys: `group_id: null` (what yaml makes of `group_id:` once its value
+    is commented out), or the override `group_id=null`, leaves grouping on with
+    no column to group by, and the split fails; deleting the key, as
+    `~group_id` does, splits on subject
+    """
+    cfg = synth.minimal_collation_cfg(
+        group_id=None, subject_splits={"train_frac": 0.5, "tuning_frac": 0.5}
+    )
+    raw = _stays_raw(runner)
+    with pytest.raises((ValueError, pl.exceptions.PolarsError)):
+        runner.collate(cfg=cfg, raw=raw)
+    collator = Collator(
+        collation_cfg=runner.cfg_path("collation", cfg),
+        raw_data_home=raw,
+        processed_data_home=runner.dir(),
+        overrides=["~group_id"],
+    )
+    collator.save_all()
+    # PA's H0 and H3 land apart, as in test_no_group_id_splits_one_patients_stays_apart
+    assert _map(_splits_of(collator)) == {
+        "H0": "train",
+        "H1": "train",
+        "H2": "tuning",
+        "H3": "tuning",
+    }
+
+
+# --- start and end times -----------------------------------------------------
+
+
+def test_each_subject_keeps_its_own_start_and_end_time(pipeline):
+    """
+    start_time and end_time are the subject's reference.start_time and
+    reference.end_time, not its group's first admission, which only orders the
+    split; the inference frames carry them on for the winnower to cut at
+    """
+    manifest, utc = pipeline.manifest, datetime.timezone.utc
+    expected = {
+        h: (
+            manifest.admission[h].replace(tzinfo=utc),
+            manifest.discharge[h].replace(tzinfo=utc),
+        )
+        for h in manifest.subject_ids
+    }
+    multi = [p for p, hids in manifest.subjects_of.items() if len(hids) > 1]
+    assert len(multi) == 8  # each with a stay admitted after its group's first
+    splits = pipeline.splits
+    assert (
+        splits.schema["start_time"]
+        == splits.schema["end_time"]
+        == pl.Datetime("us", "UTC")
+    )
+    times = splits.select("subject_id", "start_time", "end_time").iter_rows()
+    assert {s: (a, d) for s, a, d in times} == expected
+    inference = pipeline.inference("held_out")
+    assert inference.height > 0
+    for s, a, d in inference.select("subject_id", "start_time", "end_time").iter_rows():
+        assert (a, d) == expected[s], s
+
+
 # --- pass-through columns ----------------------------------------------------
 
 
@@ -527,6 +623,34 @@ def test_no_pass_through_columns_yields_only_subject_and_split(runner):
     df = _splits_of(runner.collate(cfg=cfg))
     assert df.columns == ["subject_id", "split", "start_time", "end_time"]
     assert df.height == 48
+
+
+def test_an_empty_pass_through_list_adds_no_columns(runner):
+    cfg = synth.minimal_collation_cfg(pass_through_columns=[])
+    spec = (("HA", "PA", 0, 1), ("HB", "PB", 10, 11))
+    df = _splits_of(runner.collate(cfg=cfg, raw=_spec_raw(runner, spec)))
+    assert df.columns == ["subject_id", "split", "start_time", "end_time"]
+    assert sorted(df["subject_id"]) == ["HA", "HB"]
+
+
+@pytest.mark.parametrize(
+    "columns,error",
+    [(None, TypeError), ("age_at_admission", pl.exceptions.PolarsError)],
+    ids=["null", "bare-string"],
+)
+def test_pass_through_columns_must_be_a_list(runner, columns, error):
+    """
+    pass_through_columns has to be a list, or be left out: the key is tested
+    for presence and its value unpacked, so null -- what yaml makes of the key
+    once every column under it is commented out -- raises a TypeError, with
+    meds.parquet already written, and a bare string is unpacked into its
+    characters, sending polars to look for a column "a"; `[]` passes nothing
+    through
+    """
+    cfg = synth.minimal_collation_cfg(pass_through_columns=columns)
+    spec = (("HA", "PA", 0, 1), ("HB", "PB", 10, 11))
+    with pytest.raises(error):
+        runner.collate(cfg=cfg, raw=_spec_raw(runner, spec))
 
 
 def test_pass_through_columns_reach_the_inference_frame(pipeline):
@@ -599,7 +723,14 @@ def test_inference_frames_partition_by_split(pipeline):
 
 
 def test_duplicate_reference_row_fails_the_pass_through_join(runner):
-    cfg = synth.minimal_collation_cfg(pass_through_columns=["age_at_admission"])
+    """
+    with group_id, whose split join does not validate the reference table, it
+    is the pass-through join, 1:1 on subject_id, that keeps a repeated stay
+    from multiplying its rows; without group_id the split join stops it first
+    """
+    cfg = synth.minimal_collation_cfg(
+        group_id="patient_id", pass_through_columns=["age_at_admission"]
+    )
     with pytest.raises(pl.exceptions.ComputeError, match="1:1"):
         runner.collate(cfg=cfg, raw=_stays_raw(runner, duplicate="H0"))
 

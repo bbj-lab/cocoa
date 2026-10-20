@@ -13,6 +13,7 @@ import pytest
 import synth
 from conftest import Processed, default_cfg
 from omegaconf import OmegaConf
+from omegaconf.errors import ReadonlyConfigError
 
 from cocoa.collator import Collator
 from cocoa.tokenizer import Tokenizer
@@ -204,6 +205,35 @@ def test_from_yaml_prefers_saved_cfg_over_command_line_overrides(runner, src_yam
     loader = Tokenizer(processed_data_home=runner.dir(), overrides=["n_bins=4"])
     assert loader.cfg.n_bins == 4
     assert loader.load(src_yaml).cfg.n_bins == 10
+
+
+def test_a_loaded_config_is_the_saved_one_alone(runner, src_yaml):
+    """
+    nothing of the loading config, its overrides or kwargs, or the shipped
+    default is merged in, so a key the saved config lacks, as one from 26.6
+    lacks shuffle_rows, stays absent and falls back as it did then
+    """
+    saved = OmegaConf.load(src_yaml)
+    del saved.cfg.shuffle_rows
+    old = runner.root / "tokenizer_26_6.yaml"
+    old.write_text(OmegaConf.to_yaml(saved))
+    cfg = {**default_cfg("tokenization"), "insert_clocks": True}
+    loader = Tokenizer(
+        tokenization_cfg=runner.cfg_path("tokenization", cfg),
+        processed_data_home=runner.dir(),
+        overrides=["shuffle_rows=true", "stray=1"],
+        include_numeric_values=True,
+    )
+    assert loader.load(old).cfg == saved.cfg
+
+
+def test_a_loaded_config_is_read_only(runner, src_yaml):
+    loaded = Tokenizer(processed_data_home=runner.dir()).load(src_yaml)
+    with pytest.raises(ReadonlyConfigError):
+        loaded.cfg.n_bins = 4
+    with pytest.raises(ReadonlyConfigError):
+        loaded.cfg.spacers["1y+"] = 525960
+    assert loaded.cfg.n_bins == 10 and "1y+" not in loaded.cfg.spacers
 
 
 def test_saved_n_bins_drives_bins_reconstruction(runner):
@@ -535,3 +565,134 @@ def test_loaded_tokenizer_reproduces_the_original_tokens(runner, trained, src_ya
     again = pl.read_parquet(dest / "tokens_times.parquet").sort("subject_id")
     assert original.height > 0
     assert original.equals(again)
+
+
+# --- options under reuse -----------------------------------------------------
+
+
+def test_a_reused_tokenizer_keeps_every_option_it_was_trained_with(runner):
+    """
+    the loading config is the shipped default, so an option lost on reload
+    would tokenize differently from the run that learned the tokenizer; the
+    shipped spacers stand in for custom ones, which reuse mangles (below)
+    """
+    shipped = default_cfg("tokenization")
+    cfg = {
+        **shipped,
+        "n_bins": 4,
+        "fused": False,
+        "include_numeric_values": True,
+        "include_hours_to_end_time": True,
+        "min_training_ct": 3,
+        "shuffle_rows": True,
+        "ordering": list(reversed(shipped["ordering"])),
+        "insert_spacers": True,
+        "insert_clocks": True,
+        "clocks": ["02", "14"],
+    }
+    learned = runner.seed_collated()
+    runner.tokenize(processed=learned, cfg=cfg)
+    reused = _seed(learned, runner.dir())
+    tkzr = runner.tokenize(processed=reused, tokenizer_home=learned / "tokenizer.yaml")
+    assert tkzr.is_training is False
+    vocab = set(tkzr.lookup["to_tokenize"])
+    assert {w for w in vocab if w.startswith("CLCK//")} == {"CLCK//02", "CLCK//14"}
+    assert "Q3" in vocab and "Q4" not in vocab
+
+    want, got = (pl.read_parquet(d / "tokens_times.parquet") for d in (learned, reused))
+    assert want.columns == [
+        "subject_id",
+        "tokens",
+        "times",
+        "numeric_values",
+        "hours_to_end_time",
+    ]
+    assert got.equals(want)
+    # and the tokenizer.yaml written under reuse records the config it ran with
+    assert (
+        OmegaConf.load(reused / "tokenizer.yaml").cfg
+        == OmegaConf.load(learned / "tokenizer.yaml").cfg
+    )
+
+
+def test_a_tokenizer_yaml_written_before_26_9_1_retokenizes_as_its_writer_did(runner):
+    """
+    such a yaml has no counts, and records its config as written, which could
+    leave out every key but n_bins and ordering, `fused` among them, which then
+    meant unfused; reloaded under the shipped default, it makes the tokens it
+    made then
+    """
+    shipped = default_cfg("tokenization")
+    learned = runner.seed_collated()
+    runner.tokenize(
+        processed=learned,
+        cfg={
+            "n_bins": shipped["n_bins"],
+            "ordering": shipped["ordering"],
+            "fused": False,
+        },
+    )
+    y = OmegaConf.load(learned / "tokenizer.yaml")
+    del y.counts, y.cfg.fused
+    assert sorted(y.cfg) == ["n_bins", "ordering"]
+    legacy = runner.root / "legacy.yaml"
+    legacy.write_text(OmegaConf.to_yaml(y))
+
+    reused = _seed(learned, runner.dir())
+    tkzr = runner.tokenize(processed=reused, tokenizer_home=legacy)
+    assert not tkzr.fused
+    want, got = (pl.read_parquet(d / "tokens_times.parquet") for d in (learned, reused))
+    assert want.columns == ["subject_id", "tokens", "times"]
+    assert got.equals(want)
+
+
+def test_a_reused_tokenizer_keeps_its_own_spacers(runner):
+    """
+    reused under the shipped default, a tokenizer trained with spacers of its
+    own buckets gaps by those alone, not merged with the default's, so it
+    reproduces its tokens and records only its own spacers
+    """
+    own = {"short": 10, "long": 100}
+    p = runner.minimal(
+        hospitalizations=MIN_HOSP,
+        vitals=[  # gaps of 50 and 130 minutes
+            {"recorded_dttm": datetime.datetime(2024, 1, 1, h, m), "vital_value": v}
+            for h, m, v in ((0, 0, 1.0), (0, 50, 2.0), (3, 0, 3.0))
+        ],
+        tokenization={
+            **default_cfg("tokenization"),
+            "insert_spacers": True,
+            "spacers": own,
+        },
+    )
+    learned = p.timeline("H0")
+    assert [w for w in learned if w.startswith("TIME//")] == [
+        "TIME//short",
+        "TIME//long",
+    ]
+    dest = _seed(p.path, runner.dir())
+    tkzr = runner.tokenize(processed=dest, tokenizer_home=p.path / "tokenizer.yaml")
+    assert dict(tkzr.cfg.spacers) == own
+    reused = Processed(dest, None)
+    assert reused.timeline("H0") == learned
+    assert dict(reused.tokenizer_yaml.cfg.spacers) == own
+
+
+def test_a_tokenizer_learned_without_numeric_values_fails_on_reuse(runner):
+    """
+    BUG (current behaviour asserted): with no finite numeric value to learn
+    from, the tokenizer saves `bins: {}`, which from_yaml rebuilds as a frame of
+    null-typed columns, so binning any data with it, even the data it was
+    learned on, fails polars' join on `code`
+    """
+    p = runner.minimal(
+        hospitalizations=MIN_HOSP,
+        vitals=[{"recorded_dttm": datetime.datetime(2024, 1, 1, h)} for h in (3, 6)],
+    )
+    assert p.timeline("H0") == ["BOS", "VTL//heart_rate", "VTL//heart_rate", "EOS"]
+    assert dict(p.tokenizer_yaml.bins) == {}
+    with pytest.raises(pl.exceptions.PolarsError):
+        runner.tokenize(
+            processed=_seed(p.path, runner.dir()),
+            tokenizer_home=p.path / "tokenizer.yaml",
+        )

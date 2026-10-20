@@ -370,7 +370,11 @@ def test_hours_to_end_time_counts_down_to_each_subjects_end_time(runner):
     p = runner.minimal(
         hospitalizations=[stay(10)[0], stay(24)[0]],
         vitals=[
-            {"hospitalization_id": h, "recorded_dttm": JAN1 + m * MIN, "vital_category": c}
+            {
+                "hospitalization_id": h,
+                "recorded_dttm": JAN1 + m * MIN,
+                "vital_category": c,
+            }
             for h, c, m in (
                 ("H0", "a", 90),
                 ("H0", "a", 585),
@@ -1050,9 +1054,7 @@ OPTIONAL_KEYS = (
 )
 
 
-def test_a_config_leaving_out_every_optional_key_tokenizes_as_shipped(
-    runner, pipeline
-):
+def test_a_config_leaving_out_every_optional_key_tokenizes_as_shipped(runner, pipeline):
     """
     each key falls back to what the shipped default sets, which for those added
     since 26.6.0 (min_training_ct, include_hours_to_end_time, shuffle_rows) is

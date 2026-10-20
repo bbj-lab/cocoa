@@ -85,7 +85,7 @@ There's a pytest suite in [tests/](tests/) — run it with `pytest`. CI
 ([.github/workflows/tests.yml](.github/workflows/tests.yml)) runs it on every
 push and pull request, and weekly, on Python 3.11 through 3.15, and once more on
 3.11 with each dependency at the lowest version [pyproject.toml](pyproject.toml)
-allows; it also lints with `ruff check`, but doesn't check formatting. Keep the
+allows; it doesn't run ruff, so format and lint locally before pushing. Keep the
 matrix in step with `requires-python`, and raise a floor in `pyproject.toml` when
 code starts needing a newer dependency, or the lowest job fails. Each matrix job
 also uploads its coverage to [Codecov](https://app.codecov.io/gh/bbj-lab/cocoa)

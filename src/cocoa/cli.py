@@ -17,6 +17,7 @@ from rich.console import Console
 from rich.markup import escape
 
 from cocoa.collator import Collator
+from cocoa.demo import write_demo
 from cocoa.tokenizer import Tokenizer
 from cocoa.util import combine_processed_data
 from cocoa.visualizer import SubjectNotFoundError, Visualizer, make_server
@@ -465,6 +466,44 @@ def visualize(
     finally:
         server.server_close()
     print("  Stopped serving.")
+
+
+@app.command()
+def get_demo(
+    raw_data_home: Annotated[
+        str,
+        typer.Option("--raw-data-home", "-r", help="Raw data directory to write to"),
+    ] = ...,
+    verbose: Annotated[
+        bool,
+        typer.Option(
+            "--verbose", "-v", help="Show what clifpy prints as it derives tables"
+        ),
+    ] = False,
+) -> None:
+    """
+    Write the MIMIC-IV demo's CLIF tables, from clifpy.
+
+    Copies the tables of the demo that clifpy ships to a raw data
+    directory, and derives from them, with clifpy, the four more that the
+    shipped collation config reads. Needs clifpy, which cocoa's demo
+    extra installs.
+    """
+    with console.status("[bold green]Writing the demo..."):
+        t0 = time.perf_counter()
+        try:
+            written = write_demo(raw_data_home, verbose=verbose)
+        except ModuleNotFoundError as e:
+            if e.name != "clifpy":
+                raise
+            print(f"[red]✗[/red] {escape(str(e))}")
+            raise typer.Exit(code=1)
+        t1 = time.perf_counter()
+        print(f"\n[green]✓[/green] Demo written in {t1 - t0:.2f}s.")
+    print(
+        f"  Output: [cyan]{written[0].parent}[/cyan] ({len(written)} tables, "
+        f"from clifpy {version('clifpy')})"
+    )
 
 
 def main() -> None:

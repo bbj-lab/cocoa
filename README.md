@@ -30,9 +30,18 @@ pip install cocoa-tokenizer
 
 This installs the `cocoa` command. To see it run end to end on public data,
 follow the
-[MIMIC-IV demo](https://github.com/bbj-lab/cocoa/blob/master/recipes/mimic-iv-demo.md).
-The examples below come from that demo and use its paths: it reads CLIF tables
-from `data-raw/demo` and writes processed data to `processed/demo`.
+[MIMIC-IV demo](https://github.com/bbj-lab/cocoa/blob/master/recipes/mimic-iv-demo.md),
+which installs cocoa with its `demo` extra (on Python 3.11 to 3.14):
+
+```sh
+pip install 'cocoa-tokenizer[demo]'
+```
+
+The extra brings [clifpy](https://pypi.org/project/clifpy/), the CLIF
+consortium's Python package, which ships the demo as CLIF tables, and
+`cocoa get-demo` writes them out. The examples below come from that demo and use
+its paths: it reads CLIF tables from `data-raw/demo` and writes processed data to
+`processed/demo`.
 
 ## (1) Collation
 
@@ -424,15 +433,15 @@ that specifies:
     │ ---        ┆ ---               ┆ ---                             │
     │ str        ┆ list[u32]         ┆ list[datetime[μs, UTC]]         │
     ╞════════════╪═══════════════════╪═════════════════════════════════╡
-    │ 25563031   ┆ [86, 5, … 103]    ┆ [2110-04-11 20:08:00 UTC, 2110… │
-    │ 20291550   ┆ [86, 1088, … 103] ┆ [2110-11-30 09:45:00 UTC, 2110… │
+    │ 25563031   ┆ [88, 5, … 105]    ┆ [2110-04-11 20:08:00 UTC, 2110… │
+    │ 20291550   ┆ [88, 1103, … 105] ┆ [2110-11-30 09:45:00 UTC, 2110… │
     │ …          ┆ …                 ┆ …                               │
-    │ 21477991   ┆ [86, 1090, … 103] ┆ [2201-12-11 08:04:13 UTC, 2201… │
+    │ 21477991   ┆ [88, 1105, … 105] ┆ [2201-12-11 08:04:13 UTC, 2201… │
     └────────────┴───────────────────┴─────────────────────────────────┘
     ```
 
-    In this example, token 86 corresponds to the beginning-of-sequence token
-    (`BOS`), token 103 to the end-of-sequence token (`EOS`), and the tokens in
+    In this example, token 88 corresponds to the beginning-of-sequence token
+    (`BOS`), token 105 to the end-of-sequence token (`EOS`), and the tokens in
     between correspond to the subject's clinical events in chronological order
     (with ties broken by the configured `ordering`). In fused mode each event is
     a single token; in unfused mode an event with a numeric value becomes two
@@ -458,25 +467,25 @@ that specifies:
     ```yaml
     bins:
       LAB-RES//platelet_count:
-        - 34.0
-        - 83.0
-        - 115.0
-        - 145.0
-        - 170.0
-        - 202.0
-        - 241.0
-        - 292.0
-        - 359.0
+        - 40.0
+        - 76.0
+        - 108.0
+        - 135.0
+        - 158.0
+        - 189.0
+        - 229.0
+        - 282.0
+        - 348.0
       VTL//heart_rate:
         - 67.0
         - 75.0
-        - 81.0
-        - 85.0
-        - 90.0
-        - 95.0
-        - 101.0
-        - 106.0
-        - 114.0
+        - 80.0
+        - 84.0
+        - 89.0
+        - 94.0
+        - 100.0
+        - 105.0
+        - 113.0
       …
     ```
 
@@ -572,7 +581,7 @@ after the same time:
 The two cut a timeline at the same point only if it opens at its start time. With
 the shipped collation config, which times its `REFERENCE` entries at
 `admission_dttm`, no timeline opens after its admission, but many open before it:
-on the demo, 203 of the 275 timelines do, by as much as a day, 180 of them with
+on the demo, 236 of the 310 timelines do, by as much as a day, 213 of them with
 an arrival in the emergency department (`XFR-IN//ed`). Held-out hospitalization
 29079034 arrives there 20 hours before its admission, so `duration_s: 86400` cuts
 it less than 4 hours into its stay, with 57 tokens in its past, where
@@ -608,10 +617,10 @@ cocoa winnow -p processed/demo -o processed/demo/winnowed-icu \
     '~threshold.duration_s' threshold.first_occurrence=XFR-IN//icu
 ```
 
-On the demo, the first keeps 50 of the 55 held-out hospitalizations, those whose
-timelines run past 24 hours; the second the same 50, which also run past 24 hours
-after admission, though it cuts 24 of them later; and the third 26, those with a
-transfer to the ICU.
+On the demo, the first keeps 57 of the 63 held-out hospitalizations, those whose
+timelines run past 24 hours; the second 55 of those, the ones that also run past
+24 hours after admission, cutting 25 of them later than the first; and the third
+26, those with a transfer to the ICU.
 
 ## Usage
 
@@ -640,6 +649,7 @@ config keys from the command line, see
 │ combine-datasets  Combine multiple processed datasets into one.         │
 │ visualize         Visualize a subject's timeline as an interactive html │
 │                   page.                                                 │
+│ get-demo          Write the MIMIC-IV demo's CLIF tables, from clifpy.   │
 ╰─────────────────────────────────────────────────────────────────────────╯
 ```
 
@@ -823,6 +833,27 @@ with commands:
     │                                            into past and future, and    │
     │                                            its outcome flags            │
     │    --help                  -h              Show this message and exit.  │
+    ╰─────────────────────────────────────────────────────────────────────────╯
+    ```
+
+- `cocoa get-demo`
+
+    ```
+    Usage: cocoa get-demo [OPTIONS]
+
+    Write the MIMIC-IV demo's CLIF tables, from clifpy.
+
+    Copies the tables of the demo that clifpy ships to a raw data
+    directory, and derives from them, with clifpy, the four more that the
+    shipped collation config reads. Needs clifpy, which cocoa's demo
+    extra installs.
+
+    ╭─ Options ───────────────────────────────────────────────────────────────╮
+    │ *  --raw-data-home  -r      <str>  Raw data directory to write to       │
+    │                                    [required]                           │
+    │    --verbose        -v             Show what clifpy prints as it        │
+    │                                    derives tables                       │
+    │    --help           -h             Show this message and exit.          │
     ╰─────────────────────────────────────────────────────────────────────────╯
     ```
 

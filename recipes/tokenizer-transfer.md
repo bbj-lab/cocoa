@@ -4,26 +4,29 @@ In this example, we'll split the [MIMIC-IV demo](mimic-iv-demo.md) in two by whe
 its patients were treated, learn a tokenizer on the earlier patients, and apply
 it to the later ones, as you might apply a model to data newer than any it was
 trained on. The second dataset could just as well come from another hospital. The
-commands run from the demo's working directory, once its step 3 has made the CLIF
-tables.
+commands run from the demo's working directory, once its step 1 has written the
+CLIF tables.
 
 0. Split the CLIF tables in two. MIMIC-IV shifts each patient's dates by its own
    amount, but the `anchor_year_group` of its `patients` table places each
    patient's care, roughly, in a span of three real years: 2011–2013 for 43 of
-   the demo's patients, and 2014–2016 for the other 57. The script on the ETL's
-   branch,
-   [`CLIF-MIMIC/scripts/split_by_years.py`](https://github.com/bbj-lab/CLIF-MIMIC/blob/demo/scripts/split_by_years.py),
-   writes each group's rows of every table to a directory of its own next to the
-   demo's, `data-raw/demo-2011-2013` and `data-raw/demo-2014-2016`; run it with
-   the Python that cocoa is installed in, which has polars:
+   the demo's patients, and 2014–2016 for the other 57. The CLIF tables leave
+   `anchor_year_group` out, so download the demo's `patients` table from
+   PhysioNet, along with a script from a branch of the
+   [CLIF-MIMIC ETL](https://github.com/bbj-lab/CLIF-MIMIC),
+   [`split_by_years.py`](https://github.com/bbj-lab/CLIF-MIMIC/blob/demo/scripts/split_by_years.py),
+   which writes each group's rows of every table to a directory of its own next
+   to the demo's, `data-raw/demo-2011-2013` and `data-raw/demo-2014-2016`. Run it
+   with the Python that cocoa is installed in, which has polars:
 
     ```sh
-    python CLIF-MIMIC/scripts/split_by_years.py data-raw/demo \
-        mimic-iv-clinical-database-demo-2.2/hosp/patients.csv.gz
+    curl -fLO https://physionet.org/files/mimic-iv-demo/2.2/hosp/patients.csv.gz
+    curl -fLO https://raw.githubusercontent.com/bbj-lab/CLIF-MIMIC/demo/scripts/split_by_years.py
+    python split_by_years.py data-raw/demo patients.csv.gz
     ```
 
-    The earlier patients have 147 of the demo's hospitalizations, and the
-    later 128.
+    The earlier patients have 161 of the demo's hospitalizations, and the
+    later 149.
 
 1. Run collation on each dataset separately with the same config. Keeping
    `default_timezone` the same across both matters if you tokenize with clock
@@ -49,7 +52,7 @@ tables.
       --processed-data-home processed/demo-2011-2013
     ```
 
-    It learns 974 tokens from the 87 hospitalizations of the earlier patients'
+    It learns 984 tokens from the 87 hospitalizations of the earlier patients'
     training split.
 
 3. Supply the `--tokenizer-home` argument to the `tokenize` command to load the
@@ -70,8 +73,8 @@ tables.
     and is not reconsidered here. A code that is common in the later data but was
     too rare in the earlier data to be learned tokenizes to `UNK`, the same as a
     code the earlier data never saw at all. The `counts` in `tokenizer.yaml`
-    likewise stay as the earlier data recorded them. Here 553 of the later
-    timelines' 152,080 tokens, about 0.4%, are `UNK`, most of them codes that no
+    likewise stay as the earlier data recorded them. Here 589 of the later
+    timelines' 170,756 tokens, about 0.3%, are `UNK`, most of them codes that no
     earlier training hospitalization had, such as the infusion
     `MED-CTS//octreotide` and the ventilator mode `RESP//pressure_control`.
 
@@ -95,11 +98,11 @@ tables.
       --output-data-dir processed/demo-combined
     ```
 
-    This writes the events, splits, timelines, and winnowed frames of all 275
+    This writes the events, splits, timelines, and winnowed frames of all 310
     hospitalizations to `processed/demo-combined`, with the earlier patients'
     `tokenizer.yaml`. Each hospitalization keeps the split it was given, so the
-    combined dataset has 180 training, 27 tuning, and 68 held-out
-    hospitalizations, not the 187, 33, and 55 of the demo collated whole. It
+    combined dataset has 201 training, 27 tuning, and 82 held-out
+    hospitalizations, not the 208, 39, and 63 of the demo collated whole. It
     warns of a `Configuration mismatch` between the two `tokenizer.yaml` files,
     in `is_training` alone, since the later patients were tokenized by a frozen
     copy; any other key would mean the halves were tokenized differently.

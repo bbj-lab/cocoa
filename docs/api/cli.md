@@ -2,8 +2,9 @@
 
 Cocoa ships a command-line interface, `cocoa`, that drives every stage of the
 pipeline. Each stage has its own command. There are also two convenience
-commands, for running everything at once and for merging datasets, and a viewer
-for inspecting one subject's tokenized timeline.
+commands, for running everything at once and for merging datasets, a viewer for
+inspecting one subject's tokenized timeline, and a command that writes the
+MIMIC-IV demo's tables to start from.
 
 ## Commands
 
@@ -15,6 +16,7 @@ for inspecting one subject's tokenized timeline.
 | `cocoa pipeline`         | Run `collate`, `tokenize`, and `winnow` end-to-end.     |
 | `cocoa combine-datasets` | Merge multiple processed datasets into one.             |
 | `cocoa visualize`        | Show one subject's timeline as an interactive web page. |
+| `cocoa get-demo`         | Write the MIMIC-IV demo's CLIF tables, from clifpy.     |
 
 Every stage command accepts `--processed-data-home` / `-p` (the working directory
 for intermediate and output files) and `--verbose` / `-v` (extra logging and
@@ -22,7 +24,10 @@ summary statistics). Each single-stage command also takes an optional `-c` confi
 file that overrides the packaged default for that stage; `cocoa pipeline` takes
 one per stage instead, as `--collation-config`, `--tokenization-config`, and
 `--winnowing-config`. `cocoa visualize` takes `-p` and `-c` too, but has no
-`--verbose`.
+`--verbose`. `cocoa get-demo` takes only `--raw-data-home` / `-r`, the directory
+to write the tables to, and `--verbose` / `-v`, which shows what clifpy prints;
+it needs clifpy, which cocoa's `demo` extra installs
+(`pip install 'cocoa-tokenizer[demo]'`).
 
 To change individual config keys for one run, list them after the command's
 options, as in `cocoa tokenize -p processed/demo n_bins=5`; for `cocoa pipeline`,
@@ -39,8 +44,14 @@ cocoa tokenize --help
 ## Typical usage
 
 The examples here use the paths of the
-[MIMIC-IV demo](../recipes/mimic-iv-demo.md), run from its working directory. Run
-the whole pipeline in one go:
+[MIMIC-IV demo](../recipes/mimic-iv-demo.md), run from its working directory.
+Write the demo's CLIF tables, from clifpy:
+
+```sh
+cocoa get-demo --raw-data-home data-raw/demo
+```
+
+Then run the whole pipeline in one go:
 
 ```sh
 cocoa pipeline \

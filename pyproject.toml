@@ -37,6 +37,8 @@
 
     [project.optional-dependencies]
         all = [ "cocoa-tokenizer[dev,docs,test]" ]
+        # the mimic-iv demo, as clif tables, for `cocoa get-demo`
+        demo = [ "clifpy>=2.1" ]
         dev = [ "pip>=21.3", "ruff>=0.9" ]
         docs = [
             "mkdocs>=1.5.3,<2",

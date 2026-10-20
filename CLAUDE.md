@@ -85,7 +85,7 @@ There's a pytest suite in [tests/](tests/) — run it with `pytest`. CI
 ([.github/workflows/tests.yml](.github/workflows/tests.yml)) runs it on every
 push and pull request, and weekly, on Python 3.11 through 3.15, and once more on
 3.11 with each dependency at the lowest version [pyproject.toml](pyproject.toml)
-allows; it also lints with `ruff check`, but doesn't check formatting. Keep the
+allows; it doesn't run ruff, so format and lint locally before pushing. Keep the
 matrix in step with `requires-python`, and raise a floor in `pyproject.toml` when
 code starts needing a newer dependency, or the lowest job fails. Each matrix job
 also uploads its coverage to [Codecov](https://app.codecov.io/gh/bbj-lab/cocoa)
@@ -136,11 +136,15 @@ external URLs. When you change behavior, add/update a pytest case first.
   sets a key, adding it if absent, so a typo adds a stray key rather than
   failing; `~key` deletes one; a Hydra-style leading `+`/`++` is ignored.
   Deletion matters where a key's presence is what counts (the winnower's
-  `threshold` keys), since `key=null` leaves it present. `cocoa pipeline` routes each override to the stage its first
-  key names (`collation.`, `tokenization.`, `winnowing.`) and checks all three
-  through `Configurable.load_cfg` before collating. Under `--tokenizer-home`,
-  `Tokenizer.from_yaml` passes the saved config as kwargs, so it wins over
-  overrides just as it does over `-c`.
+  `threshold` keys), since `key=null` leaves it present. `cocoa pipeline` routes
+  each override to the stage its first key names (`collation.`, `tokenization.`,
+  `winnowing.`) and checks all three through `Configurable.load_cfg` before
+  collating. Under `--tokenizer-home`, `Tokenizer.from_yaml` takes the saved
+  config as written and makes it read-only: it is never merged with the shipped
+  default, a `-c` config, overrides, or kwargs, so a key it lacks stays absent
+  and falls back through `cfg.get` as it did when that tokenizer was saved
+  (`cocoa tokenize` notes that `-c` and overrides don't apply when given with
+  it). The one key it adds is a missing `fused`, as `false` (see Conventions).
 - **Polars everywhere**, lazy by default. Frames are built as `LazyFrame` and
   written with `sink_parquet(..., engine="streaming")` to stay memory-bounded;
   `--verbose` forces collection for stats and can OOM on large data.

@@ -8,13 +8,14 @@ import shutil
 
 import polars as pl
 import pytest
-from conftest import default_cfg
+from conftest import default_cfg, write_cfg
 from omegaconf import OmegaConf
 
 from cocoa.util import combine_processed_data
 
 ARTIFACTS = ("meds.parquet", "subject_splits.parquet", "tokens_times.parquet")
 OLD_DTTM = "2000-01-01T00:00:00-06:00"
+NEWER_DTTM = "2001-01-01T00:00:00-06:00"
 
 
 def copy_processed(src, dest, *, suffix: str = None) -> pathlib.Path:
@@ -159,6 +160,29 @@ def test_matching_configs_do_not_warn(inputs, tmp_path, capsys):
     capsys.readouterr()
     combine_processed_data([a, b], tmp_path / "out")
     assert "Configuration mismatch" not in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    "stamps",
+    [(OLD_DTTM, NEWER_DTTM), (None, OLD_DTTM), (OLD_DTTM, None)],
+    ids=["both-stamped", "first-unstamped", "later-unstamped"],
+)
+def test_configs_differing_only_in_created_dttm_match(tmp_path, capsys, stamps):
+    """when a tokenizer.yaml was created, or whether it says, is no mismatch;
+    the combined one records when it was combined"""
+    dirs = []
+    for name, stamp in zip(("a", "b"), stamps, strict=True):
+        cfg = {"lookup": {"UNK": 0, "BOS": 1, "EOS": 2}, "cfg": {"n_bins": 10}}
+        if stamp is not None:
+            cfg["created_dttm"] = stamp
+        dirs.append(tmp_path / name)  # holding just the yaml, all that's compared
+        write_cfg(dirs[-1] / "tokenizer.yaml", cfg)
+    capsys.readouterr()
+    out = pathlib.Path(combine_processed_data(dirs, tmp_path / "out"))
+    assert "Configuration mismatch" not in capsys.readouterr().out
+    combined = OmegaConf.load(out / "tokenizer.yaml").created_dttm
+    newest = datetime.datetime.fromisoformat(NEWER_DTTM)
+    assert datetime.datetime.fromisoformat(combined) > newest
 
 
 def test_mismatched_configs_warn_but_still_combine(runner, tmp_path, capsys):

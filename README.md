@@ -7,6 +7,7 @@
 [![PyPI Version](https://img.shields.io/pypi/v/cocoa-tokenizer)](https://pypi.org/project/cocoa-tokenizer/)
 [![DOI](https://raw.githubusercontent.com/burkh4rt/cocoa/master/img/1174829117.svg)](https://doi.org/10.5281/zenodo.20413460)
 [![SWH](https://archive.softwareheritage.org/badge/origin/https://github.com/bbj-lab/cocoa/)](https://archive.softwareheritage.org/browse/origin/?origin_url=https://github.com/bbj-lab/cocoa)
+[![codecov](https://codecov.io/gh/bbj-lab/cocoa/graph/badge.svg?token=6QXX2PE38Q)](https://codecov.io/gh/bbj-lab/cocoa)
 
 > ☕️ Chicago's second favorite bean
 
@@ -204,6 +205,14 @@ entry's fields tell the collator which source columns map to these outputs.
 | `agg_expr`      | A Polars aggregation expression (or list) applied via `group_by(...).agg(...)` before extraction.                                |
 | `key`           | Grouping key used with `agg_expr`. Defaults to `subject_id` when not provided.                                                   |
 | `reference_key` | Join the source table to the reference frame on this key and keep only rows within the subject's `start_time`–`end_time` window. |
+
+An entry with `table: REFERENCE` takes these options too. They apply to the
+reference frame as the [reference block](#reference-table) builds it, so they can
+use the columns its augmentation tables join on, and they find its `start_time`
+and `end_time` already converted to `default_timezone`, where the options of an
+entry over any other table see that table's raw columns. They shape that entry's
+events alone: the other entries, the subject splits, and the lookback and
+lookahead windows still see every row of the reference frame.
 
 **Examples:**
 
@@ -514,7 +523,9 @@ that specifies:
     - `first_occurrence` (token string) thresholds after the first occurrence of
       the provided token
 
-  Set only one of them: given several, the winnower uses the first in this list.
+    Set only one of them: given several, the winnower uses the first in this
+    list.
+
 - `horizon_after_threshold_s` is an optional parameter that allows you to set a
   prediction window (in seconds) after the threshold is triggered
 - `splits` — an optional list selecting which splits to prepare (defaults to
@@ -548,24 +559,24 @@ Both thresholds cut a timeline a set number of seconds after some time, but not
 after the same time:
 
 - `duration_s` counts from the timeline's **first event**, the time of its `BOS`
-  token, so every past spans the same stretch of record. Where the cut falls in
-  a stay depends on what was recorded first: a timeline that opens before its
+  token, so every past spans the same stretch of record. Where the cut falls in a
+  stay depends on what was recorded first: a timeline that opens before its
   admission is cut that much earlier in the stay, and one that opens after it,
   that much later.
 - `after_start_time_s` counts from the subject's **start time**: the reference
-  table's `start_time` column (`admission_dttm` in the shipped collation
-  config), as `subject_splits.parquet` records it. Every stay is cut at the same
-  point, such as 24 hours after admission, whatever the timeline holds, and
-  events recorded before the start time land in the past.
+  table's `start_time` column (`admission_dttm` in the shipped collation config),
+  as `subject_splits.parquet` records it. Every stay is cut at the same point,
+  such as 24 hours after admission, whatever the timeline holds, and events
+  recorded before the start time land in the past.
 
 The two cut a timeline at the same point only if it opens at its start time. With
 the shipped collation config, which times its `REFERENCE` entries at
-`admission_dttm`, no timeline opens after its admission, but many open before
-it: on the demo, 203 of the 275 timelines do, by as much as a day, 180 of them
-with an arrival in the emergency department (`XFR-IN//ed`). Held-out
-hospitalization 29079034 arrives there 20 hours before its admission, so
-`duration_s: 86400` cuts it less than 4 hours into its stay, with 57 tokens in
-its past, where `after_start_time_s: 86400` cuts it a day in, with 197.
+`admission_dttm`, no timeline opens after its admission, but many open before it:
+on the demo, 203 of the 275 timelines do, by as much as a day, 180 of them with
+an arrival in the emergency department (`XFR-IN//ed`). Held-out hospitalization
+29079034 arrives there 20 hours before its admission, so `duration_s: 86400` cuts
+it less than 4 hours into its stay, with 57 tokens in its past, where
+`after_start_time_s: 86400` cuts it a day in, with 197.
 
 Under either, an event at exactly the cut falls in the future, and a timeline is
 kept only if it runs past the cut. Under `after_start_time_s`, it must also begin
@@ -683,8 +694,8 @@ with commands:
     │    --tokenizer-home       -t      <str>   Load a previously learned     │
     │                                           tokenizer from this           │
     │                                           tokenizer.yaml file (reuses   │
-    │                                           its frozen vocabulary and     │
-    │                                           bins)                         │
+    │                                           its frozen config,            │
+    │                                           vocabulary, and bins)         │
     │    --verbose              -v              Verbose logging for tokenize; │
     │                                           this may cause memory issues  │
     │                                           with large datasets           │
@@ -861,8 +872,9 @@ A few things to know:
 - YAML decides each value's type, so quote what has to stay a string:
   `'clocks=["00", "12"]'`, since an unquoted `00` is the number 0, and
   `'other_color="#737373"'`, since an unquoted `#` starts a comment.
-- With `--tokenizer-home`, the loaded tokenizer's saved config wins over
-  overrides, as it does over `-c`.
+- With `--tokenizer-home`, the loaded tokenizer's saved config is used as
+  written: it is frozen, so neither overrides nor `-c` apply, and nothing from
+  the shipped default is merged in (`cocoa tokenize` says so when given either).
 - Quote anything starting with `~` in zsh, which otherwise reads it as a
   directory name and fails.
 

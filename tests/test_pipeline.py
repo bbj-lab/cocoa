@@ -11,7 +11,7 @@ import pathlib
 import polars as pl
 import pytest
 import synth
-from conftest import default_cfg
+from conftest import Processed, default_cfg
 from omegaconf import OmegaConf
 
 from cocoa.collator import Collator
@@ -27,6 +27,13 @@ ARTIFACTS = (
     "tuning_for_inference.parquet",
     "held_out_for_inference.parquet",
 )
+
+BASE, HOUR, DAY = synth.BASE, synth.HOUR, synth.DAY
+
+
+def utc(t: datetime.datetime) -> datetime.datetime:
+    """a naive utc instant as a tz-aware one"""
+    return t.replace(tzinfo=datetime.timezone.utc)
 
 
 def configured_tables() -> set:
@@ -281,6 +288,41 @@ def test_csv_datetimes_may_be_space_separated(runner):
     assert frames[0].equals(frames[1])
 
 
+def test_an_all_csv_dataset_runs_the_pipeline_to_the_same_artifacts(runner, pipeline):
+    """
+    every raw table a csv of new-york wall clocks with their offsets, the
+    reference table's start and end times among them: parsed, they are the
+    instants the parquet-sourced pipeline read, and every artifact agrees
+    """
+    raw = synth.write_raw_dataset(
+        runner.dir("raw_all_csv"),
+        tz="America/New_York",
+        csv_tables=tuple(synth.SCHEMAS),
+    )
+    assert not list(raw.root.glob("*.parquet"))
+    assert "-0500" in (raw.root / "clif_hospitalization.csv").read_text()
+    dest = runner.dir()
+    runner.collate(raw=raw.root, dest=dest)
+    runner.tokenize(processed=dest)
+    runner.winnow(processed=dest)
+    got = Processed(dest)
+    key = ["subject_id", "time", "code", "numeric_value", "text_value"]
+    assert got.meds.height > 1000
+    assert got.meds.sort(key).equals(pipeline.meds.sort(key))
+    assert got.splits.sort("subject_id").equals(pipeline.splits.sort("subject_id"))
+    assert got.tokens_times.equals(pipeline.tokens_times)
+    for split in ("train", "tuning", "held_out"):
+        assert (
+            got.inference(split)
+            .sort("subject_id")
+            .equals(pipeline.inference(split).sort("subject_id"))
+        ), split
+    left, right = (OmegaConf.to_container(p.tokenizer_yaml) for p in (pipeline, got))
+    for c in (left, right):
+        del c["created_dttm"]
+    assert left == right
+
+
 # --- identifier dtypes ----------------------------------------------------
 
 
@@ -384,3 +426,127 @@ def test_integer_group_id_keeps_a_patients_hospitalizations_together(runner):
     by_subject = dict(zip(splits["subject_id"], splits["split"]))
     # 1002 and 1003 belong to patient 2, so they share a split
     assert by_subject["1002"] == by_subject["1003"]
+
+
+# --- identifier and time column names -------------------------------------
+
+# three stays of two people, under none of the clif column names
+RENAMED_TABLES = {
+    "encounters": {
+        "encounter_id": ["E1", "E2", "E3"],
+        "person_id": ["P1", "P2", "P1"],
+        "arrive_dttm": [BASE, BASE + 10 * DAY, BASE + 20 * DAY],
+        "depart_dttm": [BASE + 2 * DAY, BASE + 12 * DAY, BASE + 21 * DAY],
+        "age": [61.5, 40.0, 62.0],
+        "unit": ["icu", "ward", "icu"],
+    },
+    # keyed on another name for the stay; E1's second reading comes 3 days
+    # after its departure, beyond the lookahead
+    "observations": {
+        "visit_id": ["E1", "E1", "E2", "E3"],
+        "obs_dttm": [
+            BASE + HOUR,
+            BASE + 5 * DAY,
+            BASE + 10 * DAY + HOUR,
+            BASE + 20 * DAY + HOUR,
+        ],
+        "obs_category": ["heart_rate"] * 4,
+        "obs_value": [80.0, 99.0, 90.0, 70.0],
+    },
+    # person-level: P1's event falls within E1 but not E3, and P2's before E2
+    "person_events": {
+        "person_id": ["P1", "P2"],
+        "event_dttm": [BASE + 3 * HOUR, BASE + DAY],
+        "event_category": ["flag", "flag"],
+    },
+}
+
+RENAMED_CFG = {
+    "subject_id": "encounter_id",
+    "default_timezone": "UTC",
+    "max_lookahead_days": 1,
+    "subject_splits": {"train_frac": 0.34, "tuning_frac": 0.33},
+    "reference": {
+        "table": "encounters",
+        "start_time": "arrive_dttm",
+        "end_time": "depart_dttm",
+    },
+    "pass_through_columns": ["age"],
+    "entries": [
+        {"table": "REFERENCE", "prefix": "UNIT", "code": "unit", "time": "arrive_dttm"},
+        {
+            "table": "observations",
+            "subject_id_str": "visit_id",
+            "prefix": "OBS",
+            "code": "obs_category",
+            "numeric_value": "obs_value",
+            "time": "obs_dttm",
+        },
+        {  # grouped on the subject id by default, as the shipped LABEL entries are
+            "table": "observations",
+            "subject_id_str": "visit_id",
+            "prefix": "LABEL",
+            "with_col_expr": 'pl.lit("first_obs").alias("code")',
+            "agg_expr": ['pl.col("code").first()', 'pl.col("obs_dttm").min()'],
+            "code": "code",
+            "time": "obs_dttm",
+        },
+        {
+            "table": "person_events",
+            "reference_key": "person_id",
+            "prefix": "PEVT",
+            "code": "event_category",
+            "time": "event_dttm",
+        },
+    ],
+}
+
+
+def test_id_and_time_columns_are_read_under_their_configured_names(runner):
+    """
+    no stage assumes the clif names: subject_id, reference.start_time and
+    reference.end_time are read wherever subjects and stays are, from
+    subject_id_str and agg_expr's default key to the reference_key and
+    lookahead windows, the splits and the pass-through, and the winnower then
+    cuts 30 minutes after the renamed start time
+    """
+    raw = runner.dir("raw_renamed")
+    for table, columns in RENAMED_TABLES.items():
+        pl.DataFrame(columns).write_parquet(raw / f"{table}.parquet")
+    dest = runner.dir()
+    runner.collate(cfg=RENAMED_CFG, raw=raw, dest=dest)
+    runner.tokenize(processed=dest)
+    runner.winnow(
+        cfg={
+            "outcome_tokens": ["LABEL//*"],
+            "threshold": {"after_start_time_s": 1800},
+            "splits": ["held_out"],
+        },
+        processed=dest,
+    )
+    got = Processed(dest)
+    assert got.meds.sort("subject_id", "time", "code").select(
+        "subject_id", "time", "code", "numeric_value"
+    ).rows() == [
+        ("E1", utc(BASE), "UNIT//icu", None),
+        ("E1", utc(BASE + HOUR), "LABEL//first_obs", None),
+        ("E1", utc(BASE + HOUR), "OBS//heart_rate", 80.0),
+        ("E1", utc(BASE + 3 * HOUR), "PEVT//flag", None),
+        ("E2", utc(BASE + 10 * DAY), "UNIT//ward", None),
+        ("E2", utc(BASE + 10 * DAY + HOUR), "LABEL//first_obs", None),
+        ("E2", utc(BASE + 10 * DAY + HOUR), "OBS//heart_rate", 90.0),
+        ("E3", utc(BASE + 20 * DAY), "UNIT//icu", None),
+        ("E3", utc(BASE + 20 * DAY + HOUR), "LABEL//first_obs", None),
+        ("E3", utc(BASE + 20 * DAY + HOUR), "OBS//heart_rate", 70.0),
+    ]
+    # 3 stays, bounds int(3 * cumsum([0.34, 0.33])) -> (1, 2), ranked by arrival
+    assert got.splits.sort("subject_id").rows() == [
+        ("E1", "train", utc(BASE), utc(BASE + 2 * DAY), 61.5),
+        ("E2", "tuning", utc(BASE + 10 * DAY), utc(BASE + 12 * DAY), 40.0),
+        ("E3", "held_out", utc(BASE + 20 * DAY), utc(BASE + 21 * DAY), 62.0),
+    ]
+    assert sorted(got.tokens_times["subject_id"]) == ["E1", "E2", "E3"]
+    # BOS and UNIT//icu at the arrival precede the cut, the observation follows
+    assert got.inference().select(
+        "subject_id", "start_time", "age", "last_valid"
+    ).rows() == [("E3", utc(BASE + 20 * DAY), 62.0, 2)]

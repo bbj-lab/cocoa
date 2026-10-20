@@ -121,6 +121,7 @@ class Collator(Configurable):
         self,
         *,
         table: str | None = None,
+        frame: pl.LazyFrame | None = None,
         filter_expr: str | collections.abc.Sequence[str] | None = None,
         agg_expr: str | collections.abc.Sequence[str] | None = None,
         with_col_expr: str | collections.abc.Sequence[str] | None = None,
@@ -130,14 +131,17 @@ class Collator(Configurable):
         **kwargs: Any,
     ) -> pl.LazyFrame:
         """
-        lazy-load the table `table`.parquet (or else `table`.csv) and perform
-        some standard ETL tasks in the following order if specified:
+        lazy-load the table `table`.parquet (or else `table`.csv), or take
+        `frame` as already loaded, and perform some standard ETL tasks in the
+        following order if specified:
         1. fix subject_id to `subject_id_str`
         2. perform a filter operation
         3. add columns
         4. perform an aggregation by `key` or self.cfg["subject_id"]
         """
-        if (f := self.raw_data_home / f"{table}.parquet").exists():
+        if frame is not None:
+            df = frame
+        elif (f := self.raw_data_home / f"{table}.parquet").exists():
             df = pl.scan_parquet(f)
         elif (f := self.raw_data_home / f"{table}.csv").exists():
             df = pl.scan_csv(f)
@@ -212,18 +216,17 @@ class Collator(Configurable):
         collate one configured entry into rows of
         subject_id, time, code, numeric_value, and text_value
         """
-        df = (
-            self.get_reference_frame()
-            if table == "REFERENCE"
-            else self.load_table(
-                table=table,
-                time=time,
-                filter_expr=filter_expr,
-                with_col_expr=with_col_expr,
-                subject_id_str=subject_id_str,
-                agg_expr=agg_expr,
-                key=key,
-            )
+        df = self.load_table(
+            table=table,
+            # a REFERENCE entry starts from the reference frame, then takes the
+            # same options as an entry over any other table
+            frame=self.get_reference_frame() if table == "REFERENCE" else None,
+            time=time,
+            filter_expr=filter_expr,
+            with_col_expr=with_col_expr,
+            subject_id_str=subject_id_str,
+            agg_expr=agg_expr,
+            key=key,
         )
         schema = df.collect_schema()
         if time in schema.names():

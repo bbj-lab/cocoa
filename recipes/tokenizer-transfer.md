@@ -62,16 +62,18 @@ tables.
       --verbose
     ```
 
-    The vocabulary arrives frozen, so the later patients' own word frequencies
-    never enter into it: `min_training_ct` was applied once, to the earlier
-    patients' training split, and is not reconsidered here. A code that is common
-    in the later data but was too rare in the earlier data to be learned
-    tokenizes to `UNK`, the same as a code the earlier data never saw at all. The
-    `counts` in `tokenizer.yaml` likewise stay as the earlier data recorded them.
-    Here 553 of the later timelines' 152,080 tokens, about 0.4%, are `UNK`, most
-    of them codes that no earlier training hospitalization had, such as the
-    infusion `MED-CTS//octreotide` and the ventilator mode
-    `RESP//pressure_control`.
+    The tokenizer's saved config is used as written, so it tokenizes the later
+    patients exactly as it did the earlier ones; a `-c` config or overrides
+    passed alongside `--tokenizer-home` don't apply. The vocabulary arrives
+    frozen too, so the later patients' own word frequencies never enter into it:
+    `min_training_ct` was applied once, to the earlier patients' training split,
+    and is not reconsidered here. A code that is common in the later data but was
+    too rare in the earlier data to be learned tokenizes to `UNK`, the same as a
+    code the earlier data never saw at all. The `counts` in `tokenizer.yaml`
+    likewise stay as the earlier data recorded them. Here 553 of the later
+    timelines' 152,080 tokens, about 0.4%, are `UNK`, most of them codes that no
+    earlier training hospitalization had, such as the infusion
+    `MED-CTS//octreotide` and the ventilator mode `RESP//pressure_control`.
 
 4. Proceed as usual:
 

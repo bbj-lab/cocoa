@@ -48,7 +48,9 @@ A tokenizer's learned state round-trips through
 [`to_yaml`][cocoa.tokenizer.Tokenizer.to_yaml] and
 [`from_yaml`][cocoa.tokenizer.Tokenizer.from_yaml], so a tokenizer trained on one
 dataset can be **frozen** (`is_training=False`) and applied to another — see the
-[Tokenizer Transfer](../recipes/tokenizer-transfer.md) recipe.
+[Tokenizer Transfer](../recipes/tokenizer-transfer.md) recipe. Its config is
+frozen too: `from_yaml` uses the saved config as written, read-only, without
+merging in the loading tokenizer's config, its overrides, or the shipped default.
 
 <!-- prettier-ignore-start -->
 !!! tip "It behaves like a mapping"

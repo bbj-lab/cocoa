@@ -132,7 +132,7 @@ def tokenize(
             "--tokenizer-home",
             "-t",
             help="Load a previously learned tokenizer from this "
-            "tokenizer.yaml file (reuses its frozen vocabulary and bins)",
+            "tokenizer.yaml file (reuses its frozen config, vocabulary, and bins)",
             show_default=False,
         ),
     ] = None,
@@ -157,11 +157,14 @@ def tokenize(
         t0 = time.perf_counter()
         if tokenizer_home is not None:
             print(f"Using pretrained tokenizer from [cyan]{tokenizer_home}[/cyan]...")
-            tokenizer = Tokenizer(
-                tokenization_cfg=tokenization_config,
-                processed_data_home=processed_data_home,
-                overrides=overrides,
-            ).load(tokenizer_home)
+            if tokenization_config is not None or overrides:
+                print(
+                    "  Its saved config is used as written, "
+                    "so -c and overrides don't apply."
+                )
+            tokenizer = Tokenizer(processed_data_home=processed_data_home).load(
+                tokenizer_home
+            )
         else:
             tokenizer = Tokenizer(
                 tokenization_cfg=tokenization_config,

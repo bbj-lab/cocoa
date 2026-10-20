@@ -7,6 +7,7 @@
 [![PyPI Version](https://img.shields.io/pypi/v/cocoa-tokenizer)](https://pypi.org/project/cocoa-tokenizer/)
 [![DOI](https://raw.githubusercontent.com/burkh4rt/cocoa/master/img/1174829117.svg)](https://doi.org/10.5281/zenodo.20413460)
 [![SWH](https://archive.softwareheritage.org/badge/origin/https://github.com/bbj-lab/cocoa/)](https://archive.softwareheritage.org/browse/origin/?origin_url=https://github.com/bbj-lab/cocoa)
+[![codecov](https://codecov.io/gh/bbj-lab/cocoa/graph/badge.svg?token=6QXX2PE38Q)](https://codecov.io/gh/bbj-lab/cocoa)
 
 > ☕️ Chicago's second favorite bean
 
@@ -522,7 +523,9 @@ that specifies:
     - `first_occurrence` (token string) thresholds after the first occurrence of
       the provided token
 
-  Set only one of them: given several, the winnower uses the first in this list.
+    Set only one of them: given several, the winnower uses the first in this
+    list.
+
 - `horizon_after_threshold_s` is an optional parameter that allows you to set a
   prediction window (in seconds) after the threshold is triggered
 - `splits` — an optional list selecting which splits to prepare (defaults to
@@ -556,24 +559,24 @@ Both thresholds cut a timeline a set number of seconds after some time, but not
 after the same time:
 
 - `duration_s` counts from the timeline's **first event**, the time of its `BOS`
-  token, so every past spans the same stretch of record. Where the cut falls in
-  a stay depends on what was recorded first: a timeline that opens before its
+  token, so every past spans the same stretch of record. Where the cut falls in a
+  stay depends on what was recorded first: a timeline that opens before its
   admission is cut that much earlier in the stay, and one that opens after it,
   that much later.
 - `after_start_time_s` counts from the subject's **start time**: the reference
-  table's `start_time` column (`admission_dttm` in the shipped collation
-  config), as `subject_splits.parquet` records it. Every stay is cut at the same
-  point, such as 24 hours after admission, whatever the timeline holds, and
-  events recorded before the start time land in the past.
+  table's `start_time` column (`admission_dttm` in the shipped collation config),
+  as `subject_splits.parquet` records it. Every stay is cut at the same point,
+  such as 24 hours after admission, whatever the timeline holds, and events
+  recorded before the start time land in the past.
 
 The two cut a timeline at the same point only if it opens at its start time. With
 the shipped collation config, which times its `REFERENCE` entries at
-`admission_dttm`, no timeline opens after its admission, but many open before
-it: on the demo, 203 of the 275 timelines do, by as much as a day, 180 of them
-with an arrival in the emergency department (`XFR-IN//ed`). Held-out
-hospitalization 29079034 arrives there 20 hours before its admission, so
-`duration_s: 86400` cuts it less than 4 hours into its stay, with 57 tokens in
-its past, where `after_start_time_s: 86400` cuts it a day in, with 197.
+`admission_dttm`, no timeline opens after its admission, but many open before it:
+on the demo, 203 of the 275 timelines do, by as much as a day, 180 of them with
+an arrival in the emergency department (`XFR-IN//ed`). Held-out hospitalization
+29079034 arrives there 20 hours before its admission, so `duration_s: 86400` cuts
+it less than 4 hours into its stay, with 57 tokens in its past, where
+`after_start_time_s: 86400` cuts it a day in, with 197.
 
 Under either, an event at exactly the cut falls in the future, and a timeline is
 kept only if it runs past the cut. Under `after_start_time_s`, it must also begin

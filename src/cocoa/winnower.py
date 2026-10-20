@@ -126,20 +126,35 @@ class Winnower(Configurable):
         adds boolean flags for each outcome token and tense,
         e.g. DSCG//expired_past, DSCG//expired_future
         """
+        schema = df.collect_schema()
         # per-token columns the tokenizer writes only when configured to
-        optional = [
-            c for c in ("hours_to_end_time",) if c in df.collect_schema().names()
-        ]
+        optional = [c for c in ("hours_to_end_time",) if c in schema.names()]
+
+        def typed(sliced: pl.Expr, like: str) -> pl.Expr:
+            # on an empty frame, polars slices a list by a column to List(Null),
+            # whatever the schema says, and list.contains panics on that; cast it
+            # back to the type of the list `like`, not strictly, as polars drops a
+            # strict cast to the type it plans for
+            return sliced.cast(schema[like], strict=False)
+
         df = df.with_columns(
-            tokens_past=pl.col("tokens").list.head("last_valid"),
-            s_elapsed_past=pl.col("s_elapsed").list.head("last_valid"),
-            tokens_future=pl.col("tokens").list.tail(
-                pl.col("tokens").list.len() - pl.col("last_valid")
+            tokens_past=typed(pl.col("tokens").list.head("last_valid"), "tokens"),
+            s_elapsed_past=typed(
+                pl.col("s_elapsed").list.head("last_valid"), "s_elapsed"
             ),
-            **{f"{c}_past": pl.col(c).list.head("last_valid") for c in optional},
+            tokens_future=typed(
+                pl.col("tokens").list.tail(
+                    pl.col("tokens").list.len() - pl.col("last_valid")
+                ),
+                "tokens",
+            ),
             **{
-                f"{c}_future": pl.col(c).list.tail(
-                    pl.col(c).list.len() - pl.col("last_valid")
+                f"{c}_past": typed(pl.col(c).list.head("last_valid"), c)
+                for c in optional
+            },
+            **{
+                f"{c}_future": typed(
+                    pl.col(c).list.tail(pl.col(c).list.len() - pl.col("last_valid")), c
                 )
                 for c in optional
             },
@@ -160,12 +175,13 @@ class Winnower(Configurable):
                     - pl.lit(1)  # threshold token was counted, drop it
                 )
                 .with_columns(
-                    tokens_future=pl.col("tokens_future").list.head(
-                        "valid_future_count"
+                    tokens_future=typed(
+                        pl.col("tokens_future").list.head("valid_future_count"),
+                        "tokens",
                     ),
                     **{
-                        f"{c}_future": pl.col(f"{c}_future").list.head(
-                            "valid_future_count"
+                        f"{c}_future": typed(
+                            pl.col(f"{c}_future").list.head("valid_future_count"), c
                         )
                         for c in optional
                     },

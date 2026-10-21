@@ -25,7 +25,7 @@
     name = "cocoa-tokenizer"
     readme = { file = "README.md", content-type = "text/markdown" }
     requires-python = ">=3.11"
-    version = "26.10.1"
+    version = "26.10.2"
 
     [project.scripts]
         cocoa = "cocoa.cli:main"
@@ -37,8 +37,9 @@
 
     [project.optional-dependencies]
         all = [ "cocoa-tokenizer[dev,docs,test]" ]
-        # the mimic-iv demo, as clif tables, for `cocoa get-demo`
-        demo = [ "clifpy>=2.1" ]
+        # the mimic-iv demo, as clif tables, for `cocoa get-demo`; clifpy 2.1.0 calls
+        # a relation's fetchone(), which duckdb 2.0 removed, and doesn't cap duckdb
+        demo = [ "clifpy>=2.1", "duckdb<2" ]
         dev = [ "pip>=21.3", "ruff>=0.9" ]
         docs = [
             "mkdocs>=1.5.3,<2",

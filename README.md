@@ -7,6 +7,7 @@
 [![PyPI Version](https://img.shields.io/pypi/v/cocoa-tokenizer)](https://pypi.org/project/cocoa-tokenizer/)
 [![DOI](https://raw.githubusercontent.com/burkh4rt/cocoa/master/img/1174829117.svg)](https://doi.org/10.5281/zenodo.20413460)
 [![SWH](https://archive.softwareheritage.org/badge/origin/https://github.com/bbj-lab/cocoa/)](https://archive.softwareheritage.org/browse/origin/?origin_url=https://github.com/bbj-lab/cocoa)
+[![tests](https://github.com/bbj-lab/cocoa/actions/workflows/tests.yml/badge.svg)](https://github.com/bbj-lab/cocoa/actions/workflows/tests.yml)
 [![codecov](https://codecov.io/gh/bbj-lab/cocoa/graph/badge.svg?token=6QXX2PE38Q)](https://codecov.io/gh/bbj-lab/cocoa)
 
 > ☕️ Chicago's second favorite bean

@@ -110,7 +110,10 @@ excludes deepdiff 9.1, whose `cachebox<6` has no 3.15 wheels and won't build
 there. The matrix jobs also install the `demo` extra, except on 3.15: clifpy pins
 pandas 2.3.3, which has no 3.15 wheels. The lowest job leaves it out too, since
 pyarrow, which clifpy imports, needs numpy 2 without declaring it, and fails to
-import at cocoa's numpy floor. [tests/test_demo.py](tests/test_demo.py) runs
+import at cocoa's numpy floor. The `demo` extra also caps duckdb below 2, which
+clifpy doesn't: clifpy 2.1.0's dose conversion calls a relation's `fetchone()`,
+which duckdb 2.0 removed, so lift the cap only once a clifpy release stops doing
+so. [tests/test_demo.py](tests/test_demo.py) runs
 `cocoa get-demo` on clifpy's real tables where clifpy is installed, skips those
 tests where it isn't, and fails them where it won't import; its other tests use a
 stand-in `clifpy` package and run everywhere. [tests/synth.py](tests/synth.py)

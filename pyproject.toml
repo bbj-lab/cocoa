@@ -25,7 +25,7 @@
     name = "cocoa-tokenizer"
     readme = { file = "README.md", content-type = "text/markdown" }
     requires-python = ">=3.11"
-    version = "26.10.2"
+    version = "26.10.3"
 
     [project.scripts]
         cocoa = "cocoa.cli:main"

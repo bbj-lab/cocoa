@@ -13,8 +13,8 @@ we'll take the demo's tables from clifpy, derive four more with it, and then
 collate, tokenize, and winnow the result with the shipped configs, and draw one
 timeline. The run takes well under a minute on a laptop.
 
-You'll need Python 3.11 to 3.14 and cocoa 26.10.2 or later, installed with its
-`demo` extra, which brings clifpy. The numbers below come from cocoa 26.10.2 with
+You'll need Python 3.11 to 3.14 and cocoa 26.10.3 or later, installed with its
+`demo` extra, which brings clifpy. The numbers below come from cocoa 26.10.3 with
 clifpy 2.1.0; another release of clifpy may ship other tables. clifpy and the
 packages it brings take about 300 MB of disk, and the data, with everything made
 from it, about 7 MB.
@@ -31,7 +31,7 @@ with a Python from 3.11 to 3.14, such as `python3.14`:
 
 ```sh
 python3.14 -m venv .venv && . .venv/bin/activate
-pip install -U 'cocoa-tokenizer[demo]>=26.10.2'
+pip install -U 'cocoa-tokenizer[demo]>=26.10.3'
 ```
 
 ### 1. Get the demo

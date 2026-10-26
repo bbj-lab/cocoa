@@ -8,7 +8,8 @@ This file can be compiled locally with docker:
 docker run --rm --volume $PWD:/data --user $(id -u):$(id -g) --env JOURNAL=joss openjournals/inara
 ```
 
-On GitHub, the [draft pdf](../.github/workflows/draft-pdf.yml) workflow compiles it
-with the same image whenever a push or pull request touches this directory, and
-attaches `paper.pdf` to the run as an artifact (or run it by hand from the Actions
-tab).
+On GitHub, the
+[draft pdf](https://github.com/bbj-lab/cocoa/actions/workflows/draft-pdf.yml)
+action compiles it with the same image whenever a push or pull request touches
+this directory, and attaches `paper.pdf` to the run as an artifact (or run it by
+hand from the Actions tab).

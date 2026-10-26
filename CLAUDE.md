@@ -90,14 +90,18 @@ pytest --cov                       # with line and branch coverage, as CI measur
 # Docs (mkdocs-material, published to readthedocs)
 mkdocs build
 mkdocs serve --dev-addr 127.0.0.1:8001
+
+# JOSS paper draft → joss-submission/paper.pdf (CI: .github/workflows/draft-pdf.yml)
+(cd joss-submission && docker run --rm --volume $PWD:/data --user $(id -u):$(id -g) --env JOURNAL=joss openjournals/inara)
 ```
 
 There's a pytest suite in [tests/](tests/) — run it with `pytest`. CI
 ([.github/workflows/tests.yml](.github/workflows/tests.yml)) runs it on every
-push and pull request, and weekly, on Python 3.11 through 3.15, and once more on
-3.11 with each dependency at the lowest version [pyproject.toml](pyproject.toml)
-allows; it doesn't run ruff, so format and lint locally before pushing. Keep the
-matrix in step with `requires-python`, and raise a floor in `pyproject.toml` when
+push and pull request that touches more than the paper in
+[joss-submission/](joss-submission/), and weekly, on Python 3.11 through 3.15,
+and once more on 3.11 with each dependency at the lowest version
+[pyproject.toml](pyproject.toml) allows; it doesn't run ruff, so format and lint
+locally before pushing. Keep the matrix in step with `requires-python`, and raise a floor in `pyproject.toml` when
 code starts needing a newer dependency, or the lowest job fails. Each matrix job
 also uploads its coverage to [Codecov](https://app.codecov.io/gh/bbj-lab/cocoa)
 by OIDC, so no token secret is needed (fork PRs upload tokenless). Coverage is

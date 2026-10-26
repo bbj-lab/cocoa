@@ -130,13 +130,14 @@ Collation takes a collection of raw parquet or csv files and produces:
 ## 2. Tokenization
 
 Tokenization takes the collated data and produces chronologically ordered,
-tokenized timelines for each subject. Configuration specifies how `numeric_value`
-entries should be converted into tokens. This is commonly done by aggregating at
-the category level and forming quantile-based bins using all available training
-data for that category. The library supports token fusion that concatenates
-categories and their associated discretized values into single tokens. The
-insertion of time-spacing tokens [@Pan21] and clock tokens is also supported.
-This process produces:
+tokenized timelines for each subject. In this way, we move from irregularly
+spaced tabular data to a stream of tokens akin to natural language [@Ste21 ;
+@Wor25]. Configuration specifies how `numeric_value` entries should be converted
+into tokens. This is commonly done by aggregating at the category level and
+forming quantile-based bins using all available training data for that category.
+The library supports token fusion that concatenates categories and their
+associated discretized values into single tokens. The insertion of time-spacing
+tokens [@Pan21] and clock tokens is also supported. This process produces:
 
 - `tokens_times.parquet` containing the subject-level timelines, with columns
   `subject_id`, `tokens` (an ordered list of all the subjects's tokens), `times`
@@ -163,9 +164,9 @@ Visualization creates an interactive webpage containing a tokenized timeline. It
 supports export in both html and pdf formats. See Figures \ref{fig:scrnsht} and
 \ref{fig:scrnsht2} for an illustration.
 
-![A screenshot of a visualized timeline.\label{fig:scrnsht}](img/vis-screenshot.png){width="70%"}
+![A screenshot of a visualized timeline.\label{fig:scrnsht}](img/vis-screenshot.png)
 
-![The visualizer plots repeated numeric measurements.\label{fig:scrnsht2}](img/vis-screenshot-2.png){width="70%"}
+![The visualizer plots repeated numeric measurements.\label{fig:scrnsht2}](img/vis-screenshot-2.png)
 
 # Research impact statement
 

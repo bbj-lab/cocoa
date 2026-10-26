@@ -46,10 +46,10 @@ authors:
       orcid: 0000-0002-6700-1468
       affiliation: 1
 affiliations:
-    - name: Department of Medicine, University of Chicago, Chicago, IL, U.S.A.
+    - name: University of Chicago, Chicago, IL, U.S.A. # curiously enough, comp sci venues typically drop dept names
       index: 1
       ror: 024mw5h28
-    - name: Rush University, U.S.A.
+    - name: Rush University, Chicago, IL, U.S.A. # to match
       index: 2
       ror: 01k9xac83
 date: 23 October 2026
@@ -58,14 +58,17 @@ bibliography: paper.bib
 
 # Summary
 
-A recent trend in predictive modeling involves (i) representing event stream data as
-sequences of tokens, (ii) learning a distribution on these sequences with generative
-models, and then (iii) forecasting downstream events for novel sequences. Hospital
-medicine provides a motivating example [@Guo26b]. Electronic health records
-(EHRs) document a variety of data collection events, including 
-vitals measurements, medication administration, patient assessments, and lab
-test results. Events from such records are commonly stored across a variety of specialized
-tables. <!-- GW: Could we expand this sentence or add a sentence explaining why storage across specialized tables is a challenge? So that the transition into what cocoa is/how it addresses the problem feels smoother. Maybe something like "These events are commonly stored across a variety of specialized tables, each with their own notations, X, Y, Z. Before a model can be trained, the events should be extracted from each table, aligned, etc. -->
+A recent trend in predictive modeling involves (i) representing event stream data
+as sequences of tokens, (ii) learning a distribution on these sequences with
+generative models, and then (iii) forecasting downstream events for novel
+sequences. Hospital medicine provides a motivating example [@Guo26b]. Electronic
+health records (EHRs) document a variety of data collection events, including
+vitals measurements, medication administration, patient assessments, and lab test
+results. Events from such records are commonly stored across a variety of
+specialized tables, each with their own schema. Prior to model training, relevant
+events must be extracted from each table and chronologically sorted.
+
+<!-- GW: Could we expand this sentence or add a sentence explaining why storage across specialized tables is a challenge? So that the transition into what cocoa is/how it addresses the problem feels smoother. Maybe something like "These events are commonly stored across a variety of specialized tables, each with their own notations, X, Y, Z. Before a model can be trained, the events should be extracted from each table, aligned, etc. -->
 
 The `cocoa` library provides a _configurable_ framework for:
 
@@ -87,16 +90,24 @@ tokenization [@Lee26], and federated learning [@Bur26b].
 Successful interdisciplinary research requires close collaboration between those
 with domain expertise and those with technical backgrounds. Healthcare is a prime
 example; complex codebases make it difficult for clinicians to audit data
-processing pipelines. This can cause data leakage in a number of ways: for example, billing
-codes that only become available after discharge are sometimes inserted at
-admission time [@Ram25], dates may be cast to times causing key events to be
-inserted up to 24 hours prior to their occurrence, and lab results may be
-inserted at the time samples are collected as opposed to when the results become
-available. <!-- GW: I think there should be another sentence to transition? Maybe something like "These errors are often easy to spot for someone with clinical knowledge, but requires that person to be able to inspect the data directly. -->
+processing pipelines. This can cause data leakage in a number of ways: for
+example, billing codes that only become available after discharge are sometimes
+inserted at admission time [@Ram25], dates may be cast to times causing key
+events to be inserted up to 24 hours prior to their occurrence, and lab results
+may be inserted at the time samples are collected as opposed to when the results
+become available. Spotting these errors is often easy for someone with a clinical
+background, but requires the data and its generating process to be in an
+accessible format.
 
-`cocoa` is designed to make this feasible. Our collation process is fully configurable in yaml, and our downstream
-visualizer makes it easy to produce interactive example timelines that can be
-reviewed without touching code. This makes it more accessible for domain experts with limited coding experience to directly inspect the data <!-- GW: might want to rephrase but something like this to emphasize the point -->.
+<!-- GW: I think there should be another sentence to transition? Maybe something like "These errors are often easy to spot for someone with clinical knowledge, but requires that person to be able to inspect the data directly. -->
+
+`cocoa` is designed to make this feasible. Our collation process is fully
+configurable in yaml, and our downstream visualizer makes it easy to produce
+interactive example timelines that can be reviewed without touching code. This
+makes it more accessible for domain experts with limited coding experience to
+directly inspect the data.
+
+<!-- GW: might want to rephrase but something like this to emphasize the point -->.
 
 # State of the field
 

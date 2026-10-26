@@ -76,7 +76,7 @@ entries:
   - table: clif_code_status
     prefix: CODE
     code: code_status_category
-    time: admission_dttm
+    time: start_dttm # changed from admission_dttm
     reference_key: patient_id
 
   - table: clif_crrt_therapy

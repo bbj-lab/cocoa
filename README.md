@@ -776,12 +776,13 @@ older release didn't write.
 Given no subject id, `cocoa visualize` draws what tokenization learned, rather
 than one subject: the vocabulary, with its bins over the training data. It takes
 the same config as a timeline, so a prefix wears the color its lane wears in a
-timeline, and serves the page or, with `--export-html` (`-e`), saves it as one
-self-contained html file:
+timeline. As for a timeline, it serves the page, or saves it as one
+self-contained html file with `--export-html` (`-e`), as a static pdf with
+`--export-pdf`, or both:
 
 ```sh
 cocoa visualize -p processed/demo --open
-cocoa visualize -p processed/demo -e vocabulary.html
+cocoa visualize -p processed/demo -e vocabulary.html --export-pdf vocabulary.pdf
 ```
 
 `cocoa visualize` reads its first argument as a subject id whatever it says, so
@@ -821,9 +822,17 @@ points. A tokenizer applied with `--tokenizer-home` keeps the counts of the data
 it was learned on, so the page marks its vocabulary as transferred, and draws
 this directory's training split against its bins.
 
-The page holds no one's timeline, but it summarizes the training data, down to
-each code's least and greatest value and each split's first and last event, so
-share it as you would such statistics.
+The pdf lays out what the tabs show, one after another. Its first page gives the
+vocabulary's size, the prefixes, and the timelines by split, with histograms of
+the lengths and durations of each split's timelines, where the page draws one
+split at a time. Then each binned code gets its histogram beside a row per bin,
+as the page shows a code opened, followed by the words and the tokenizer's
+config. It draws the first 500 binned codes and lists the first 2,000 words; the
+html page has all of them.
+
+Neither file holds anyone's timeline, but both summarize the training data, down
+to each code's least and greatest value and each split's first and last event,
+so share them as you would such statistics.
 
 ## Usage
 
@@ -989,7 +998,7 @@ with commands:
     every word with its training count, and the timelines by split, as
     tokenize --verbose summarizes them. Serves the page on localhost until
     interrupted, or saves it as a self-contained html file with
-    --export-html, and a timeline as a static pdf with --export-pdf.
+    --export-html, as a static pdf with --export-pdf, or both.
 
     ╭─ Arguments ─────────────────────────────────────────────────────────────╮
     │   subject_id      <str>  Subject whose timeline to draw; without one,   │
@@ -1007,10 +1016,9 @@ with commands:
     │                                            self-contained html file     │
     │                                            instead of serving it        │
     │    --export-pdf                    <path>  Save a static pdf of the     │
-    │                                            subject's timeline to this   │
-    │                                            file instead of serving it;  │
-    │                                            with --export-html, save     │
-    │                                            both                         │
+    │                                            page to this file instead of │
+    │                                            serving it; with             │
+    │                                            --export-html, save both     │
     │    --host                          <str>   Address to serve the page on │
     │                                            [default: 127.0.0.1]         │
     │    --port                          <int>   Port to serve the page on; 0 │

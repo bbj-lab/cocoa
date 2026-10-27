@@ -24,7 +24,7 @@ import polars as pl
 import yaml
 
 from cocoa.configurable import Configurable
-from cocoa.pdf import timeline_pdf
+from cocoa.pdf import timeline_pdf, vocabulary_pdf
 
 # a quantile bin fused onto a code, e.g. the Q3 of VTL//heart_rate_Q3; codes are
 # lowercased after their prefix, so an uppercase Q can only have come from binning
@@ -54,8 +54,9 @@ class Visualizer(Configurable):
     gathers one subject's timeline, vocabulary, and pass-through columns
     from a processed data directory and renders them as html or pdf;
     `save` and `save_pdf` write them to files. `render_vocabulary` and
-    `save_vocabulary` draw the vocabulary instead: its words, each binned
-    code's training values against its bins, and the timelines by split
+    `render_vocabulary_pdf` draw the vocabulary instead, and
+    `save_vocabulary` and `save_vocabulary_pdf` write it: its words, each
+    binned code's training values against its bins, and the timelines by split
     """
 
     default_file = "visualization.yaml"
@@ -813,6 +814,17 @@ class Visualizer(Configurable):
         to_file.write_text(self.render_vocabulary(), encoding="utf-8")
         return to_file
 
+    def render_vocabulary_pdf(self) -> bytes:
+        """the vocabulary as a static, self-contained pdf"""
+        return vocabulary_pdf(self.get_vocabulary_payload())
+
+    def save_vocabulary_pdf(self, path: pathlib.Path | str) -> pathlib.Path:
+        """write the vocabulary to `path` as a pdf"""
+        to_file = pathlib.Path(path).expanduser().resolve()
+        to_file.parent.mkdir(parents=True, exist_ok=True)
+        to_file.write_bytes(self.render_vocabulary_pdf())
+        return to_file
+
 
 def finite(x: float | None) -> float | None:
     """a json-safe float: NaN and infinities become null"""
@@ -986,4 +998,5 @@ if __name__ == "__main__":
         assert not re.search(r"(?:src|href)=[\"']?https?:|url\([\"']?https?:", doc)
     print(self.save(sid, self.processed_data_home / f"timeline_{sid}.html"))
     print(self.save_vocabulary(self.processed_data_home / "vocabulary.html"))
+    print(self.save_vocabulary_pdf(self.processed_data_home / "vocabulary.pdf"))
     # breakpoint()

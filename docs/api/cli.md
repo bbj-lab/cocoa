@@ -109,12 +109,14 @@ cocoa visualize 27708593 --processed-data-home processed/demo \
 
 Without a subject id, `cocoa visualize` draws the vocabulary that tokenization
 learned instead, with each binned code's training values against its bins and the
-timelines summarized by split (see
+timelines summarized by split, and serves or saves it the same ways (see
 [The vocabulary page](visualizer.md#the-vocabulary-page)):
 
 ```sh
 cocoa visualize --processed-data-home processed/demo --open
 cocoa visualize --processed-data-home processed/demo -e vocabulary.html
+cocoa visualize --processed-data-home processed/demo \
+                -e vocabulary.html --export-pdf vocabulary.pdf
 ```
 
 ---

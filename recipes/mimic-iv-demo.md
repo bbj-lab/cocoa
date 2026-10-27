@@ -147,7 +147,9 @@ against its cut points. Cut points often tie on data like these: 90 of the codes
 have fewer than ten bins that hold any value, as where every dose of a medication
 is the same, or a score such as the Braden scale's takes just a few values. Its
 other tabs list the words, of which 63 occur only once in training, the prefixes,
-and the timelines by split, as `--verbose` summarizes them.
+and the timelines by split, as `--verbose` summarizes them. To keep the page as a
+file, pass `--export-html vocabulary.html` (or `--export-pdf vocabulary.pdf`), as
+for a timeline below.
 
 ### 4. Winnow, and look at a timeline
 

@@ -421,8 +421,8 @@ def visualize(
         Optional[pathlib.Path],
         typer.Option(
             "--export-pdf",
-            help="Save a static pdf of the subject's timeline to this file instead "
-            "of serving it; with --export-html, save both",
+            help="Save a static pdf of the page to this file instead of serving "
+            "it; with --export-html, save both",
             show_default=False,
         ),
     ] = None,
@@ -461,18 +461,13 @@ def visualize(
     every word with its training count, and the timelines by split, as
     tokenize --verbose summarizes them. Serves the page on localhost until
     interrupted, or saves it as a self-contained html file with
-    --export-html, and a timeline as a static pdf with --export-pdf.
+    --export-html, as a static pdf with --export-pdf, or both.
     """
-    if subject_id is None:
-        for flag, given in (
-            ("--export-pdf", export_pdf is not None),
-            ("--show-winnowing", show_winnowing),
-        ):
-            if given:
-                raise typer.BadParameter(
-                    "it's for a subject's timeline, so give a subject id",
-                    param_hint=f"'{flag}'",
-                )
+    if subject_id is None and show_winnowing:
+        raise typer.BadParameter(
+            "it's for a subject's timeline, so give a subject id",
+            param_hint="'--show-winnowing'",
+        )
     drawing = "timeline" if subject_id is not None else "the vocabulary"
     with console.status(f"[bold green]Rendering {drawing}..."):
         t0 = time.perf_counter()
@@ -487,7 +482,9 @@ def visualize(
         if subject_id is None:
             if export_html is not None:
                 out_paths.append(visualizer.save_vocabulary(export_html))
-            else:
+            if export_pdf is not None:
+                out_paths.append(visualizer.save_vocabulary_pdf(export_pdf))
+            if not out_paths:
                 page = visualizer.render_vocabulary()
             drawn = f"the vocabulary of {len(visualizer.decoder):,} words"
         else:

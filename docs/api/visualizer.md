@@ -90,9 +90,20 @@ count from the counts of its words, which a fused `tokenizer.yaml` written since
 learned on, so the page marks it as transferred and draws the directory's own
 training split against its bins.
 
-The page holds no one's timeline, but it summarizes the training data, down to
-each code's least and greatest value and each split's first and last event, so
-share it as you would such statistics.
+[`render_vocabulary_pdf`][cocoa.visualizer.Visualizer.render_vocabulary_pdf]
+draws the same vocabulary as a static pdf, and
+[`save_vocabulary_pdf`][cocoa.visualizer.Visualizer.save_vocabulary_pdf] writes it
+to a file (`cocoa visualize --export-pdf` without a subject id), to send where
+html may not open, as for a timeline. It lays out what the tabs show, one after
+another: first the vocabulary's size, its prefixes, and its timelines by split,
+with the histograms of every split's lengths and durations, where the page draws
+one split at a time; then each binned code's histogram beside a row per bin, as
+the page shows a code opened; then the words and the tokenizer's config. It draws
+the first 500 binned codes and lists the first 2,000 words.
+
+Neither file holds anyone's timeline, but both summarize the training data, down
+to each code's least and greatest value and each split's first and last event, so
+share them as you would such statistics.
 
 ## Configuring the page
 

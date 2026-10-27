@@ -49,7 +49,8 @@ names, code descriptions), but it only reads the stages' outputs. It draws the
 learned vocabulary as a second page (`cocoa visualize` without a subject id,
 `Visualizer.render_vocabulary`): each binned code's training values against its
 cut points, every word with its training count, the prefixes, and the timelines
-by split, as `tokenize --verbose` summarizes them. Each page's template and js
+by split, as `tokenize --verbose` summarizes them. It serves or saves that page
+the same ways, as a pdf too (`render_vocabulary_pdf`). Each page's template and js
 live in [src/cocoa/assets/](src/cocoa/assets/) (`timeline.*`, `vocabulary.*`),
 with the icon and fonts; `timeline.css` holds the tokens and parts both pages
 use, and `vocabulary.css` only what the vocabulary page adds.
@@ -289,9 +290,12 @@ external URLs. When you change behavior, add/update a pytest case first.
   addressed by glyph id, with a ToUnicode map so text copies out) and sets codes
   and tokens in standard Courier (WinAnsi text); a character a font lacks prints
   as `?`. A missing font file falls back to Helvetica, as the page falls back to
-  system fonts. It ports the page's lanes, axis ticks, and binned rows from
-  `timeline.js`, so a change to the payload or to how the page draws it needs a
-  matching change in `TimelinePdf`.
+  system fonts. `TimelinePdf` ports the page's lanes, axis ticks, and binned rows
+  from `timeline.js`, and `VocabularyPdf` ports `vocabulary.js`'s histograms,
+  tables, and number formats (`fmtPct`, `niceTicks`, and the like, rounding
+  halves up as javascript does), so a change to a payload or to how its page
+  draws it needs a matching change in the pdf that ports it. Both lay out through
+  `Flow`, which holds the paging, headings, and tables they share.
 - **Times** are normalized on load to the collation config's `default_timezone`
   (`Collator.to_default_tz`; `UTC` if unset) and stay **tz-aware** for the rest
   of the pipeline: tz-aware columns are instant-preserved, tz-naive columns are

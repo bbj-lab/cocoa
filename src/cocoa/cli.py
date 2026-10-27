@@ -61,6 +61,42 @@ def route_overrides(overrides: list[str] | None) -> dict[str, list[str]]:
     return routed
 
 
+def note_unclaimed(visualizer: Visualizer) -> None:
+    """name the vocabulary's code prefixes that no configured lane claims"""
+    if unclaimed := visualizer.unclaimed_prefixes():
+        n = len(unclaimed)
+        print(
+            f"  {n} code prefix{'es' if n > 1 else ''} without a configured lane: "
+            f"{escape(', '.join(unclaimed))}. To name and color their lanes, "
+            "list them under `lanes` in a config passed with -c."
+        )
+
+
+def serve(page: str, host: str, port: int, open_browser: bool) -> None:
+    """
+    serve `page` on `host`, at `port` or at a free one if that's in use, until
+    interrupted, opening it in a web browser if asked
+    """
+    try:
+        server = make_server(page, host=host, port=port)
+    except OSError as e:
+        if e.errno != errno.EADDRINUSE:
+            raise
+        print(f"  Port {port} is in use; serving on a free one instead.")
+        server = make_server(page, host=host, port=0)
+    url = f"http://{host}:{server.server_port}/"
+    print(f"  Serving: [cyan]{url}[/cyan] (press Ctrl-C to stop)")
+    if open_browser:
+        webbrowser.open(url)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.server_close()
+    print("  Stopped serving.")
+
+
 @app.command()
 def collate(
     collation_config: Annotated[
@@ -353,8 +389,12 @@ def combine_datasets(
 @app.command()
 def visualize(
     subject_id: Annotated[
-        str, typer.Argument(help="Subject whose timeline to show", show_default=False)
-    ],
+        Optional[str],
+        typer.Argument(
+            help="Subject whose timeline to draw; without one, draws the vocabulary",
+            show_default=False,
+        ),
+    ] = None,
     processed_data_home: Annotated[
         str,
         typer.Option("--processed-data-home", "-p", help="Processed data directory"),
@@ -373,8 +413,7 @@ def visualize(
         typer.Option(
             "--export-html",
             "-e",
-            help="Save the timeline to this self-contained html file "
-            "instead of serving it",
+            help="Save the page to this self-contained html file instead of serving it",
             show_default=False,
         ),
     ] = None,
@@ -382,8 +421,8 @@ def visualize(
         Optional[pathlib.Path],
         typer.Option(
             "--export-pdf",
-            help="Save a static pdf of the timeline to this file instead of "
-            "serving it; with --export-html, save both",
+            help="Save a static pdf of the subject's timeline to this file instead "
+            "of serving it; with --export-html, save both",
             show_default=False,
         ),
     ] = None,
@@ -400,19 +439,42 @@ def visualize(
         bool,
         typer.Option(
             "--show-winnowing",
-            help="Show the winnowing split into past and future, and its outcome flags",
+            help="Show the winnowing split of the subject's timeline into past and "
+            "future, and its outcome flags",
         ),
     ] = False,
-    overrides: Overrides = None,
+    # after the subject id, which is read first, so the vocabulary takes none
+    overrides: Annotated[
+        Optional[list[str]],
+        typer.Argument(
+            help="Config overrides, after a subject id: key=value sets a key, "
+            "adding it if need be, and ~key deletes one",
+            show_default=False,
+        ),
+    ] = None,
 ) -> None:
     """
-    Visualize a subject's timeline as an interactive html page.
+    Visualize a subject's timeline, or the vocabulary, as an interactive html page.
 
-    Serves the page on localhost until interrupted, or saves it as a
-    self-contained html file with --export-html, a static pdf with
-    --export-pdf, or both.
+    Given a subject id, draws that subject's timeline; without one, draws
+    the vocabulary: each binned code's training values against its bins,
+    every word with its training count, and the timelines by split, as
+    tokenize --verbose summarizes them. Serves the page on localhost until
+    interrupted, or saves it as a self-contained html file with
+    --export-html, and a timeline as a static pdf with --export-pdf.
     """
-    with console.status("[bold green]Rendering timeline..."):
+    if subject_id is None:
+        for flag, given in (
+            ("--export-pdf", export_pdf is not None),
+            ("--show-winnowing", show_winnowing),
+        ):
+            if given:
+                raise typer.BadParameter(
+                    "it's for a subject's timeline, so give a subject id",
+                    param_hint=f"'{flag}'",
+                )
+    drawing = "timeline" if subject_id is not None else "the vocabulary"
+    with console.status(f"[bold green]Rendering {drawing}..."):
         t0 = time.perf_counter()
         visualizer = Visualizer(
             visualization_cfg=visualization_config,
@@ -422,50 +484,32 @@ def visualize(
             overrides=overrides,
         )
         out_paths = []
-        try:
+        if subject_id is None:
             if export_html is not None:
-                out_paths.append(visualizer.save(subject_id, export_html))
-            if export_pdf is not None:
-                out_paths.append(visualizer.save_pdf(subject_id, export_pdf))
-            if not out_paths:
-                page = visualizer.render(subject_id)
-        except SubjectNotFoundError as e:
-            print(f"[red]✗[/red] {escape(str(e))}")
-            raise typer.Exit(code=1)
+                out_paths.append(visualizer.save_vocabulary(export_html))
+            else:
+                page = visualizer.render_vocabulary()
+            drawn = f"the vocabulary of {len(visualizer.decoder):,} words"
+        else:
+            try:
+                if export_html is not None:
+                    out_paths.append(visualizer.save(subject_id, export_html))
+                if export_pdf is not None:
+                    out_paths.append(visualizer.save_pdf(subject_id, export_pdf))
+                if not out_paths:
+                    page = visualizer.render(subject_id)
+            except SubjectNotFoundError as e:
+                print(f"[red]✗[/red] {escape(str(e))}")
+                raise typer.Exit(code=1)
+            drawn = f"the timeline of subject {escape(subject_id)}"
         t1 = time.perf_counter()
-        print(
-            f"\n[green]✓[/green] Rendered the timeline of subject "
-            f"{escape(subject_id)} in {t1 - t0:.2f}s."
-        )
-        if unclaimed := visualizer.unclaimed_prefixes():
-            n = len(unclaimed)
-            print(
-                f"  {n} code prefix{'es' if n > 1 else ''} without a configured lane: "
-                f"{escape(', '.join(unclaimed))}. To name and color their lanes, "
-                "list them under `lanes` in a config passed with -c."
-            )
+        print(f"\n[green]✓[/green] Rendered {drawn} in {t1 - t0:.2f}s.")
+        note_unclaimed(visualizer)
     if out_paths:
         for out_path in out_paths:
             print(f"  Output: [cyan]{out_path}[/cyan]")
         return
-    try:
-        server = make_server(page, host=host, port=port)
-    except OSError as e:
-        if e.errno != errno.EADDRINUSE:
-            raise
-        print(f"  Port {port} is in use; serving on a free one instead.")
-        server = make_server(page, host=host, port=0)
-    url = f"http://{host}:{server.server_port}/"
-    print(f"  Serving: [cyan]{url}[/cyan] (press Ctrl-C to stop)")
-    if open_browser:
-        webbrowser.open(url)
-    try:
-        server.serve_forever()
-    except KeyboardInterrupt:
-        pass
-    finally:
-        server.server_close()
-    print("  Stopped serving.")
+    serve(page, host=host, port=port, open_browser=open_browser)
 
 
 @app.command()

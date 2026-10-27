@@ -45,9 +45,14 @@ interactive html page, either served on localhost or written to a file with
 `--export-html`, and as a static pdf with `--export-pdf` (drawn by
 [pdf.py](src/cocoa/pdf.py)). It is a `Configurable` too (default
 [visualization.yaml](src/cocoa/config/visualization.yaml): lanes, palette, prefix
-names, code descriptions), but it only reads the stages' outputs. Its page
-template, css, js, icon, and fonts live in
-[src/cocoa/assets/](src/cocoa/assets/).
+names, code descriptions), but it only reads the stages' outputs. It draws the
+learned vocabulary as a second page (`cocoa visualize` without a subject id,
+`Visualizer.render_vocabulary`): each binned code's training values against its
+cut points, every word with its training count, the prefixes, and the timelines
+by split, as `tokenize --verbose` summarizes them. Each page's template and js
+live in [src/cocoa/assets/](src/cocoa/assets/) (`timeline.*`, `vocabulary.*`),
+with the icon and fonts; `timeline.css` holds the tokens and parts both pages
+use, and `vocabulary.css` only what the vocabulary page adds.
 
 Ahead of the stages, **`cocoa get-demo`** ([demo.py](src/cocoa/demo.py)) writes
 the public data the docs run on: the MIMIC-IV demo's CLIF tables, which
@@ -78,6 +83,8 @@ cocoa combine-datasets <dir> <dir> ... -o <output-dir>
 
 # View one subject's timeline (serves on 127.0.0.1:8765 until Ctrl-C)
 cocoa visualize <subject-id> -p <processed-data-home> [--open | -e out.html]
+# ...or, given no subject id, the vocabulary and its bins over the training data
+cocoa visualize -p <processed-data-home> [--open | -e out.html]
 
 # Format + lint (run before committing)
 ruff format .
@@ -129,8 +136,12 @@ overridden configs in an isolated tmp dir — no real patient data needed. Test
 files mostly mirror `src/cocoa` modules, except tokenizer coverage is split into
 core behavior (`test_tokenizer.py`), serialization/transfer
 (`test_tokenizer_io.py`), and configurable options (`test_tokenizer_options.py`),
-plus cross-cutting suites for subject splits, timezones, and full pipeline
-integration. Beyond the fixtures running the shipped defaults, no test should
+and the visualizer's into its timeline (`test_visualizer.py`) and its vocabulary
+page (`test_visualizer_vocabulary.py`), plus cross-cutting suites for subject
+splits, timezones, and full pipeline integration. Helpers that more than one test
+file needs, such as `copy_of` and `as_written_by_26_6`, live in
+[tests/conftest.py](tests/conftest.py) too. Beyond the fixtures running the
+shipped defaults, no test should
 depend on a shipped config carrying dataset-specific items (a lane, a prefix
 name, a code description); a test that needs them writes its own config, as
 `VIZ_CFG` in [tests/test_visualizer.py](tests/test_visualizer.py) does. A test
@@ -144,7 +155,7 @@ against a local processed dataset (e.g. `./processed/mimic/`, for which
 [recipes/mimic-iv-demo.md](recipes/mimic-iv-demo.md) builds a public stand-in,
 `./processed/demo/`); run a module directly (`python -m cocoa.tokenizer`) to
 exercise it against real data — the tokenizer block also asserts round-trip
-save/load equality, and the visualizer block asserts the page references no
+save/load equality, and the visualizer block asserts its pages reference no
 external URLs. When you change behavior, add/update a pytest case first.
 
 ## Architecture notes
@@ -258,10 +269,17 @@ external URLs. When you change behavior, add/update a pytest case first.
   which `get_timeline` localizes; a test rewrites today's output into that format
   (`as_written_by_26_6`) and checks it draws the same. When tokens were written
   without `include_numeric_values`, it recovers values from `meds.parquet` by
-  re-binning them the way `Tokenizer.bin_data` does. It spots a fused bin as an
-  uppercase `_Q<n>`, which only works because code values are lowercased. So a
-  change to binning or to code normalization needs a matching change in
-  `Visualizer.get_values` / `FUSED_BIN`. The page has to stay self-contained:
+  re-binning them the way `Tokenizer.bin_data` does, and the vocabulary page's
+  `get_histograms` re-bins the training split's values from `meds.parquet` the
+  same way, in polars, to count each bin; a test checks those counts against the
+  fused words' training counts. It spots a fused bin as an uppercase `_Q<n>`,
+  which only works because code values are lowercased. So a change to binning,
+  to which values bins are learned on, or to code normalization needs a matching
+  change in `Visualizer.get_values` / `get_histograms` / `FUSED_BIN`. Its
+  histograms take each code's mean over its values sorted, and the timelines'
+  summaries over rows sorted by `subject_id`, so that sums don't depend on the
+  order rows arrive in and a rerun renders the same page, `generated` aside.
+  A page has to stay self-contained:
   fonts and icon are inlined as base64, with no external URLs, so an exported
   file can be sent to someone without cocoa or the data. Its static
   `#cocoa-fallback` note tells a viewer that doesn't run scripts (an email or

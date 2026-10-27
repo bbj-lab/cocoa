@@ -136,6 +136,19 @@ timelines token by token, and ends with:
   Vocabulary size: 1115 tokens
 ```
 
+Releases of cocoa after 26.10.4 can also draw what the tokenizer learned:
+
+```sh
+cocoa visualize -p processed/demo --open
+```
+
+The page draws a histogram of each of the 138 binned codes' training values
+against its cut points. Cut points often tie on data like these: 90 of the codes
+have fewer than ten bins that hold any value, as where every dose of a medication
+is the same, or a score such as the Braden scale's takes just a few values. Its
+other tabs list the words, of which 63 occur only once in training, the prefixes,
+and the timelines by split, as `--verbose` summarizes them.
+
 ### 4. Winnow, and look at a timeline
 
 `cocoa winnow` readies timelines for evaluating a model. It cuts each one 24

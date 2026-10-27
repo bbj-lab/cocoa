@@ -74,7 +74,7 @@ CLIF tables.
     too rare in the earlier data to be learned tokenizes to `UNK`, the same as a
     code the earlier data never saw at all. The `counts` in `tokenizer.yaml`
     likewise stay as the earlier data recorded them. Here 589 of the later
-    timelines' 170,756 tokens, about 0.3%, are `UNK`, most of them codes that no
+    timelines' 170,506 tokens, about 0.3%, are `UNK`, most of them codes that no
     earlier training hospitalization had, such as the infusion
     `MED-CTS//octreotide` and the ventilator mode `RESP//pressure_control`.
 
@@ -98,11 +98,12 @@ CLIF tables.
       --output-data-dir processed/demo-combined
     ```
 
-    This writes the events, splits, timelines, and winnowed frames of all 310
-    hospitalizations to `processed/demo-combined`, with the earlier patients'
-    `tokenizer.yaml`. Each hospitalization keeps the split it was given, so the
-    combined dataset has 201 training, 27 tuning, and 82 held-out
-    hospitalizations, not the 208, 39, and 63 of the demo collated whole. It
-    warns of a `Configuration mismatch` between the two `tokenizer.yaml` files,
-    in `is_training` alone, since the later patients were tokenized by a frozen
-    copy; any other key would mean the halves were tokenized differently.
+    This writes the events, splits, and timelines of all 310 hospitalizations,
+    and the winnowed frames of the 280 that winnowing keeps, to
+    `processed/demo-combined`, with the earlier patients' `tokenizer.yaml`. Each
+    hospitalization keeps the split it was given, so the combined dataset has 201
+    training, 27 tuning, and 82 held-out hospitalizations, not the 208, 39, and
+    63 of the demo collated whole. It warns of a `Configuration mismatch` between
+    the two `tokenizer.yaml` files, in `is_training` alone, since the later
+    patients were tokenized by a frozen copy; any other key would mean the halves
+    were tokenized differently.

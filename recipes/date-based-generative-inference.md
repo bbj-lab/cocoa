@@ -1,6 +1,6 @@
 ## Date-based generative inference
 
-To prepare data for inference at first midnight after admission (here on the
+To prepare data for inference at each timeline's first midnight (here on the
 [MIMIC-IV demo](mimic-iv-demo.md), from its working directory),
 
 1. In your tokenization config (e.g. `tokenization.yaml`, a copy of the shipped
@@ -20,8 +20,8 @@ To prepare data for inference at first midnight after admission (here on the
     zone on standard time all year, as the demo's conversion to UTC did, so
     `CLCK//00` falls at midnight as MIMIC-IV records it.)
 
-2. In your winnowing config (e.g. `winnowing.yaml`), threshold at the first
-   occurrence of `CLCK//00`:
+2. In your winnowing config (e.g. `winnowing.yaml`, a copy of the shipped one),
+   threshold at the first occurrence of `CLCK//00`, in place of its `duration_s`:
 
     ```yaml
     threshold:
@@ -44,4 +44,7 @@ To prepare data for inference at first midnight after admission (here on the
     training hospitalizations, 38 of the 39 tuning, and 62 of the 63 held out.
     The held-out one left out, 22380825, is a five-hour stay. Hospitalization
     27708593, admitted at 07:15, is cut at midnight that night, before its
-    transfer to the ICU and its first tachycardia.
+    transfer to the ICU and its first tachycardia. Some are cut before they are
+    admitted: 52 of the 302 kept open with an arrival in the emergency department
+    the day before their admission, so their pasts end at the midnight before it,
+    without the age, sex, and other tokens timed at admission.

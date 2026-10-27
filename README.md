@@ -308,7 +308,7 @@ lookahead windows still see every row of the reference frame.
     - table: clif_code_status
       prefix: CODE
       code: code_status_category
-      time: admission_dttm
+      time: start_dttm
       reference_key: patient_id
     ```
 
@@ -580,7 +580,7 @@ after the same time:
   recorded before the start time land in the past.
 
 The two cut a timeline at the same point only if it opens at its start time. With
-the shipped collation config, which times its `REFERENCE` entries at
+the shipped collation config, which times its demographic `REFERENCE` entries at
 `admission_dttm`, no timeline opens after its admission, but many open before it:
 on the demo, 236 of the 310 timelines do, by as much as a day, 213 of them with
 an arrival in the emergency department (`XFR-IN//ed`). Held-out hospitalization
@@ -779,7 +779,7 @@ config keys from the command line, see
 ```
  Usage: cocoa [OPTIONS] COMMAND [ARGS]...
 
- Configurable collation and tokenization (v26.10.1)
+ Configurable collation and tokenization (v26.10.3)
 
 ╭─ Options ───────────────────────────────────────────────────────────────╮
 │ --install-completion            Install completion for the current      │
@@ -1131,7 +1131,8 @@ get started, see the
     I. Lee, L. Solo, M. Burkhart, B. Ramadan, W. Parker, & B. Beaulieu-Jones,
     Representation before training: a fixed-budget benchmark for generative
     medical event models,
-    [arXiv:2604.16775](https://doi.org/10.48550/arXiv.2604.16775)
+    [arXiv:2604.16775](https://doi.org/10.48550/arXiv.2604.16775), _to appear in
+    ML4H 2026_
 
 [^5]:
     M. Burkhart, L. Solo, I. Lee, S. Charles, Z. Liao, K. Chhikara, D. Therese,

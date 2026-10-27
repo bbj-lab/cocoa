@@ -90,7 +90,7 @@ the later steps read from:
 cocoa collate -r data-raw/demo -p processed/demo --verbose
 ```
 
-This writes `processed/demo/meds.parquet`, the 297,060 events of the 310
+This writes `processed/demo/meds.parquet`, the 296,528 events of the 310
 hospitalizations, a row each with its `subject_id`, `time`, `code` (such as
 `LAB-RES//sodium`), and any value; the shipped config makes each hospitalization
 a subject (`subject_id: hospitalization_id`). It also writes
@@ -126,7 +126,7 @@ decile of its value appended when it has one, as in `LAB-RES//sodium_Q5`. It
 writes `processed/demo/tokenizer.yaml`, the vocabulary and bin edges, and
 `processed/demo/tokens_times.parquet`, a row for each hospitalization holding its
 tokens, from `BOS` to `EOS`, and their times. `--verbose` prints the timelines'
-lengths, from 10 tokens to 11,614, half of them shorter than 311, and a few
+lengths, from 10 tokens to 11,614, half of them shorter than 309, and a few
 timelines token by token, and ends with:
 
 ```
@@ -176,7 +176,7 @@ Hospitalization 27708593 is the earliest admission in the held-out split, a
 week-long elective neurosurgical stay with 17 hours in the surgical ICU. The page
 draws its events in lanes by kind:
 
-<img src="https://raw.githubusercontent.com/burkh4rt/cocoa/master/img/vis-screenshot.png" alt="timeline of training hospitalization 21759936, with the labs at one time listed" width="700"/>
+<img src="https://raw.githubusercontent.com/burkh4rt/cocoa/master/img/vis-screenshot.png" alt="timeline of held-out hospitalization 27708593, with its first tokens listed" width="700"/>
 
 Lanes can be displayed interactively:
 

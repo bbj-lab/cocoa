@@ -258,7 +258,9 @@ class Collator(Configurable):
             # a bare Datetime drops the timezone, putting all three columns on
             # the same wall clock (and the same unit) for the comparison
             naive = pl.Datetime(time_unit=self.time_unit)
-            df = df.join(self.reference_frame, on=reference_key, how="inner").filter(
+            df = df.join(
+                self.get_reference_frame(), on=reference_key, how="inner"
+            ).filter(
                 pl.col(time)
                 .cast(naive)
                 .is_between(

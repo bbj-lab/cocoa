@@ -28,9 +28,9 @@ derives with clifpy in step 1 of the [MIMIC-IV demo](mimic-iv-demo.md):
 `med_dose_unit` -- they will be ignored unless included in the configuration.)
 
 For each `hospitalization_id`, you want to insert tokens corresponding to
-`med_category` with respective `med_dose_converted` (after preprocessing,
-`med_dose_unit_converted` is unique within each `med_category`.) However, you
-only want to include these tokens if the medication was actually administered
+`med_category` with respective `med_dose_converted` (where clifpy converted the
+dose, `med_dose_unit_converted` is unique within each `med_category`). However,
+you only want to include these tokens if the medication was actually administered
 `pl.col("mar_action_category") == "given"` and the conversion during
 preprocessing completed successfully (`pl.col("_convert_status") == "success"`).
 

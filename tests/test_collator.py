@@ -1324,7 +1324,6 @@ def test_age_numeric_value_matches_the_raw_column(pipeline):
         ("SEX", "admission"),
         ("AGE", "admission"),
         ("ADMN", "admission"),
-        ("CODE", "admission"),
         ("DSCG", "discharge"),
     ],
 )
@@ -1339,6 +1338,24 @@ def test_static_event_occurs_once_per_subject_at_the_expected_instant(
     assert {s: t for s, t in zip(df["subject_id"], df["time"])} == {
         s: utc(t) for s, t in when.items()
     }
+
+
+def test_code_status_lands_on_the_stay_it_was_set_in(pipeline):
+    """
+    code_status is keyed by patient, so each status meets every stay of its
+    patient; timed by its own start_dttm, it stays on the one it was set in, at
+    that time, and one set before any stay is dropped
+    """
+    m = pipeline.manifest
+    code = pipeline.meds.filter(pl.col("code").str.starts_with("CODE//"))
+    assert sorted(code.select("subject_id", "time", "code").rows()) == sorted(
+        (s, utc(t), f"CODE//{c.lower()}") for s, (t, c) in m.code_status.items()
+    )
+    assert raw(m, "clif_code_status").height > len(m.code_status)
+    # a patient's stays differ in status, so a stray couldn't pass for its own
+    assert any(
+        len({m.code_status[s][1] for s in m.subjects_of[p]}) > 1 for p in m.patient_ids
+    )
 
 
 def test_dscg_expired_marks_exactly_the_expired_stays(pipeline):
@@ -1765,6 +1782,37 @@ def test_reference_key_window_compares_instants_across_a_dst_fall_back(runner):
     assert xtra["code"].to_list() == ["XTRA//inside"]
 
 
+def test_reference_key_entry_may_take_its_time_from_the_reference_frame(runner):
+    """
+    a `time` the table lacks comes from the reference frame, where the window
+    keeps every row: so the CODE entry released through 26.10.3, timed by
+    admission_dttm, puts every status of a patient on each of their stays, at
+    its admission
+    """
+    m = runner.raw
+    cfg = default_cfg("collation")
+    cfg["entries"] = shipped_entries("REFERENCE", "RACE") + [
+        {
+            "table": "clif_code_status",
+            "prefix": "CODE",
+            "code": "code_status_category",
+            "time": "admission_dttm",
+            "reference_key": "patient_id",
+        }
+    ]
+    dest = runner.dir()
+    runner.collate(cfg=cfg, dest=dest)
+    code = pl.read_parquet(dest / "meds.parquet").filter(
+        pl.col("code").str.starts_with("CODE//")
+    )
+    statuses = raw(m, "clif_code_status")
+    assert sorted(code.select("subject_id", "time", "code").rows()) == sorted(
+        (s, utc(m.admission[s]), f"CODE//{c.lower()}")
+        for p, c in zip(statuses["patient_id"], statuses["code_status_category"])
+        for s in m.subjects_of[p]
+    )
+
+
 @pytest.mark.parametrize("zone", ["UTC", "America/Chicago", "Asia/Tokyo"])
 def test_fix_date_to_time_moves_midnight_to_the_end_of_the_local_day(runner, zone):
     """the end of the day means the end of the day in `default_timezone`"""
@@ -1894,12 +1942,19 @@ def test_without_fix_date_to_time_a_date_stays_at_midnight(runner):
     assert collate_extra(runner, {**EXTRA, "time": "event_date"}).height == 0
 
 
-def test_reference_key_entry_before_any_reference_entry_raises(runner):
-    """get_entry joins the cached reference frame, which nothing has filled yet"""
+def test_reference_key_entry_needs_no_reference_entry_before_it(runner):
+    """its join builds the reference frame when no REFERENCE entry has yet"""
+    entry = {**EXTRA, "time": "event_dttm"}
     cfg = default_cfg("collation")
-    cfg["entries"] = [{**EXTRA, "time": "event_dttm"}]
-    with pytest.raises(TypeError, match="LazyFrame"):
-        runner.collate(cfg=cfg)
+    cfg["entries"] = [entry]
+    dest = runner.dir()
+    runner.collate(cfg=cfg, dest=dest)
+    alone = pl.read_parquet(dest / "meds.parquet")
+    after = collate_extra(runner, entry)  # behind a REFERENCE entry, as shipped
+    assert after.height > 0
+    assert alone.sort("subject_id", "time", "code").equals(
+        after.sort("subject_id", "time", "code")
+    )
 
 
 # --- slightly_safer_eval -----------------------------------------------------

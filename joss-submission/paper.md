@@ -198,7 +198,8 @@ This library was built on top of a previous
 the extensive use of Claude Code, OpenAI Codex, and Github Copilot. Design
 choices were made specifically to allow these tools to perform their best. Early
 experimentation led to prioritizing a more modular codebase, frequent commits,
-and the adoption of a test suite. This paper, however, was typed out manually.
+and the adoption of a test suite. Humans reviewed, modified, and validated all
+AI-generated content. This paper was typed manually.
 
 # Acknowledgements
 

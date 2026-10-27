@@ -256,9 +256,13 @@ HELP_TEXT = {
     ),
     "visualize": (
         (
-            "Visualize a subject's timeline",
+            "Visualize a subject's timeline, or the vocabulary",
+            "without one, draws the vocabulary",
+            "binned code's training values",
+            "as a static pdf with --export-pdf, or both",
             "--export-html",
             "--export-pdf",
+            "Save a static pdf of the page",
             "--visualization-config",
             "--show-winnowing",
             "Config overrides",
@@ -928,16 +932,18 @@ def test_visualize_exports_html_and_pdf_together(pipeline, tmp_path):
         (("SEX", "VTL"), "2 code prefixes without a configured lane: SEX, VTL."),
     ],
 )
+@pytest.mark.parametrize("drawing", ["timeline", "vocabulary"])
 def test_visualize_names_the_prefixes_no_lane_claims(
-    pipeline, tmp_path, unclaimed, said
+    pipeline, tmp_path, unclaimed, said, drawing
 ):
     vocab = {w.partition("//")[0] for w in pipeline.vocab if "//" in w}
     assert set(unclaimed) < vocab
     lanes = [{"prefixes": sorted(vocab - set(unclaimed))}]
     path = write_cfg(tmp_path / "visualization.yaml", {"lanes": lanes})
     sid = pipeline.tokens_times["subject_id"][0]
+    args = (sid,) if drawing == "timeline" else ()
     result = run(
-        "visualize", sid, "-p", pipeline.path, "-c", path, "-e", tmp_path / "t.html"
+        "visualize", *args, "-p", pipeline.path, "-c", path, "-e", tmp_path / "t.html"
     )
     assert result.exit_code == 0, result.output
     output = " ".join(plain(result.output).split())
@@ -991,6 +997,105 @@ def test_visualize_serves_the_page_it_would_export_until_interrupted(
     assert serving.opened == ([url] if "--open" in args else [])
     assert server.closed
     assert squashed("Stopped serving.") in out
+
+
+def test_visualize_without_a_subject_exports_the_vocabulary(pipeline, tmp_path):
+    out = tmp_path / "page" / "vocabulary.html"
+    result = run("visualize", "-p", pipeline.path, "-e", out)
+    assert result.exit_code == 0, result.output
+    assert (
+        f"<title>Vocabulary · {pipeline.path.name} · cocoa</title>" in out.read_text()
+    )
+    said = squashed(result.output)
+    assert squashed(f"Rendered the vocabulary of {len(pipeline.vocab):,} words") in said
+    assert str(out.resolve()).replace(" ", "") in said
+    assert "Serving" not in plain(result.output)
+
+
+@pytest.mark.parametrize(
+    "args, host, port",
+    [
+        ((), "127.0.0.1", 8765),
+        (("--host", "localhost", "--port", "0", "--open"), "localhost", 0),
+    ],
+    ids=["defaults", "given"],
+)
+def test_visualize_without_a_subject_serves_the_vocabulary_until_interrupted(
+    pipeline, tmp_path, serving, args, host, port
+):
+    result = run("visualize", "-p", pipeline.path, *args)
+    assert result.exit_code == 0, result.output
+    assert serving.asked == [(host, port)]
+    [server] = serving.servers
+    exported = tmp_path / "vocabulary.html"
+    rerun = run("visualize", "-p", pipeline.path, "-e", exported)
+    assert rerun.exit_code == 0, rerun.output
+    assert undated(server.page) == undated(exported.read_text())
+    url = f"http://{host}:{server.server_port}/"
+    out = squashed(result.output)
+    assert squashed(f"Serving: {url}") in out
+    assert serving.opened == ([url] if "--open" in args else [])
+    assert server.closed
+    assert squashed("Stopped serving.") in out
+
+
+def test_visualize_without_a_subject_exports_the_vocabulary_as_a_pdf(
+    pipeline, tmp_path, serving
+):
+    out = tmp_path / "page" / "vocabulary.pdf"
+    result = run("visualize", "-p", pipeline.path, "--export-pdf", out)
+    assert result.exit_code == 0, result.output
+    data = out.read_bytes()
+    title = f"Vocabulary · {pipeline.path.name} · cocoa".encode("utf-16-be")
+    assert data.startswith(b"%PDF-")
+    assert b"/Title <FEFF" + title.hex().upper().encode() + b">" in data
+    said = squashed(result.output)
+    assert squashed(f"Rendered the vocabulary of {len(pipeline.vocab):,} words") in said
+    assert str(out.resolve()).replace(" ", "") in said
+    assert serving.asked == []
+
+
+def test_visualize_without_a_subject_exports_html_and_pdf_together(
+    pipeline, tmp_path, serving
+):
+    html, pdf = tmp_path / "v.html", tmp_path / "v.pdf"
+    result = run("visualize", "-p", pipeline.path, "-e", html, "--export-pdf", pdf)
+    assert result.exit_code == 0, result.output
+    assert f"<title>Vocabulary \u00b7 {pipeline.path.name} \u00b7 cocoa</title>" in (
+        html.read_text()
+    )
+    assert pdf.read_bytes().startswith(b"%PDF-")
+    out = squashed(result.output)
+    assert str(html.resolve()).replace(" ", "") in out
+    assert str(pdf.resolve()).replace(" ", "") in out
+    assert serving.asked == []
+
+
+def test_visualize_without_a_subject_refuses_show_winnowing(
+    pipeline, tmp_path, serving
+):
+    pdf = tmp_path / "t.pdf"
+    result = run(
+        "visualize", "-p", pipeline.path, "--show-winnowing", "--export-pdf", pdf
+    )
+    assert result.exit_code == 2  # a usage error, before anything is drawn
+    out = re.sub(r"[\u2500-\u257f]", "", squashed(result.output))  # its box, too
+    assert squashed("Invalid value for '--show-winnowing'") in out
+    assert squashed("it's for a subject's timeline, so give a subject id") in out
+    assert serving.asked == [] and not pdf.exists()
+
+
+def test_visualize_reads_its_first_argument_as_a_subject_id_whatever_it_says(
+    pipeline, serving
+):
+    """nothing is guessed from an argument's spelling, so an override needs a
+    subject id before it, and the vocabulary takes its config from -c"""
+    result = run("visualize", "-p", pipeline.path, "show_winnowing=true")
+    assert result.exit_code == 1
+    assert squashed("No timeline for subject_id='show_winnowing=true'") in squashed(
+        result.output
+    )
+    assert serving.asked == []
 
 
 def test_visualize_serves_on_a_free_port_when_the_given_one_is_taken(

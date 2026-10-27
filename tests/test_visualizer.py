@@ -8,16 +8,14 @@ import copy
 import datetime
 import importlib.resources as resources
 import json
-import pathlib
 import re
-import shutil
 import socket
 import threading
 import zoneinfo
 
 import polars as pl
 import pytest
-from conftest import default_cfg, write_cfg
+from conftest import as_written_by_26_6, copy_of, default_cfg, write_cfg
 from omegaconf import OmegaConf
 
 from cocoa.visualizer import (
@@ -256,31 +254,6 @@ def test_the_payload_says_whether_the_tokenizer_fused_its_bins(runner, pipeline)
     assert p["meta"]["fused"] is False
 
 
-def naive_utc(e: pl.Expr) -> pl.Expr:
-    return e.dt.convert_time_zone("UTC").dt.replace_time_zone(None)
-
-
-def as_written_by_26_6(src: pathlib.Path, dest: pathlib.Path) -> pathlib.Path:
-    """
-    a copy of processed directory `src` as 26.6.x wrote it: times naive utc, no
-    subject start_time or end_time, and a tokenizer.yaml without counts
-    """
-    for f in src.glob("*.parquet"):
-        df = pl.read_parquet(f).drop("start_time", "end_time", strict=False)
-        df.with_columns(
-            naive_utc(pl.col(c))
-            if isinstance(t, pl.Datetime)
-            else pl.col(c).list.eval(naive_utc(pl.element()))
-            for c, t in df.schema.items()
-            if isinstance(t, pl.Datetime)
-            or (isinstance(t, pl.List) and isinstance(t.inner, pl.Datetime))
-        ).write_parquet(dest / f.name)
-    y = OmegaConf.load(src / "tokenizer.yaml")
-    del y.counts
-    (dest / "tokenizer.yaml").write_text(OmegaConf.to_yaml(y))
-    return dest
-
-
 def test_a_timeline_from_26_6_draws_as_it_does_today(pipeline, tmp_path):
     """before 26.9.0, times were stored naive and meant utc"""
     legacy = as_written_by_26_6(pipeline.path, tmp_path)
@@ -306,15 +279,6 @@ def test_an_empty_tokenizer_yaml_says_why(tmp_path):
     (tmp_path / "tokenizer.yaml").write_text("")
     with pytest.raises(ValueError, match="26.6.0 and 26.6.1"):
         Visualizer(processed_data_home=tmp_path)
-
-
-def copy_of(src: pathlib.Path, dest: pathlib.Path, without=()) -> pathlib.Path:
-    """a copy of processed directory `src` in `dest`, less the files `without`"""
-    dest.mkdir(parents=True, exist_ok=True)
-    for f in src.iterdir():
-        if f.is_file() and f.name not in without:
-            shutil.copy(f, dest / f.name)
-    return dest
 
 
 def subject_with_unk(pipeline) -> str:

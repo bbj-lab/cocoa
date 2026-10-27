@@ -18,6 +18,7 @@ import polars as pl
 import pytest
 import synth
 from conftest import as_written_by_26_6, copy_of, default_cfg, write_cfg
+from omegaconf import OmegaConf
 
 import cocoa.pdf as pdf
 from cocoa.collator import Collator
@@ -607,6 +608,37 @@ def test_a_timeline_without_events_still_makes_a_page():
     assert "This subject's timeline has no events." in page_texts(data)[0]
 
 
+def test_a_timeline_of_bos_and_eos_alone_gives_no_code_a_row():
+    """it has no lane to draw, so no page of every code, but lists its events"""
+    ends = ["BOS", "EOS"]
+    labels = ["2024-01-01 08:00:00 UTC", "2024-01-01 09:00:00 UTC"]
+    p = {
+        "meta": {"cocoa_version": "0", "timezone": "UTC"},
+        "subject": {"subject_id": "s1", "fields": []},
+        "lanes": [],
+        "codes": [{"code": w, "prefix": w, "name": "", "lane": None} for w in ends],
+        "times": {"ms": [1704096e6, 1704099.6e6], "label": labels},
+        "events": {
+            "kind": ["bos", "eos"],
+            "time": [0, 1],
+            "code": [0, 1],
+            "bin": [None, None],
+            "text": [None, None],
+            "first_token": [0, 1],
+            "n_tokens": [1, 1],
+        },
+        "tokens": {"id": [1, 2], "event": [0, 1], "vocab": {"1": "BOS", "2": "EOS"}},
+        "winnowed": None,
+    }
+    data = timeline_pdf(p)
+    check_layout(data)
+    texts = runs(data)
+    assert check_structure(data) == len(texts) == 2  # the subject, then its events
+    assert not [r for t in texts for r in t if r.text == "Every code"]
+    assert [r.text for r in column(texts, "Code")] == ends
+    assert [r.text for r in column(texts, "Time")] == labels
+
+
 def test_the_header_states_the_subject_s_facts_and_fields(pipeline):
     sid = pipeline.subjects_in_split("held_out")[0]
     p = Visualizer(processed_data_home=pipeline.path).get_payload(sid)
@@ -712,6 +744,17 @@ def test_a_stay_ending_at_a_sentinel_date_is_ticked_by_decades_up_to_a_cap(runne
     assert {(w.month, w.day, w.hour, w.minute) for w in walls} == {(1, 1, 0, 0)}
     assert t.tick_labels == [(str(w.year), "") for w in walls]
     assert check_structure(timeline_pdf(p)) >= 3
+
+
+def test_an_axis_stepping_by_time_stops_at_500_ticks_too(pipeline, monkeypatch):
+    """
+    as one stepping by months does above: the steps on offer keep an axis to a
+    few ticks, but were none coarse enough, it would stop after 500 all the same
+    """
+    monkeypatch.setattr(pdf, "STEPS", [(1e3, None, 1e3)])  # a second, alone
+    t = TimelinePdf(payload_of(pipeline))
+    assert len(t.ticks) == len(t.tick_labels) == 500
+    assert {b - a for a, b in zip(t.ticks, t.ticks[1:])} == {1e3}
 
 
 def test_lanes_are_drawn_in_their_names_and_colors(pipeline, lanes_cfg):
@@ -1218,6 +1261,31 @@ def test_a_code_of_one_value_draws_its_bar_right_of_its_cut_points(runner, lanes
     assert "1 of 10 bins hold values" in "\n".join(page_texts(data))
 
 
+def test_cut_points_learned_elsewhere_are_drawn_at_their_values(runner, lanes_cfg):
+    """
+    a tokenizer cuts among its own training values, but applied to another
+    directory, it draws that one's values against cut points they may not hit,
+    each on the axis the bars share
+    """
+    learned = readings(runner, [60.0] * 3 + [70.0] * 5 + [80.0] * 2)
+    home = readings(runner, [65.0] * 4 + [75.0] * 6)
+    runner.tokenize(processed=home, tokenizer_home=learned / "tokenizer.yaml")
+    p = vocabulary_of(home, lanes_cfg)
+    (b,) = p["binned"]
+    assert p["meta"]["is_training"] is False
+    assert set(b["breaks"]) == {60.0, 70.0, 80.0}
+    assert b["hist"] == {"x": [65.0, 75.0], "n": [4, 6]}
+    data = vocabulary_pdf(p)
+    check_layout(data)
+    page = streams(data)[heading(runs(data), "Binned codes")[0]]
+    c65, c75 = (f.x + f.w / 2 for f in bars(page, LANES["lanes"][0]["color"]))
+    (cuts,) = [s for s in strokes(page) if (s.color, s.width) == (rgb(pdf.INK2), 0.5)]
+    x60, x70, x80 = (a[0] for a, _ in cuts.paths)
+    assert x60 < c65 < x70 < c75 < x80
+    assert c65 - x60 == pytest.approx(x70 - c65, abs=0.02)  # 65 halfway to 70
+    assert x80 - x70 == pytest.approx(x70 - x60, abs=0.02)
+
+
 def test_timelines_that_span_no_time_have_no_duration_to_draw(runner):
     """as a stay of one reading has; the durations' chart is left blank"""
     p = vocabulary_of(readings(runner, [70.0]))
@@ -1238,6 +1306,61 @@ def test_timelines_that_span_no_time_have_no_duration_to_draw(runner):
     ]
     assert stats[1::2] == ["min 0 s · quartiles 0 s, 0 s, 0 s · max 0 s · mean 0 s"] * 2
     assert sum(len(bars(s, pdf.INK2)) for s in streams(data)[:k]) == 2  # lengths'
+
+
+def test_a_directory_whose_timelines_are_gone_still_draws_its_vocabulary(
+    pipeline, tmp_path, lanes_cfg
+):
+    """an empty tokens_times.parquet sums to no timelines, with none to chart"""
+    dest = copy_of(pipeline.path, tmp_path)
+    pipeline.tokens_times.clear().write_parquet(dest / "tokens_times.parquet")
+    p = vocabulary_of(dest, lanes_cfg)
+    assert (p["timelines"]["all"]["timelines"], p["timelines"]["splits"]) == (0, [])
+    data = vocabulary_pdf(p)
+    check_layout(data)
+    texts = runs(data)
+    below = heading(texts, "Prefixes")[1].y
+    header = [r.text for r in texts[0] if r.y < below]
+    assert defined(texts[0])["Timelines"] == "0"
+    assert "Median length" not in header  # not even its label
+    assert [(r.text, r.font) for r in column(texts, "Split")] == [("All", "F2")]
+    k = heading(texts, "Binned codes")[0]
+    groups = [r.text for t in texts[:k] for r in t if (r.font, r.size) == ("F2", 8)]
+    assert groups == ["All"]
+    assert not [r for t in texts[:k] for r in t if r.size == 6 and r.text[:4] == "min "]
+    assert not [f for s in streams(data)[:k] for f in bars(s, pdf.INK2)]
+
+
+def test_a_tokenizer_yaml_that_records_no_provenance_leaves_it_out(pipeline, tmp_path):
+    """
+    every release records n_bins in its config, and whether, when, and by which
+    cocoa a tokenizer was learned, but the page reads each as optional, and so
+    does the pdf
+    """
+    dest = copy_of(pipeline.path, tmp_path)
+    y = OmegaConf.load(dest / "tokenizer.yaml")
+    for key in ("is_training", "created_dttm", "cocoa_version"):
+        del y[key]
+    del y.cfg.n_bins
+    (dest / "tokenizer.yaml").write_text(OmegaConf.to_yaml(y))
+    p = vocabulary_of(dest)
+    m = p["meta"]
+    assert [m[k] for k in ("n_bins", "is_training", "tokenizer_created")] == [None] * 3
+    data = vocabulary_pdf(p)
+    check_layout(data)
+    texts = runs(data)
+    below = heading(texts, "Prefixes")[1].y
+    assert "Bins per code" not in [r.text for r in texts[0] if r.y < below]
+    k, head = heading(texts, "Tokenizer config")
+    shown = {r.text for r in texts[k]}
+    assert not {"Learned", "Created", "By cocoa"} & shown
+    keys = [r for r in texts[k] if (r.font, r.size, r.x) == ("F3", 6.5, pdf.MARGIN)]
+    assert [r.text for r in keys] == [key for key, _ in p["config"]]
+    assert "n_bins" not in shown
+    assert keys[0].y == head.y + 16  # right under the heading, with no facts between
+    foot = next(r for r in texts[0] if r.y == pdf.PAGE_H - 20 and r.x == pdf.MARGIN)
+    assert foot.text.startswith(f"cocoa {m['cocoa_version']} · rendered ")
+    assert "tokenizer created" not in foot.text and "by cocoa" not in foot.text
 
 
 def test_a_binned_code_without_training_values_here_says_so(pipeline, tmp_path):

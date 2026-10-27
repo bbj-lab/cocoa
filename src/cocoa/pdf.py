@@ -694,12 +694,9 @@ class Flow:
             at = x + measure(clip(c.text, 6.5, font, w), 6.5, font) + 5
             self.page.text(at, base, c.note, 6.5, color=INK2, width=x + w - at)
 
-    def footer(self) -> list[str | None]:
-        """what the footer of every page says, but for what's None"""
-        return []
-
-    def footers(self) -> None:
-        line = " · ".join(s for s in self.footer() if s)
+    def footers(self, items: list[str | None]) -> None:
+        """`items` but those that are None, and its number, at every page's foot"""
+        line = " · ".join(s for s in items if s)
         n = len(self.doc.pages)
         for i, page in enumerate(self.doc.pages, 1):
             num = f"Page {i} of {n}"
@@ -1142,7 +1139,7 @@ class TimelinePdf(Flow):
             self.winnowing()
             self.every_code()
             self.events()
-        self.footers()
+        self.footers(self.footer())
         return self.doc.to_bytes()
 
 
@@ -1682,7 +1679,7 @@ class VocabularyPdf(Flow):
         self.binned()
         self.words()
         self.config()
-        self.footers()
+        self.footers(self.footer())
         return self.doc.to_bytes()
 
 

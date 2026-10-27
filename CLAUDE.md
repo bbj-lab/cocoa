@@ -90,6 +90,10 @@ pytest --cov                       # with line and branch coverage, as CI measur
 # Docs (mkdocs-material, published to readthedocs)
 mkdocs build
 mkdocs serve --dev-addr 127.0.0.1:8001
+
+# Release: bump pyproject.toml `version`, commit, then push a signed tag for it
+git tag -s vYY.M.patch -m "message"
+git push origin vYY.M.patch
 ```
 
 There's a pytest suite in [tests/](tests/) — run it with `pytest`. CI
@@ -363,7 +367,26 @@ external URLs. When you change behavior, add/update a pytest case first.
 - **Versioning is CalVer** `YY.M.patch` (e.g. `26.6.1`); releases are signed git
   tags `vYY.M.patch`, published to PyPI. Not every tag was published: 26.6.0 was
   the first PyPI release, and `v26.4.0` and `v26.6.3` never shipped.
-  `__version__` comes from installed package metadata, not a literal.
+  `__version__` comes from installed package metadata, not a literal. Now pushing
+  a `v*` tag to `bbj-lab/cocoa` publishes it: it runs
+  [publish.yml](.github/workflows/publish.yml) (cotorra's, but for the names),
+  which builds the sdist and wheel and uploads them to PyPI and TestPyPI by
+  trusted publishing (OIDC, as for Codecov, so no token secret), in parallel jobs
+  through the `pypi` and `testpypi` environments, so neither index's failure
+  blocks the other; TestPyPI skips a version it already has. It fails unless the
+  tag is `v` + `version`, points to the commit built, and is signed
+  (`git tag -s`, not a lightweight tag) with burkh4rt's release key: it imports
+  the public keys GitHub serves for that account and accepts only the one whose
+  fingerprint it pins (`RELEASE_KEY`), so letting anyone else release means
+  changing that. Each file gets two Sigstore-signed attestations, both keyless
+  (signed for the workflow's OIDC identity): SLSA build provenance from the build
+  job, kept by GitHub (`gh attestation verify <file> --repo bbj-lab/cocoa`), and
+  the publish action's PEP 740 attestations, uploaded beside it to each index
+  (`pypi-attestations verify pypi --repository https://github.com/bbj-lab/cocoa pypi:<file>`).
+  PyPI refuses any requirement that's a direct URL reference, even in an extra,
+  so before building it drops every extra holding one (cocoa has none; cotorra's
+  `gen` does). Don't build and upload by hand, which skips the checks and the
+  attestations.
 - Keep [README.md](README.md), the [recipes/](recipes/) (mirrored into
   [docs/recipes/](docs/recipes/)), the per-module pages in
   [docs/api/](docs/api/), and the shipped default configs in sync when behavior

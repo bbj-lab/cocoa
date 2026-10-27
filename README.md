@@ -1186,23 +1186,17 @@ rsync -avh \
  randi:/gpfs/data/bbj-lab/users/burkh4rt
 ```
 
-Send to pypi:
-```
-rm -rf dist
-python3 -m pip install --upgrade build
-python3 -m build
-python3 -m pip install --upgrade twine
-python3 -m twine upload --repository pypi dist/*
-```
-
 Make docs:
 ```
 mkdocs build
 mkdocs serve --dev-addr 127.0.0.1:8001
 ```
 
-Make tag:
+Make tag and send to pypi and testpypi (pushing a `v*` tag runs
+`.github/workflows/publish.yml`, which builds and uploads to both):
 ```
-git tag -s v26.6.1 -m "docs may be read"
+git tag -s v26.10.4 -m "add provenance"
+git push origin v26.10.4
+git push upstream v26.10.4
 ```
 -->

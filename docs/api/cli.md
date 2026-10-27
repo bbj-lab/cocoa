@@ -3,20 +3,20 @@
 Cocoa ships a command-line interface, `cocoa`, that drives every stage of the
 pipeline. Each stage has its own command. There are also two convenience
 commands, for running everything at once and for merging datasets, a viewer for
-inspecting one subject's tokenized timeline, and a command that writes the
-MIMIC-IV demo's tables to start from.
+inspecting one subject's tokenized timeline, or the learned vocabulary, and a
+command that writes the MIMIC-IV demo's tables to start from.
 
 ## Commands
 
-| Command                  | What it does                                            |
-| ------------------------ | ------------------------------------------------------- |
-| `cocoa collate`          | Collate raw tables into a denormalized event stream.    |
-| `cocoa tokenize`         | Tokenize collated data into integer timelines.          |
-| `cocoa winnow`           | Prepare timelines for evaluation.                       |
-| `cocoa pipeline`         | Run `collate`, `tokenize`, and `winnow` end-to-end.     |
-| `cocoa combine-datasets` | Merge multiple processed datasets into one.             |
-| `cocoa visualize`        | Show one subject's timeline as an interactive web page. |
-| `cocoa get-demo`         | Write the MIMIC-IV demo's CLIF tables, from clifpy.     |
+| Command                  | What it does                                                 |
+| ------------------------ | ------------------------------------------------------------ |
+| `cocoa collate`          | Collate raw tables into a denormalized event stream.         |
+| `cocoa tokenize`         | Tokenize collated data into integer timelines.               |
+| `cocoa winnow`           | Prepare timelines for evaluation.                            |
+| `cocoa pipeline`         | Run `collate`, `tokenize`, and `winnow` end-to-end.          |
+| `cocoa combine-datasets` | Merge multiple processed datasets into one.                  |
+| `cocoa visualize`        | Show a subject's timeline, or the vocabulary, as a web page. |
+| `cocoa get-demo`         | Write the MIMIC-IV demo's CLIF tables, from clifpy.          |
 
 Every stage command accepts `--processed-data-home` / `-p` (the working directory
 for intermediate and output files) and `--verbose` / `-v` (extra logging and
@@ -105,6 +105,18 @@ cocoa visualize 27708593 --processed-data-home processed/demo --open
 cocoa visualize 27708593 --processed-data-home processed/demo -e timeline.html
 cocoa visualize 27708593 --processed-data-home processed/demo \
                 -e timeline.html --export-pdf timeline.pdf
+```
+
+Without a subject id, `cocoa visualize` draws the vocabulary that tokenization
+learned instead, with each binned code's training values against its bins and the
+timelines summarized by split, and serves or saves it the same ways (see
+[The vocabulary page](visualizer.md#the-vocabulary-page)):
+
+```sh
+cocoa visualize --processed-data-home processed/demo --open
+cocoa visualize --processed-data-home processed/demo -e vocabulary.html
+cocoa visualize --processed-data-home processed/demo \
+                -e vocabulary.html --export-pdf vocabulary.pdf
 ```
 
 ---

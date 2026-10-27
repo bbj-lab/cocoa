@@ -1,0 +1,249 @@
+/* the vocabulary page, drawn on timeline.css, whose tokens and parts it uses */
+
+.lede {
+  max-width: 48rem;
+  margin: 0.75rem 0 0;
+  color: var(--ink-2);
+}
+
+/* the tabbed panel holding every view */
+.explorer {
+  margin-top: 0;
+}
+.explorer .tabs {
+  flex-wrap: wrap;
+}
+.tab .ct {
+  margin-left: 0.4rem;
+}
+.explorer .toolbar {
+  border-bottom: 1px solid var(--grid);
+}
+.explorer .search {
+  margin-left: 0;
+}
+.toolbar[hidden],
+.seg[hidden] {
+  display: none;
+}
+.seg .btn[aria-pressed="true"] {
+  background: var(--ink);
+  color: var(--surface);
+}
+.vbody {
+  padding: 0.75rem;
+}
+.more {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0.9rem 0 0.15rem;
+  color: var(--ink-2);
+  font-size: 0.8rem;
+}
+.hnote {
+  margin: 0.6rem 0 0;
+  color: var(--ink-2);
+  font-size: 0.78rem;
+}
+.hnote .linkish {
+  font-family: inherit;
+  font-size: inherit;
+  color: var(--ink);
+}
+
+/* binned codes: a card each, opening across the grid */
+.hists {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+  gap: 0.75rem;
+}
+.hcard {
+  min-width: 0;
+  border: 1px solid var(--hair);
+  border-radius: 8px;
+  padding: 0.5rem 0.65rem 0.45rem;
+}
+.hcard.open {
+  grid-column: 1 / -1;
+  border-color: var(--axis);
+}
+.hcard-hd {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  width: 100%;
+  background: none;
+  border: 0;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+}
+.hcode {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.hcard-hd:hover .hcode {
+  text-decoration: underline;
+  text-decoration-color: var(--axis);
+  text-underline-offset: 3px;
+}
+.hsub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink-2);
+  font-size: 0.75rem;
+}
+.hplot {
+  margin-top: 0.35rem;
+  cursor: pointer;
+}
+.hplot canvas,
+.cplot canvas {
+  display: block;
+  width: 100%;
+}
+.hax {
+  display: flex;
+  justify-content: space-between;
+  color: var(--ink-2);
+  font-size: 0.7rem;
+  line-height: 1.3;
+}
+.hmeta {
+  margin-top: 0.15rem;
+  color: var(--ink-2);
+  font-size: 0.72rem;
+}
+.hmeta b {
+  color: var(--ink);
+  font-weight: 500;
+}
+.hdetail {
+  margin-top: 0.6rem;
+  padding-top: 0.2rem;
+  border-top: 1px solid var(--grid);
+}
+.hdetail .facts {
+  margin: 0.4rem 0 0.6rem;
+}
+
+/* tables */
+.vtable tr {
+  cursor: default;
+}
+.vtable tr.go {
+  cursor: pointer;
+}
+.vtable tr.go:hover td {
+  background: var(--wash);
+}
+.vtable tr.none td {
+  color: var(--muted);
+}
+.vtable tr.total td {
+  font-weight: 500;
+  border-top: 1px solid var(--grid);
+}
+.vtable .gone {
+  color: var(--muted);
+  font-family: inherit;
+  font-style: italic;
+}
+.vtable .sort {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.vtable .sort:hover {
+  color: var(--ink);
+}
+.vtable .arrow {
+  font-size: 0.65rem;
+}
+.share {
+  white-space: nowrap;
+}
+.share .pct {
+  margin-left: 0.5rem;
+  color: var(--ink-2);
+}
+.meter {
+  display: inline-block;
+  width: 7rem;
+  height: 8px;
+  margin-right: 0.5rem;
+  vertical-align: -0.05em;
+  border-radius: 2px;
+  background: var(--wash);
+}
+.meter .fill {
+  display: block;
+  height: 100%;
+  min-width: 1px;
+  border-radius: 2px;
+}
+.hscroll {
+  overflow-x: auto;
+}
+
+/* timelines */
+.pick {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  margin-top: 1.1rem;
+}
+.pick .count {
+  color: var(--ink-2);
+  font-size: 0.8rem;
+}
+.charts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr));
+  gap: 1rem 1.75rem;
+  margin-top: 0.75rem;
+}
+.chart {
+  min-width: 0;
+  margin: 0;
+}
+.chart figcaption {
+  margin-bottom: 0.35rem;
+  font-weight: 500;
+}
+.cstats {
+  margin-top: 0.25rem;
+  color: var(--ink-2);
+  font-size: 0.75rem;
+}
+
+/* tokenizer config */
+h2.sub {
+  margin: 1.1rem 0 0.4rem;
+}
+dl.config {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 0.3rem 1.5rem;
+  margin: 0;
+}
+dl.config dt {
+  color: var(--ink-2);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+dl.config dd {
+  font-weight: 400;
+  overflow-wrap: anywhere;
+}

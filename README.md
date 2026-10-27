@@ -626,9 +626,10 @@ timelines run past 24 hours; the second 55 of those, the ones that also run past
 ## (4) Visualization
 
 The visualizer draws one subject's tokenized timeline as an interactive html
-page, so you can see what collation and tokenization made of it. Unlike the three
-stages, it writes nothing to the processed data directory: it only reads what
-they wrote there. It:
+page, so you can see what collation and tokenization made of it, and draws the
+learned vocabulary as another (see [The vocabulary page](#the-vocabulary-page)).
+Unlike the three stages, it writes nothing to the processed data directory: it
+only reads what they wrote there. For a timeline, it:
 
 1. Loads the subject's tokens and times from `tokens_times.parquet`, and decodes
    each token with `tokenizer.yaml` into its code, quantile bin, and text value.
@@ -770,6 +771,69 @@ data only as you would the data itself. The visualizer reads a processed data
 directory written by any release since 26.6.2; the page leaves out whatever an
 older release didn't write.
 
+### The vocabulary page
+
+Given no subject id, `cocoa visualize` draws what tokenization learned, rather
+than one subject: the vocabulary, with its bins over the training data. It takes
+the same config as a timeline, so a prefix wears the color its lane wears in a
+timeline. As for a timeline, it serves the page, or saves it as one
+self-contained html file with `--export-html` (`-e`), as a static pdf with
+`--export-pdf`, or both:
+
+```sh
+cocoa visualize -p processed/demo --open
+cocoa visualize -p processed/demo -e vocabulary.html --export-pdf vocabulary.pdf
+```
+
+`cocoa visualize` reads its first argument as a subject id whatever it says, so
+to change the vocabulary page's config, pass a config of your own with `-c`; a
+config override given without a subject id would be read as one.
+
+Below the vocabulary's size, the page has five tabs:
+
+- Binned codes: a histogram of each binned code's values in the training split,
+  the values the tokenizer learned its bins on, with the cut points drawn across
+  it and every other bin shaded. A code with at most 50 distinct values gets a
+  bar per value; one with more gets about 50 buckets of a round width, over all
+  but its most extreme values, which it counts below or above the range drawn
+  instead. Each says how many of its bins hold values: where cut points tie, as
+  they do for a score with only a few values, the bins between them stay empty,
+  and ordering by the fewest bins puts such codes first. Click one to see its
+  values' range, mean, and median, and a row per bin with its range, how many
+  training values fall in it, and the word they tokenize to.
+- Words: every word, with its token, lane, bin, text value, and training count,
+  and how many words training saw only once or fewer than 10 times, which can
+  help in choosing `min_training_ct`. Click a word of a binned code to see its
+  bins.
+- Prefixes: each prefix, with its lane, its words, codes, and binned codes, and
+  its share of the training tokens.
+- Timelines: what `cocoa tokenize --verbose` reports, for each split and for all
+  of them: how many timelines and tokens, how many of the tokens are `UNK`, the
+  timelines' lengths and durations, and the first and last events, with
+  histograms of the lengths and durations.
+- Tokenizer config: the config saved in `tokenizer.yaml`.
+
+The search box finds the codes, words, and prefixes whose code, name, lane, or
+description contains its text. The page reads `tokenizer.yaml` and
+`tokens_times.parquet`, and `meds.parquet` and `subject_splits.parquet` for the
+training values. Without those, it draws each bin's training count from the
+counts of its words, where a fused vocabulary has them, or else just the cut
+points. A tokenizer applied with `--tokenizer-home` keeps the counts of the data
+it was learned on, so the page marks its vocabulary as transferred, and draws
+this directory's training split against its bins.
+
+The pdf lays out what the tabs show, one after another. Its first page gives the
+vocabulary's size, the prefixes, and the timelines by split, with histograms of
+the lengths and durations of each split's timelines, where the page draws one
+split at a time. Then each binned code gets its histogram beside a row per bin,
+as the page shows a code opened, followed by the words and the tokenizer's
+config. It draws the first 500 binned codes and lists the first 2,000 words; the
+html page has all of them.
+
+Neither file holds anyone's timeline, but both summarize the training data, down
+to each code's least and greatest value and each split's first and last event,
+so share them as you would such statistics.
+
 ## Usage
 
 We provide a CLI that should be sufficient for most use cases (to change a few
@@ -795,8 +859,8 @@ config keys from the command line, see
 │ winnow            Winnow timelines for evaluation.                      │
 │ pipeline          Run the full pipeline: collate, tokenize, & winnow.   │
 │ combine-datasets  Combine multiple processed datasets into one.         │
-│ visualize         Visualize a subject's timeline as an interactive html │
-│                   page.                                                 │
+│ visualize         Visualize a subject's timeline, or the vocabulary, as │
+│                   an interactive html page.                             │
 │ get-demo          Write the MIMIC-IV demo's CLIF tables, from clifpy.   │
 ╰─────────────────────────────────────────────────────────────────────────╯
 ```
@@ -924,30 +988,36 @@ with commands:
 - `cocoa visualize`
 
     ```
-    Usage: cocoa visualize [OPTIONS] {subject_id} [overrides]...
+    Usage: cocoa visualize [OPTIONS] [subject_id] [overrides]...
 
-    Visualize a subject's timeline as an interactive html page.
+    Visualize a subject's timeline, or the vocabulary, as an interactive html
+    page.
 
-    Serves the page on localhost until interrupted, or saves it as a
-    self-contained html file with --export-html, a static pdf with
-    --export-pdf, or both.
+    Given a subject id, draws that subject's timeline; without one, draws
+    the vocabulary: each binned code's training values against its bins,
+    every word with its training count, and the timelines by split, as
+    tokenize --verbose summarizes them. Serves the page on localhost until
+    interrupted, or saves it as a self-contained html file with
+    --export-html, as a static pdf with --export-pdf, or both.
 
     ╭─ Arguments ─────────────────────────────────────────────────────────────╮
-    │ *    subject_id      <str>  Subject whose timeline to show [required]   │
-    │      overrides       <str>  Config overrides: key=value sets a key,     │
-    │                             adding it if need be, and ~key deletes one  │
+    │   subject_id      <str>  Subject whose timeline to draw; without one,   │
+    │                          draws the vocabulary                           │
+    │   overrides       <str>  Config overrides, after a subject id:          │
+    │                          key=value sets a key, adding it if need be,    │
+    │                          and ~key deletes one                           │
     ╰─────────────────────────────────────────────────────────────────────────╯
     ╭─ Options ───────────────────────────────────────────────────────────────╮
     │ *  --processed-data-home   -p      <str>   Processed data directory     │
     │                                            [required]                   │
     │    --visualization-config  -c      <path>  Visualization configuration  │
     │                                            file (overrides default)     │
-    │    --export-html           -e      <path>  Save the timeline to this    │
+    │    --export-html           -e      <path>  Save the page to this        │
     │                                            self-contained html file     │
     │                                            instead of serving it        │
     │    --export-pdf                    <path>  Save a static pdf of the     │
-    │                                            timeline to this file        │
-    │                                            instead of serving it; with  │
+    │                                            page to this file instead of │
+    │                                            serving it; with             │
     │                                            --export-html, save both     │
     │    --host                          <str>   Address to serve the page on │
     │                                            [default: 127.0.0.1]         │
@@ -956,9 +1026,10 @@ with commands:
     │                                            [default: 8765]              │
     │    --open                                  Open the page in a web       │
     │                                            browser                      │
-    │    --show-winnowing                        Show the winnowing split     │
-    │                                            into past and future, and    │
-    │                                            its outcome flags            │
+    │    --show-winnowing                        Show the winnowing split of  │
+    │                                            the subject's timeline into  │
+    │                                            past and future, and its     │
+    │                                            outcome flags                │
     │    --help                  -h              Show this message and exit.  │
     ╰─────────────────────────────────────────────────────────────────────────╯
     ```

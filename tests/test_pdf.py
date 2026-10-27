@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 
-"""the static pdf: a well-formed file, its text, and the timeline it lays out"""
+"""
+the static pdf: a well-formed file, its text, and the timeline and the vocabulary
+it lays out
+"""
 
 import collections
 import datetime
 import importlib.resources as resources
+import pathlib
 import re
 import shutil
 import struct
@@ -13,20 +17,29 @@ import zlib
 import polars as pl
 import pytest
 import synth
-from conftest import default_cfg, write_cfg
+from conftest import as_written_by_26_6, copy_of, default_cfg, write_cfg
+from omegaconf import OmegaConf
 
 import cocoa.pdf as pdf
 from cocoa.collator import Collator
 from cocoa.pdf import (
     Document,
     TimelinePdf,
+    bin_range,
     clip,
+    count_ticks,
+    fmt_compact,
     fmt_dur,
     fmt_num,
+    fmt_pct,
     measure,
+    nice_ceil,
+    nice_ticks,
     read_cmap,
     rgb,
+    tied,
     timeline_pdf,
+    vocabulary_pdf,
     wrap,
 )
 from cocoa.tokenizer import Tokenizer
@@ -595,6 +608,37 @@ def test_a_timeline_without_events_still_makes_a_page():
     assert "This subject's timeline has no events." in page_texts(data)[0]
 
 
+def test_a_timeline_of_bos_and_eos_alone_gives_no_code_a_row():
+    """it has no lane to draw, so no page of every code, but lists its events"""
+    ends = ["BOS", "EOS"]
+    labels = ["2024-01-01 08:00:00 UTC", "2024-01-01 09:00:00 UTC"]
+    p = {
+        "meta": {"cocoa_version": "0", "timezone": "UTC"},
+        "subject": {"subject_id": "s1", "fields": []},
+        "lanes": [],
+        "codes": [{"code": w, "prefix": w, "name": "", "lane": None} for w in ends],
+        "times": {"ms": [1704096e6, 1704099.6e6], "label": labels},
+        "events": {
+            "kind": ["bos", "eos"],
+            "time": [0, 1],
+            "code": [0, 1],
+            "bin": [None, None],
+            "text": [None, None],
+            "first_token": [0, 1],
+            "n_tokens": [1, 1],
+        },
+        "tokens": {"id": [1, 2], "event": [0, 1], "vocab": {"1": "BOS", "2": "EOS"}},
+        "winnowed": None,
+    }
+    data = timeline_pdf(p)
+    check_layout(data)
+    texts = runs(data)
+    assert check_structure(data) == len(texts) == 2  # the subject, then its events
+    assert not [r for t in texts for r in t if r.text == "Every code"]
+    assert [r.text for r in column(texts, "Code")] == ends
+    assert [r.text for r in column(texts, "Time")] == labels
+
+
 def test_the_header_states_the_subject_s_facts_and_fields(pipeline):
     sid = pipeline.subjects_in_split("held_out")[0]
     p = Visualizer(processed_data_home=pipeline.path).get_payload(sid)
@@ -700,6 +744,17 @@ def test_a_stay_ending_at_a_sentinel_date_is_ticked_by_decades_up_to_a_cap(runne
     assert {(w.month, w.day, w.hour, w.minute) for w in walls} == {(1, 1, 0, 0)}
     assert t.tick_labels == [(str(w.year), "") for w in walls]
     assert check_structure(timeline_pdf(p)) >= 3
+
+
+def test_an_axis_stepping_by_time_stops_at_500_ticks_too(pipeline, monkeypatch):
+    """
+    as one stepping by months does above: the steps on offer keep an axis to a
+    few ticks, but were none coarse enough, it would stop after 500 all the same
+    """
+    monkeypatch.setattr(pdf, "STEPS", [(1e3, None, 1e3)])  # a second, alone
+    t = TimelinePdf(payload_of(pipeline))
+    assert len(t.ticks) == len(t.tick_labels) == 500
+    assert {b - a for a, b in zip(t.ticks, t.ticks[1:])} == {1e3}
 
 
 def test_lanes_are_drawn_in_their_names_and_colors(pipeline, lanes_cfg):
@@ -981,3 +1036,626 @@ def test_every_code_follows_a_winnowing_summary_onto_the_page_it_ends(
         assert len(rows) > 1  # the outcomes' rows run over several pages
         last_page, last = lines[-1]
         assert k == last_page >= max(rows) and head.y > last.y
+
+
+# ------------------------------------------------------------------ the vocabulary
+
+
+def vocabulary_of(path, cfg=None) -> dict:
+    """the vocabulary page's payload for a processed directory"""
+    return Visualizer(cfg, processed_data_home=path).get_vocabulary_payload()
+
+
+def column(texts: list[list[Run]], head: str, align: str = "left") -> list[Run]:
+    """
+    the cells under every head `head` of the tables on these pages, in order:
+    those set from where the head starts, or flush right to where it ends, in
+    ink, or in grey where faint, but not the darker grey of what's around them
+    """
+
+    def edge(r: Run) -> float:
+        return r.x if align == "left" else r.x + measure(r.text, r.size, r.font)
+
+    out = []
+    for page in texts:
+        heads = [r for r in page if (r.text, r.font, r.size) == (head, "F2", 6.5)]
+        if heads:
+            top, at = min(h.y for h in heads), [edge(h) for h in heads]
+            out += [
+                r
+                for r in page
+                if r.size == 6.5 and top < r.y <= pdf.BOTTOM and r not in heads
+                if r.color != rgb(pdf.INK2) and any(abs(edge(r) - e) < 0.01 for e in at)
+            ]
+    return out
+
+
+def bars(page: bytes, color: str) -> list[Fill]:
+    """a page's histogram bars in `color`: its fills but swatches and meters"""
+    return [
+        f
+        for f in fills(page)
+        if f.color == rgb(color) and (f.w, f.h) not in ((5, 5), (7, 7)) and f.h != 4
+    ]
+
+
+def readings(runner, values: list) -> pathlib.Path:
+    """a processed directory of one stay's heart rates, an hour apart"""
+    start, hour = datetime.datetime(2024, 1, 1), datetime.timedelta(hours=1)
+    return runner.minimal(
+        hospitalizations=[
+            {"admission_dttm": start, "discharge_dttm": start + len(values) * hour}
+        ],
+        vitals=[
+            {"recorded_dttm": start + k * hour, "vital_value": v}
+            for k, v in enumerate(values)
+        ],
+    ).path
+
+
+def test_a_vocabulary_pdf_is_well_formed_and_set_within_its_margins(pipeline):
+    data = vocabulary_pdf(vocabulary_of(pipeline.path))
+    assert check_structure(data) == len(page_texts(data)) >= 4
+    check_layout(data)
+    title = f"Vocabulary · {pipeline.path.name} · cocoa".encode("utf-16-be")
+    assert b"/Title <FEFF" + title.hex().upper().encode() + b">" in data
+
+
+def test_the_first_page_states_the_vocabulary_s_size(pipeline):
+    p = vocabulary_of(pipeline.path)
+    first = runs(vocabulary_pdf(p))[0]
+    title, badge = first[:2]
+    assert (title.text, title.font, title.color) == (
+        "Vocabulary",
+        "F2",
+        rgb(pdf.ACCENT),
+    )
+    assert badge.text == "fused"
+    trained = [n for n in pipeline.counts.values() if n is not None]
+    codes = [c for c in p["codes"] if c["prefix"] not in pdf.STRUCT]
+    assert defined(first) == {
+        "Words": f"{len(pipeline.vocab):,}",
+        "Codes": f"{len(codes):,}",
+        "Binned codes": f"{len(pipeline.tokenizer_yaml.bins):,}",
+        "Bins per code": "10",
+        "Tokens in training": f"{sum(trained):,}",
+        "Timelines": f"{pipeline.tokens_times.height:,}",
+        "Median length": fmt_num(pipeline.tokens_times["tokens"].list.len().median()),
+    }
+
+
+def test_a_transferred_vocabulary_says_so(runner, pipeline):
+    dest = runner.seed_collated()
+    runner.tokenize(processed=dest, tokenizer_home=pipeline.path / "tokenizer.yaml")
+    data = vocabulary_pdf(vocabulary_of(dest))
+    texts = runs(data)
+    assert [r.text for r in texts[0][1:3]] == ["fused", "transferred"]
+    text = " ".join(page_texts(data)).replace("\n", " ")
+    assert "This vocabulary was learned on another dataset, so its words" in text
+    assert "Values from this directory's training split, against bins learned" in text
+    k = heading(texts, "Tokenizer config")[0]
+    assert defined(texts[k])["Learned"] == "on another dataset, applied here"
+
+
+def test_prefixes_are_listed_with_their_lanes_and_training_tokens(pipeline, lanes_cfg):
+    p = vocabulary_of(pipeline.path, lanes_cfg)
+    data = vocabulary_pdf(p)
+    first, texts = streams(data)[0], runs(data)
+    listed = [r.text for r in column(texts[:1], "Prefix") if r.font == "F3"]
+    assert listed == [x["prefix"] or "—" for x in p["prefixes"]]
+    # a meter of each one's training tokens in its lane's color, then the count
+    head = next(r for r in texts[0] if r.text == "Training tokens")
+    meters = [f for f in fills(first) if f.x == head.x and f.h == 4]
+    most = max(x["count"] for x in p["prefixes"])
+    lanes = p["lanes"]
+    drawn = [(f.color, f.w) for f in meters[1::2]]  # each over its trough
+    assert drawn == [
+        (
+            rgb(lanes[x["lane"]]["color"] if x["lane"] is not None else pdf.MUTED),
+            pytest.approx(max(0.5, pdf.METER * x["count"] / most), abs=0.006),
+        )
+        for x in p["prefixes"]
+    ]
+    shown = [r.text for r in texts[0] if r.x == round(head.x + pdf.METER + 5, 2)]
+    assert shown == [f"{x['count']:,}" for x in p["prefixes"]]
+
+
+def test_timelines_are_tabled_by_split_and_then_all_of_them_in_bold(pipeline):
+    data = vocabulary_pdf(vocabulary_of(pipeline.path))
+    texts = runs(data)
+    rows = [(r.text, r.font) for r in column(texts, "Split")]
+    assert rows == [(s, "F1") for s in ("train", "tuning", "held_out")] + [
+        ("All", "F2")
+    ]
+    tt = pipeline.tokens_times.join(
+        pipeline.splits.select("subject_id", "split"), on="subject_id"
+    )
+    per = [tt.filter(pl.col("split") == s) for s in ("train", "tuning", "held_out")]
+    tokens = [g["tokens"].list.len().sum() for g in [*per, tt]]
+    assert [r.text for r in column(texts, "Tokens", "right")] == [
+        f"{n:,}" for n in tokens
+    ]
+
+
+def test_each_split_charts_the_lengths_and_durations_of_its_timelines(
+    pipeline, lanes_cfg
+):
+    """as the page draws the group picked, every group, all of them first"""
+    p = vocabulary_of(pipeline.path, lanes_cfg)
+    data = vocabulary_pdf(p)
+    texts = runs(data)
+    k = heading(texts, "Binned codes")[0]
+    groups = [r.text for t in texts[:k] for r in t if (r.font, r.size) == ("F2", 8)]
+    assert groups == ["All", "train", "tuning", "held_out"]
+    stats = [r for t in texts[:k] for r in t if r.size == 6 and r.text[:4] == "min "]
+    assert len(stats) == 2 * len(groups)
+    tl = p["timelines"]
+    nonzero = sum(
+        c > 0 for g in [tl["all"], *tl["splits"]] for c in g["lengths"] + g["durations"]
+    )
+    assert sum(len(bars(s, pdf.INK2)) for s in streams(data)[:k]) == nonzero
+
+
+def test_every_binned_code_lists_each_bin_s_range_count_and_words(pipeline):
+    p = vocabulary_of(pipeline.path)
+    texts = runs(vocabulary_pdf(p))
+    binned = p["binned"]
+    codes = [p["codes"][b["code"]]["code"] for b in binned]
+    shown = [r.text for t in texts for r in t if (r.font, r.size) == ("F3", 8)]
+    assert shown == codes
+    each = [(b, k) for b in binned for k in range(len(b["breaks"]) + 1)]
+    ranges = [r.text for r in column(texts, "Range")]
+    assert ranges == [bin_range(b["breaks"], k) for b, k in each]
+    counts = [r.text for r in column(texts, "Training values", "right")]
+    assert counts == [f"{b['bins'][k]:,}" for b, k in each]
+    # the words each bin tokenizes to, and those of none that it could hold
+    want = []
+    for (b, k), code in zip(
+        each, [c for c, b in zip(codes, binned) for _ in b["bins"]]
+    ):
+        fused = re.escape(code) + rf"_Q{k}(_.*)?"
+        ws = sorted((t, w) for w, t in pipeline.vocab.items() if re.fullmatch(fused, w))
+        if ws:
+            want.append("  ".join(f"{t} {w}" for t, w in ws))
+        elif not tied(b["breaks"], k):
+            want.append("not in the vocabulary, so UNK")
+    assert len(binned) > 1 and want
+    assert [r.text for r in column(texts, "Words")] == want
+
+
+def test_a_histogram_draws_each_value_s_count_between_the_cut_points(runner, lanes_cfg):
+    """
+    a bar per value, as tall as its count, in its lane's color; a cut point is
+    the lowest value of its bin, so it falls between bars, not through one
+    """
+    home = readings(runner, [60.0] * 3 + [70.0] * 5 + [80.0] * 2)
+    p = vocabulary_of(home, lanes_cfg)
+    (b,) = p["binned"]
+    assert b["hist"] == {"x": [60.0, 70.0, 80.0], "n": [3, 5, 2]}
+    data = vocabulary_pdf(p)
+    page = streams(data)[heading(runs(data), "Binned codes")[0]]
+    drawn = bars(page, LANES["lanes"][0]["color"])
+    assert [f.h / drawn[1].h for f in drawn] == pytest.approx([3 / 5, 1, 2 / 5], 1e-3)
+    assert len({f.w for f in drawn}) == len({round(f.y + f.h, 2) for f in drawn}) == 1
+    cuts = {
+        a[0]
+        for s in strokes(page)
+        if (s.color, s.width) == (rgb(pdf.INK2), 0.5)
+        for a, _ in s.paths
+    }
+    assert len(cuts) == len(set(b["breaks"])) > 1
+    assert not [x for x in cuts for f in drawn if f.x < x < f.x + f.w]
+
+
+def test_a_code_of_one_value_draws_its_bar_right_of_its_cut_points(runner, lanes_cfg):
+    """they all tie at its value, so its one bar sits in its last bin"""
+    p = vocabulary_of(readings(runner, [70.0] * 5), lanes_cfg)
+    (b,) = p["binned"]
+    assert set(b["breaks"]) == {70.0} and b["hist"] == {"x": [70.0], "n": [5]}
+    data = vocabulary_pdf(p)
+    check_layout(data)
+    page = streams(data)[heading(runs(data), "Binned codes")[0]]
+    (bar,) = bars(page, LANES["lanes"][0]["color"])
+    (cut,) = [s for s in strokes(page) if (s.color, s.width) == (rgb(pdf.INK2), 0.5)]
+    assert all(a[0] < bar.x for a, _ in cut.paths)
+    assert "1 of 10 bins hold values" in "\n".join(page_texts(data))
+
+
+def test_cut_points_learned_elsewhere_are_drawn_at_their_values(runner, lanes_cfg):
+    """
+    a tokenizer cuts among its own training values, but applied to another
+    directory, it draws that one's values against cut points they may not hit,
+    each on the axis the bars share
+    """
+    learned = readings(runner, [60.0] * 3 + [70.0] * 5 + [80.0] * 2)
+    home = readings(runner, [65.0] * 4 + [75.0] * 6)
+    runner.tokenize(processed=home, tokenizer_home=learned / "tokenizer.yaml")
+    p = vocabulary_of(home, lanes_cfg)
+    (b,) = p["binned"]
+    assert p["meta"]["is_training"] is False
+    assert set(b["breaks"]) == {60.0, 70.0, 80.0}
+    assert b["hist"] == {"x": [65.0, 75.0], "n": [4, 6]}
+    data = vocabulary_pdf(p)
+    check_layout(data)
+    page = streams(data)[heading(runs(data), "Binned codes")[0]]
+    c65, c75 = (f.x + f.w / 2 for f in bars(page, LANES["lanes"][0]["color"]))
+    (cuts,) = [s for s in strokes(page) if (s.color, s.width) == (rgb(pdf.INK2), 0.5)]
+    x60, x70, x80 = (a[0] for a, _ in cuts.paths)
+    assert x60 < c65 < x70 < c75 < x80
+    assert c65 - x60 == pytest.approx(x70 - c65, abs=0.02)  # 65 halfway to 70
+    assert x80 - x70 == pytest.approx(x70 - x60, abs=0.02)
+
+
+def test_timelines_that_span_no_time_have_no_duration_to_draw(runner):
+    """as a stay of one reading has; the durations' chart is left blank"""
+    p = vocabulary_of(readings(runner, [70.0]))
+    assert [
+        g["instant"] for g in [p["timelines"]["all"], *p["timelines"]["splits"]]
+    ] == [1, 1]
+    data = vocabulary_pdf(p)
+    check_layout(data)
+    texts = runs(data)
+    k = heading(texts, "Binned codes")[0]
+    notes = [
+        r.text for t in texts[:k] for r in t if r.text.endswith("no duration to draw")
+    ]
+    assert notes == ["1 span no time, so have no duration to draw"] * 2
+    # its duration is summarized, as the page does, but has no bar
+    stats = [
+        r.text for t in texts[:k] for r in t if r.size == 6 and r.text[:4] == "min "
+    ]
+    assert stats[1::2] == ["min 0 s · quartiles 0 s, 0 s, 0 s · max 0 s · mean 0 s"] * 2
+    assert sum(len(bars(s, pdf.INK2)) for s in streams(data)[:k]) == 2  # lengths'
+
+
+def test_a_directory_whose_timelines_are_gone_still_draws_its_vocabulary(
+    pipeline, tmp_path, lanes_cfg
+):
+    """an empty tokens_times.parquet sums to no timelines, with none to chart"""
+    dest = copy_of(pipeline.path, tmp_path)
+    pipeline.tokens_times.clear().write_parquet(dest / "tokens_times.parquet")
+    p = vocabulary_of(dest, lanes_cfg)
+    assert (p["timelines"]["all"]["timelines"], p["timelines"]["splits"]) == (0, [])
+    data = vocabulary_pdf(p)
+    check_layout(data)
+    texts = runs(data)
+    below = heading(texts, "Prefixes")[1].y
+    header = [r.text for r in texts[0] if r.y < below]
+    assert defined(texts[0])["Timelines"] == "0"
+    assert "Median length" not in header  # not even its label
+    assert [(r.text, r.font) for r in column(texts, "Split")] == [("All", "F2")]
+    k = heading(texts, "Binned codes")[0]
+    groups = [r.text for t in texts[:k] for r in t if (r.font, r.size) == ("F2", 8)]
+    assert groups == ["All"]
+    assert not [r for t in texts[:k] for r in t if r.size == 6 and r.text[:4] == "min "]
+    assert not [f for s in streams(data)[:k] for f in bars(s, pdf.INK2)]
+
+
+def test_a_tokenizer_yaml_that_records_no_provenance_leaves_it_out(pipeline, tmp_path):
+    """
+    every release records n_bins in its config, and whether, when, and by which
+    cocoa a tokenizer was learned, but the page reads each as optional, and so
+    does the pdf
+    """
+    dest = copy_of(pipeline.path, tmp_path)
+    y = OmegaConf.load(dest / "tokenizer.yaml")
+    for key in ("is_training", "created_dttm", "cocoa_version"):
+        del y[key]
+    del y.cfg.n_bins
+    (dest / "tokenizer.yaml").write_text(OmegaConf.to_yaml(y))
+    p = vocabulary_of(dest)
+    m = p["meta"]
+    assert [m[k] for k in ("n_bins", "is_training", "tokenizer_created")] == [None] * 3
+    data = vocabulary_pdf(p)
+    check_layout(data)
+    texts = runs(data)
+    below = heading(texts, "Prefixes")[1].y
+    assert "Bins per code" not in [r.text for r in texts[0] if r.y < below]
+    k, head = heading(texts, "Tokenizer config")
+    shown = {r.text for r in texts[k]}
+    assert not {"Learned", "Created", "By cocoa"} & shown
+    keys = [r for r in texts[k] if (r.font, r.size, r.x) == ("F3", 6.5, pdf.MARGIN)]
+    assert [r.text for r in keys] == [key for key, _ in p["config"]]
+    assert "n_bins" not in shown
+    assert keys[0].y == head.y + 16  # right under the heading, with no facts between
+    foot = next(r for r in texts[0] if r.y == pdf.PAGE_H - 20 and r.x == pdf.MARGIN)
+    assert foot.text.startswith(f"cocoa {m['cocoa_version']} · rendered ")
+    assert "tokenizer created" not in foot.text and "by cocoa" not in foot.text
+
+
+def test_a_binned_code_without_training_values_here_says_so(pipeline, tmp_path):
+    """as a code that a tokenizer learned elsewhere may have; its bins are empty"""
+    dest = copy_of(pipeline.path, tmp_path, without=("meds.parquet",))
+    pipeline.meds.filter(pl.col("code") != "VTL//sbp").write_parquet(
+        dest / "meds.parquet"
+    )
+    p = vocabulary_of(dest)
+    texts = runs(vocabulary_pdf(p))
+    (head,) = [r for t in texts for r in t if r.text == "VTL//sbp" and r.size == 8]
+    page = next(t for t in texts if head in t)
+    (said,) = [r for r in page if r.y == head.y and r.x > head.x]
+    assert said.text == "No training values in this directory"
+    nb = len(binned_of(p)["VTL//sbp"]["breaks"]) + 1
+    zeros = [r for r in column([page], "Training values", "right") if r.text == "0"]
+    assert len(zeros) >= nb and {r.color for r in zeros} == {rgb(pdf.MUTED)}
+
+
+def binned_of(payload: dict) -> dict:
+    """the payload's binned codes, by code"""
+    return {payload["codes"][b["code"]]["code"]: b for b in payload["binned"]}
+
+
+def test_far_outliers_are_counted_beyond_the_range_drawn(runner):
+    home = readings(runner, [-9999.0, *(60.0 + k for k in range(200)), 9999.0])
+    text = "\n".join(page_texts(vocabulary_pdf(vocabulary_of(home))))
+    assert "of 10 bins hold values · 1 below, 1 above the range drawn" in text
+
+
+def test_without_meds_parquet_each_bin_s_count_is_drawn_from_its_words(
+    pipeline, tmp_path, lanes_cfg
+):
+    dest = copy_of(pipeline.path, tmp_path, without=("meds.parquet",))
+    p = vocabulary_of(dest, lanes_cfg)
+    data = vocabulary_pdf(p)
+    texts = runs(data)
+    text = " ".join(page_texts(data)).replace("\n", " ")
+    assert "Each bin's training count, from its words" in text
+    end = heading(texts, "Words")[0]  # whose last column has that head too
+    counts = [r.text for r in column(texts[:end], "Training count", "right")]
+    assert counts == [f"{n:,}" for b in p["binned"] for n in b["bins"]]
+    assert not column(texts, "Training values", "right")
+    # a bar for each bin, which it names beneath
+    under = [
+        r.text for t in texts for r in t if r.size == 6 and re.match(r"Q\d", r.text)
+    ]
+    assert under == [f"Q{k}" for b in p["binned"] for k in range(len(b["bins"]))]
+
+
+def test_unfused_bins_name_the_word_every_code_shares(runner):
+    """and without the values, a code has its cut points alone"""
+    dest = runner.seed_collated()
+    runner.tokenize(cfg={**default_cfg("tokenization"), "fused": False}, processed=dest)
+    p = vocabulary_of(dest)
+    w = p["words"]
+    shared = {
+        b: t for t, b, kind in zip(w["token"], w["bin"], w["kind"]) if kind == "bin"
+    }
+    each = [(b, k) for b in p["binned"] for k in range(len(b["breaks"]) + 1)]
+    want = [
+        f"{shared[k]} Q{k}" if k in shared else "not in the vocabulary, so UNK"
+        for b, k in each
+        if k in shared or not tied(b["breaks"], k)
+    ]
+    assert [r.text for r in column(runs(vocabulary_pdf(p)), "Words")] == want
+    (dest / "meds.parquet").unlink()
+    p = vocabulary_of(dest)
+    data = vocabulary_pdf(p)
+    texts = runs(data)
+    text = " ".join(page_texts(data)).replace("\n", " ")
+    assert "Only cut points: there are no training values here to draw" in text
+    counts = [r.text for r in column(texts, "Training values", "right")]
+    assert counts == ["—"] * len(each)
+    assert [r.text for r in column(texts, "Bin")][: len(each)] == [
+        f"Q{k}" for _, k in each
+    ]
+    assert column(texts, "Bin")[0].x == pdf.MARGIN + 11  # with no histogram beside
+    check_layout(data)
+
+
+def test_a_tokenizer_yaml_alone_makes_a_pdf_without_timelines(pipeline, tmp_path):
+    """as one copied beside a model"""
+    dest = copy_of(
+        pipeline.path,
+        tmp_path,
+        without={f.name for f in pipeline.path.iterdir()} - {"tokenizer.yaml"},
+    )
+    data = vocabulary_pdf(vocabulary_of(dest))
+    check_layout(data)
+    texts = runs(data)
+    assert {"Timelines", "Median length"}.isdisjoint(defined(texts[0]))
+    assert not [r for t in texts for r in t if (r.text, r.size) == ("Timelines", 11)]
+    for section in ("Prefixes", "Binned codes", "Words", "Tokenizer config"):
+        heading(texts, section)
+
+
+def test_a_vocabulary_from_26_6_says_it_has_no_training_counts(pipeline, tmp_path):
+    legacy = as_written_by_26_6(pipeline.path, tmp_path)
+    data = vocabulary_pdf(vocabulary_of(legacy))
+    check_layout(data)
+    texts = runs(data)
+    assert "Tokens in training" not in defined(texts[0])
+    k = heading(texts, "Words")[0]
+    assert "tokenizer.yaml holds no training counts." in page_texts(data)[k]
+    assert not column(texts[k:], "Training count", "right")
+    assert not [f for f in fills(streams(data)[0]) if f.h == 4]  # no prefix's share
+
+
+def test_every_word_is_listed_in_token_order_with_its_training_count(pipeline):
+    p = vocabulary_of(pipeline.path)
+    texts = runs(vocabulary_pdf(p))
+    k, head = heading(texts, "Words")
+    note = next(r for r in texts[k] if r.y == head.y and r != head)
+    assert note.text == f"{len(pipeline.vocab):,} words"
+    w = p["words"]
+    assert [r.text for r in column(texts[k:], "Word")] == w["word"]
+    assert [r.text for r in column(texts[k:], "Token", "right")] == [
+        f"{t:,}" for t in w["token"]
+    ]
+    assert [r.text for r in column(texts[k:], "Training count", "right")] == [
+        f"{n:,}"
+        for n in w["count"]
+        if n is not None  # UNK has none
+    ]
+
+
+def test_the_words_table_stops_at_its_cap(pipeline, monkeypatch):
+    monkeypatch.setattr(pdf, "ROW_CAP", 5)
+    p = vocabulary_of(pipeline.path)
+    texts = runs(vocabulary_pdf(p))
+    k, head = heading(texts, "Words")
+    note = next(r for r in texts[k] if r.y == head.y and r != head)
+    n = len(p["words"]["word"])
+    assert note.text == f"the first 5 of {n:,} words; the html page lists them all"
+    assert [r.text for r in column(texts[k:], "Word")] == p["words"]["word"][:5]
+
+
+def test_binned_codes_stop_at_their_cap(pipeline, monkeypatch):
+    monkeypatch.setattr(pdf, "BINNED_CAP", 2)
+    p = vocabulary_of(pipeline.path)
+    texts = runs(vocabulary_pdf(p))
+    k, head = heading(texts, "Binned codes")
+    note = next(r for r in texts[k] if r.y == head.y and r != head)
+    n = len(p["binned"])
+    assert (
+        note.text == f"the first 2 of {n:,} binned codes; the html page draws them all"
+    )
+    shown = [r.text for t in texts for r in t if (r.font, r.size) == ("F3", 8)]
+    assert shown == [p["codes"][b["code"]]["code"] for b in p["binned"][:2]]
+
+
+def test_a_code_with_more_bins_than_a_page_holds_runs_them_onto_the_next(pipeline):
+    p = vocabulary_of(pipeline.path)
+    b, n = p["binned"][0], 90
+    b |= {"breaks": [float(k) for k in range(n)], "bins": [1] * (n + 1), "n": n + 1}
+    b["hist"] = {"lo": 0.0, "w": 1.0, "n": [1] * (n + 1), "under": 0, "over": 0}
+    p["binned"] = [b]
+    data = vocabulary_pdf(p)
+    check_layout(data)
+    texts = runs(data)
+    end = heading(texts, "Words")[0]
+    assert [r.text for r in column(texts[:end], "Bin")] == [
+        f"Q{k}" for k in range(n + 1)
+    ]
+    heads = [j for j, t in enumerate(texts[:end]) for r in t if r.text == "Range"]
+    assert len(heads) == 2 and heads[1] == heads[0] + 1  # atop the page they run on
+
+
+def test_a_vocabulary_without_binned_codes_says_so(pipeline):
+    p = vocabulary_of(pipeline.path)
+    p["binned"] = []
+    data = vocabulary_pdf(p)
+    check_layout(data)
+    assert defined(runs(data)[0])["Binned codes"] == "0"
+    text = " ".join(page_texts(data)).replace("\n", " ")
+    assert (
+        "No code had a numeric value in training, so the tokenizer binned none." in text
+    )
+
+
+def test_the_tokenizer_config_is_listed_as_saved(pipeline):
+    p = vocabulary_of(pipeline.path)
+    texts = runs(vocabulary_pdf(p))
+    k, head = heading(texts, "Tokenizer config")
+    assert defined(texts[k])["Learned"] == "on this directory's training split"
+    listed: dict[str, list[str]] = {}
+    for r in (r for t in texts[k:] for r in t if r.y <= pdf.BOTTOM):
+        if (r.font, r.size, r.x) == ("F3", 6.5, pdf.MARGIN):
+            key = r.text
+            listed[key] = []
+        elif listed and (r.font, r.size, r.color) == ("F1", 7, rgb(pdf.INK)):
+            listed[key].append(r.text)
+    assert {key: " ".join(lines) for key, lines in listed.items()} == dict(p["config"])
+    assert list(listed) == [key for key, _ in p["config"]]
+
+
+def test_every_page_s_footer_says_what_drew_it_and_from_what(pipeline):
+    p = vocabulary_of(pipeline.path)
+    texts = runs(vocabulary_pdf(p))
+    m = p["meta"]
+    said = " · ".join(
+        [
+            f"cocoa {m['cocoa_version']}",
+            f"rendered {m['generated']}",
+            f"tokenizer created {m['tokenizer_created']}",
+            f"by cocoa {m['tokenizer_version']}",
+            m["processed_data_home"],
+        ]
+    )
+    for k, t in enumerate(texts, 1):
+        num, line = [r for r in t if r.y == pdf.PAGE_H - 20]
+        assert num.text == f"Page {k} of {len(texts)}"
+        assert line.color == rgb(pdf.ACCENT) and said.startswith(line.text.rstrip("…"))
+
+
+@pytest.mark.parametrize(
+    "f, want",
+    [
+        (0, "0%"),
+        (0.0004, "<0.1%"),
+        (0.001, "0.1%"),
+        (0.0123, "1.2%"),
+        (0.05, "5.0%"),
+        (0.125, "13%"),  # a half rounds up, as javascript's Math.round does
+        (1, "100%"),
+    ],
+)
+def test_shares_read_to_a_tenth_of_a_percent_below_ten(f, want):
+    assert fmt_pct(f) == want
+
+
+@pytest.mark.parametrize(
+    "n, want",
+    [
+        (0, "0"),
+        (12.5, "12.5"),
+        (999, "999"),
+        (1000, "1k"),
+        (1500, "1.5k"),
+        (25_000, "25k"),
+        (2_500_000, "2.5M"),
+        (999_999, "1000k"),  # as the page's toPrecision(3) rounds it
+    ],
+)
+def test_counts_on_an_axis_read_compactly(n, want):
+    assert fmt_compact(n) == want
+
+
+@pytest.mark.parametrize(
+    "v, want",
+    [(1, 1), (2.2, 2.5), (3, 5), (11, 20), (26, 50), (250, 250), (1001, 2000)],
+)
+def test_a_count_axis_reaches_a_round_count(v, want):
+    assert nice_ceil(v) == want
+
+
+@pytest.mark.parametrize(
+    "a, b, n, want",
+    [
+        (0, 1, 4, [0, 0.5, 1]),
+        (0, 0.3, 3, [0, 0.1, 0.2, 0.3]),  # each read to 12 digits, as on the page
+        (20, 91, 4, [20, 40, 60, 80]),
+        (-0.05, 0.55, 4, [0, 0.2, 0.4]),
+        (5, 5, 4, []),
+    ],
+)
+def test_value_ticks_fall_on_round_values(a, b, n, want):
+    assert nice_ticks(a, b, n) == want
+
+
+@pytest.mark.parametrize(
+    "top, want",
+    [(1, [0, 1]), (2, [0, 1, 2]), (5, [0, 5]), (25, [0, 25]), (50, [0, 25, 50])],
+)
+def test_count_ticks_halve_the_axis_where_that_s_a_whole_count(top, want):
+    assert count_ticks(top) == want
+
+
+@pytest.mark.parametrize(
+    "breaks, want",
+    [
+        (
+            [1, 2, 2, 3],
+            [
+                "below 1",
+                "1 to 2",
+                "none, as its cut points tie at 2",
+                "2 to 3",
+                "3 and above",
+            ],
+        ),
+        ([None, 5], ["every value", "below 5", "5 and above"]),
+        ([], ["every value"]),
+    ],
+)
+def test_a_bin_holds_from_its_lower_cut_point_to_its_upper_one(breaks, want):
+    assert [bin_range(breaks, k) for k in range(len(breaks) + 1)] == want

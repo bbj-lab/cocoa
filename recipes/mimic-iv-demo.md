@@ -142,6 +142,12 @@ Releases of cocoa after 26.10.4 can also draw what the tokenizer learned:
 cocoa visualize -p processed/demo --open
 ```
 
+giving, for example:
+
+<img src="https://raw.githubusercontent.com/burkh4rt/cocoa/master/img/vis-screenshot-3.png" alt="visualization of the learned tokenizer" width="700"/>
+
+<img src="https://raw.githubusercontent.com/burkh4rt/cocoa/master/img/vis-screenshot-4.png" alt="summary statistics on the data splits" width="700"/>
+
 The page draws a histogram of each of the 138 binned codes' training values
 against its cut points. Cut points often tie on data like these: 90 of the codes
 have fewer than ten bins that hold any value, as where every dose of a medication

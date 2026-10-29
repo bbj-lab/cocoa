@@ -101,13 +101,13 @@ accessible format.
 
 <!-- GW: I think there should be another sentence to transition? Maybe something like "These errors are often easy to spot for someone with clinical knowledge, but requires that person to be able to inspect the data directly. -->
 
-`cocoa` is designed to make this feasible. Our collation process is fully
-configurable in yaml, and our downstream visualizer makes it easy to produce
-interactive example timelines that can be reviewed without touching code. This
-makes it more accessible for domain experts with limited coding experience to
-directly inspect the data.
+The `cocoa` library is designed to make this feasible. Our collation process is
+fully configurable in yaml, and our downstream visualizer makes it easy to
+produce interactive example timelines that can be reviewed without touching code.
+This makes it more accessible for domain experts with limited coding experience
+to directly inspect the data.
 
-<!-- GW: might want to rephrase but something like this to emphasize the point -->.
+<!-- GW: might want to rephrase but something like this to emphasize the point -->
 
 # State of the field
 
@@ -182,6 +182,13 @@ supports export in both html and pdf formats. See Figures \ref{fig:scrnsht} and
 ![A screenshot of a visualized timeline.\label{fig:scrnsht}](img/vis-screenshot.png)
 
 ![The visualizer plots repeated numeric measurements.\label{fig:scrnsht2}](img/vis-screenshot-2.png)
+
+The `cocoa visualize` command also has an option to visualize the learned
+tokenizer, as in Figures \ref{fig:scrnsht3} and \ref{fig:scrnsht4}.
+
+![A screenshot of the learned numeric bins within the tokenizer.\label{fig:scrnsht3}](img/vis-screenshot-3.png)
+
+![Summary statistics created by `cocoa visualize`.\label{fig:scrnsht4}](img/vis-screenshot-4.png)
 
 # Research impact statement
 

@@ -142,6 +142,11 @@ Collation takes a collection of raw parquet or csv files and produces:
 - `subject_splits.parquet`, a dataframe that partitions each subject into the
   `train`, `tuning`, or `held_out` subsets.
 
+It starts by forming a reference table containing one row for each subject, along
+with configurable demographic information. It then pulls events from both the
+reference table and the collection of parquet / csv files into the `meds.parquet`
+table entirely according to its yaml configuration.
+
 ## 2. Tokenization
 
 Tokenization takes the collated data and produces chronologically ordered,
@@ -164,14 +169,16 @@ tokens [@Pan21] and clock tokens is also supported. This process produces:
 ## 3. Winnowing
 
 Winnowing prepares timelines for downstream inference by thresholding them at a
-decision point and creating boolean flags for classification problems. We support
-multiple types of thresholding including `duration_s`, the number of seconds that
-have passed since the start of the timeline, `after_start_time_s`, the number of
-seconds that have passed since the subject's configured start time, and
-`first_occurrence`, the first occurrence of a particular token of interest (for
-example, a token representing admission to the ICU). This produces
-`{split}_for_inference.parquet` containing winnowed timelines where split is one
-of `train`, `tuning`, or `held_out`.
+decision point and creating boolean flags for classification problems.
+Configuration makes it very easy to predict a wide variety of outcomes, providing
+a potential way to avoid fragmented model deployment and some of its associated
+drawbacks [@Ram26]. We support multiple types of thresholding including
+`duration_s`, the number of seconds that have passed since the start of the
+timeline, `after_start_time_s`, the number of seconds that have passed since the
+subject's configured start time, and `first_occurrence`, the first occurrence of
+a particular token of interest (for example, a token representing admission to
+the ICU). This produces `{split}_for_inference.parquet` containing winnowed
+timelines where split is one of `train`, `tuning`, or `held_out`.
 
 ## 4. Visualization
 

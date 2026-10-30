@@ -14,10 +14,12 @@
 
 ## About
 
-This repo provides a configurable way to collate data from multiple sources into
-a single denormalized dataframe and create tokenized timelines from the results.
-It benefits from previous experience collating data to train foundation models on
-tokenized electronic health records. [^1] [^2] [^3] [^4] [^5]
+This repo provides a configurable way to (1) collate data from multiple sources
+into a single denormalized dataframe, (2) tokenize the records into sequences of
+discrete integers, (3) winnow the records in preparation for downstream inference
+tasks, and (4) visualize both individual records and the tokenization process. It
+benefits from previous experience preparing data for training foundation models
+on tokenized electronic health records. [^1] [^2] [^3] [^4] [^5]
 
 <!-- cards-anchor -->
 
@@ -831,8 +833,8 @@ config. It draws the first 500 binned codes and lists the first 2,000 words; the
 html page has all of them.
 
 Neither file holds anyone's timeline, but both summarize the training data, down
-to each code's least and greatest value and each split's first and last event,
-so share them as you would such statistics.
+to each code's least and greatest value and each split's first and last event, so
+share them as you would such statistics.
 
 ## Usage
 

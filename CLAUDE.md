@@ -18,7 +18,8 @@ default config in [src/cocoa/config/](src/cocoa/config/):
    tables into one denormalized
    [MEDS](https://github.com/Medical-Event-Data-Standard/meds)-like frame of
    `(subject_id, time, code, numeric_value, text_value)` events, plus
-   chronological train/tuning/held_out subject splits. → `meds.parquet`,
+   train/tuning/held_out subject splits, chronological or random (see
+   `subject_splits.how` below). → `meds.parquet`,
    `subject_splits.parquet`
 2. **Tokenize** ([tokenizer.py](src/cocoa/tokenizer.py)) — convert events to
    integer token sequences. Learns a vocabulary (`lookup`) and quantile `bins`
@@ -188,7 +189,8 @@ external URLs. When you change behavior, add/update a pytest case first.
 - **Reruns write the same files.** polars' `sort` is unstable and `group_by`
   returns groups in no set order, so a sort that decides an output's order needs
   keys that leave ties only between rows identical in every column written.
-  `get_subject_splits` sorts groups on `(first_time, id)`; `tokenize_data` on
+  `get_subject_splits` sorts groups on `(first_time, id)`, or on `(digest, id)`
+  under `uniformly_random`; `tokenize_data` on
   `(time, priority, to_tokenize, numeric_value, subject_id)`, which also orders
   the rows of `tokens_times.parquet` (by first token, then `subject_id`); and
   `get_bins` on `code`, so `created_dttm` is the only line of `tokenizer.yaml`
@@ -197,6 +199,16 @@ external URLs. When you change behavior, add/update a pytest case first.
   `shuffle_rows` (off by default) then reorders the rows of
   `tokens_times.parquet` with `Tokenizer.shuffle_rows`, a lazy sort on a hash of
   the row index with a fixed seed, so reruns stay identical.
+- **`subject_splits.how` picks the order the split fractions cut.** `time_based`
+  (the default, and the fallback for a config without it) orders groups by
+  `first_time`; `uniformly_random` by the sha256 hex digest of each group id cast
+  to a string, which is as good as a uniform shuffle and the same on every run,
+  machine, and polars version. Don't swap in `pl.Expr.hash`, as `shuffle_rows`
+  uses: its values may change with polars' version, which would move subjects
+  across splits for anyone re-collating;
+  `test_uniformly_random_ranks_by_the_digest_of_each_id` pins the order.
+  `Collator.__init__` validates `how`, so a typo fails before `meds.parquet` is
+  written.
 - **Config-embedded expressions**: `filter_expr` / `with_col_expr` / `agg_expr`
   in a collation config are Polars expression _strings_ `eval`'d via
   `Collator.slightly_safer_eval`. This is intentionally powerful and **not a
@@ -362,8 +374,8 @@ external URLs. When you change behavior, add/update a pytest case first.
       the previous behavior, whatever the shipped default sets. Never use
       `cfg.key` / `cfg["key"]`, which raise on a missing key.
       `drop_duplicate_events`, `default_time_unit`, `min_training_ct`,
-      `include_hours_to_end_time`, `shuffle_rows`, and `max_lookback_days` /
-      `max_lookahead_days` all follow this pattern.
+      `include_hours_to_end_time`, `shuffle_rows`, `max_lookback_days` /
+      `max_lookahead_days`, and `subject_splits.how` all follow this pattern.
     - don't rename a key, repurpose it, or change what an existing value means.
       If a key has to change, keep accepting the old spelling.
     - the `cfg` block saved in `tokenizer.yaml` is a config too, and copies

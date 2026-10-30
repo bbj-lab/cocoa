@@ -5,6 +5,7 @@ collects and collates different dataframes into a denormalized format
 """
 
 import collections.abc
+import hashlib
 import pathlib
 from typing import Any, Literal
 
@@ -49,6 +50,12 @@ class Collator(Configurable):
             assert v is None or (isinstance(v, (int, float)) and v >= 0), (
                 f"{k}={v!r} must be a non-negative number of days or null"
             )
+        # a missing subject_splits is left for get_subject_splits to report
+        splits_cfg = self.cfg.get("subject_splits", None) or {}
+        self.split_how = splits_cfg.get("how", None) or "time_based"
+        assert self.split_how in (hows := ("time_based", "uniformly_random")), (
+            f"subject_splits.how={self.split_how!r} must be one of {hows}"
+        )
 
         self.logger.info("Collator initialized...")
         self.logger.info(f"{self.raw_data_home=}")
@@ -358,13 +365,30 @@ class Collator(Configurable):
         )
 
     def get_subject_splits(self) -> pl.DataFrame:
-        """get the subject splits as configured"""
+        """
+        get the subject splits as configured: subjects, or with `group_id` their
+        groups, are put in order and the order is cut at the configured fractions;
+        `subject_splits.how` orders them by earliest start time (`time_based`, the
+        default) or by the sha256 digest of each id (`uniformly_random`)
+        """
         key = self.cfg.get("group_id", self.cfg["subject_id"])
+        order = (
+            # distinct ids have unrelated digests, so their order is as good as a
+            # uniform shuffle, but the same on every run and every machine, where
+            # pl.Expr.hash could change it, and so the split, with polars' version
+            pl.col(key)
+            .cast(pl.String)
+            .map_elements(
+                lambda s: hashlib.sha256(s.encode()).hexdigest(), return_dtype=pl.String
+            )
+            if self.split_how == "uniformly_random"
+            else pl.col("first_time")
+        )
         partition = (
             self.get_reference_frame()
             .group_by(key)
             .agg(pl.col(self.cfg.reference.start_time).min().alias("first_time"))
-            .sort("first_time", key)  # id breaks ties, so every run splits alike
+            .sort(order, key)  # id breaks ties, so every run splits alike
             .with_row_index()
         ).collect()
         split_idx = (

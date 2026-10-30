@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 
-"""subject splits: labels, group integrity, chronology, fractions, pass-through"""
+"""
+subject splits: labels, group integrity, chronology or random order, fractions,
+pass-through
+"""
 
 import collections
 import datetime
+import hashlib
 import pathlib
 
 import omegaconf
@@ -59,6 +63,11 @@ def _first_admission(manifest) -> dict:
         pid: min(manifest.admission[h] for h in hids)
         for pid, hids in manifest.subjects_of.items()
     }
+
+
+def _digest(id_) -> str:
+    """what `how: uniformly_random` orders an id by"""
+    return hashlib.sha256(str(id_).encode()).hexdigest()
 
 
 def _blocks(keys: list, lo: int, hi: int) -> dict:
@@ -552,6 +561,94 @@ def test_a_null_group_id_does_not_switch_grouping_off(runner):
         "H2": "tuning",
         "H3": "tuning",
     }
+
+
+# --- how: time_based or uniformly_random ------------------------------------
+
+
+@pytest.mark.parametrize("how", ["absent", None, "time_based"])
+def test_without_how_the_split_stays_chronological(runner, how):
+    """
+    a config from before `how` existed splits as it did then, chronologically,
+    and so does one that leaves `how` null or names the default
+    """
+    cfg = default_cfg("collation")
+    if how == "absent":
+        del cfg["subject_splits"]["how"]
+    else:
+        cfg["subject_splits"]["how"] = how
+    manifest = runner.raw
+    assigned = _map(_splits_of(runner.collate(cfg=cfg)))
+    assert assigned == {h: manifest.split_of_subject(h) for h in manifest.subject_ids}
+
+
+def test_uniformly_random_keeps_the_block_sizes_and_the_groups(runner):
+    """
+    a random split is cut at the same fractions as a chronological one, so each
+    split holds as many patients, each with all of its stays
+    """
+    manifest = runner.raw
+    cfg = default_cfg("collation")
+    cfg["subject_splits"]["how"] = "uniformly_random"
+    df = _splits_of(runner.collate(cfg=cfg))
+    assert sorted(df["subject_id"]) == sorted(manifest.subject_ids)
+    assert _patient_counts(df, manifest) == {"train": 28, "tuning": 3, "held_out": 9}
+    assigned = _map(df)
+    for pid, hids in manifest.subjects_of.items():
+        assert len({assigned[h] for h in hids}) == 1, pid
+
+
+def test_uniformly_random_splits_are_not_chronological(runner):
+    """some held-out patient was first admitted before some training patient"""
+    manifest = runner.raw
+    cfg = default_cfg("collation")
+    cfg["subject_splits"]["how"] = "uniformly_random"
+    assigned = _map(_splits_of(runner.collate(cfg=cfg)))
+    assert assigned != {h: manifest.split_of_subject(h) for h in manifest.subject_ids}
+    by_split = collections.defaultdict(list)
+    for pid, t in _first_admission(manifest).items():
+        by_split[assigned[manifest.subjects_of[pid][0]]].append(t)
+    assert min(by_split["held_out"]) < max(by_split["train"])
+
+
+@pytest.mark.parametrize("group_id", [None, "patient_id"])
+def test_uniformly_random_ranks_by_the_digest_of_each_id(runner, group_id):
+    """
+    under uniformly_random the ids alone set the order, by their sha256 digests:
+    the same stays admitted in the opposite order, or written in it, split
+    alike; patient_id ranks them under group_id and hospitalization_id without.
+    the order is pinned here because changing it would move subjects across
+    splits for anyone who collates their data again
+    """
+    spec = tuple((f"H{n:02d}", f"P{19 - n:02d}", n, n + 1) for n in range(20))
+    later = tuple((h, p, 40 - adm, 41 - adm) for h, p, adm, _ in spec)
+    cfg = synth.minimal_collation_cfg(
+        subject_splits={
+            "how": "uniformly_random",
+            "train_frac": 0.5,
+            "tuning_frac": 0.25,
+        },
+        **({"group_id": group_id} if group_id else {}),
+    )
+    by = 1 if group_id else 0  # rank on patient_id or hospitalization_id
+    ranked = [s[0] for s in sorted(spec, key=lambda s: _digest(s[by]))]
+    # 20 stays, bounds int(20 * cumsum([0.5, 0.25])) -> (10, 15)
+    expected = _blocks(ranked, 10, 15)
+    assert expected != _blocks([s[0] for s in spec], 10, 15)  # not by admission
+    for stays, reverse in ((spec, False), (spec, True), (later, False)):
+        raw = _spec_raw(runner, stays, reverse=reverse)
+        assert _map(_splits_of(runner.collate(cfg=cfg, raw=raw))) == expected
+
+
+@pytest.mark.parametrize("how", ["random", "time-based"])
+def test_an_unknown_how_is_rejected_before_anything_is_collated(runner, how):
+    """a typo fails at once, rather than once every event has been collated"""
+    cfg = default_cfg("collation")
+    cfg["subject_splits"]["how"] = how
+    dest = runner.dir()
+    with pytest.raises(AssertionError, match="subject_splits.how"):
+        runner.collate(cfg=cfg, dest=dest)
+    assert not any(dest.iterdir())
 
 
 # --- start and end times -----------------------------------------------------

@@ -98,7 +98,8 @@ a subject (`subject_id: hospitalization_id`). It also writes
 their hospitalizations, to splits in the order of their first admissions: the
 first 70 to train, the next 10 to tuning, and the last 20 to held out. Since each
 patient's dates are shifted separately, that order isn't chronological in real
-time. `--verbose` prints summaries as it goes, among them the split by
+time; `subject_splits.how=uniformly_random` assigns patients at random instead.
+`--verbose` prints summaries as it goes, among them the split by
 hospitalization:
 
 ```

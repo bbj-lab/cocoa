@@ -16,7 +16,7 @@ hide:
     ---
 
     Pull raw parquet/csv tables into one denormalized MEDS-like frame, plus
-    chronological train / tuning / held-out splits.
+    train / tuning / held-out splits, chronological or random.
 
     [:octicons-arrow-right-24: Collation](#1-collation)
 

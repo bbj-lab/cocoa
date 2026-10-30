@@ -69,8 +69,8 @@ that specifies:
   to the dataframe during loading. _Mild checks are performed when evaluating
   these expressions, but in general, the yaml config is just as powerful as the
   python. Check all yaml files prior to use._
-- **Subject splits** (`train_frac` / `tuning_frac`) that partition subjects
-  chronologically into train, tuning, and held-out sets.
+- **Subject splits** (`how`, `train_frac` / `tuning_frac`) that partition
+  subjects into train, tuning, and held-out sets, chronologically or at random.
 
 A collation config has three top-level sections: identifiers, subject splits, and
 the reference + entries that define which events to extract.
@@ -87,6 +87,7 @@ max_lookback_days: null # drop events more than this many days before start_time
 max_lookahead_days: null # drop events more than this many days after end_time
 
 subject_splits:
+    how: time_based # or uniformly_random
     train_frac: 0.7
     tuning_frac: 0.1
     # the remainder is held out
@@ -94,10 +95,15 @@ subject_splits:
 
 `subject_id` is the column that uniquely identifies each subject (e.g. a
 hospitalization). `group_id` is an optional higher-level grouping column.
-Subjects are sorted chronologically and split into train / tuning / held-out sets
-according to the specified fractions; with `group_id`, groups are sorted instead,
-each by its earliest start time, keeping every group in one split. Ties are
-broken by id, so the split is the same every run.
+Subjects are put in order and split into train / tuning / held-out sets according
+to the specified fractions; with `group_id`, groups are ordered instead, keeping
+every group in one split. `how` picks the order. Under `time_based`, the default
+(and what a config without `how` gets), subjects are sorted chronologically and
+groups each by its earliest start time, with ties broken by id. Under
+`uniformly_random`, they're sorted by the SHA-256 digest of their id, an order as
+good as a uniformly random shuffle and unrelated to time. Either way the split is
+the same every run, and a random split depends on nothing but the ids: not on the
+machine, nor on the versions of cocoa's dependencies.
 
 All timestamps are stored as timezone-aware datetimes in `default_timezone` (an
 IANA name like `America/Chicago`, defaulting to `UTC` if unset). Columns that

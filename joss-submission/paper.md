@@ -105,7 +105,11 @@ The `cocoa` library is designed to make this feasible. Our collation process is
 fully configurable in yaml, and our downstream visualizer makes it easy to
 produce interactive example timelines that can be reviewed without touching code.
 This makes it more accessible for domain experts with limited coding experience
-to directly inspect the data.
+to directly inspect the data. Though healthcare is our motivating use case, event
+stream models have also found applications in recommendation systems [@Zha24;
+@Li26] where events correspond to online platform interactions and personal
+finance [@Dou26] where events correspond to customer transactions. Our library
+can be configurated to process these types of data just as readily.
 
 <!-- GW: might want to rephrase but something like this to emphasize the point -->
 

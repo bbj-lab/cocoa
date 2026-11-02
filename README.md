@@ -14,12 +14,13 @@
 
 ## About
 
-This repo provides a configurable way to (1) collate data from multiple sources
-into a single denormalized dataframe, (2) tokenize the records into sequences of
-discrete integers, (3) winnow the records in preparation for downstream inference
-tasks, and (4) visualize both individual records and the tokenization process. It
-benefits from previous experience preparing data for training foundation models
-on tokenized electronic health records. [^1] [^2] [^3] [^4] [^5]
+This library provides a configurable way to (1) collate data from multiple
+sources into a single denormalized dataframe, (2) tokenize the records into
+sequences of discrete integers, (3) winnow the records in preparation for
+downstream inference tasks, and (4) visualize both individual records and the
+tokenization process. It benefits from previous experience preparing data for
+training foundation models on tokenized electronic health records. [^1] [^2] [^3]
+[^4] [^5]
 
 <!-- cards-anchor -->
 

@@ -1000,7 +1000,7 @@ def test_given_several_thresholds_the_first_in_order_wins(runner):
 @pytest.mark.filterwarnings("ignore:Comparisons with None")
 def test_a_null_threshold_still_outranks_the_ones_after_it(runner, pipeline):
     """
-    as the README warns, a threshold set to null, as by the override
+    as the docs warn, a threshold set to null, as by the override
     threshold.duration_s=null, is still present, so it still beats the next:
     a null duration_s compares each duration with null and keeps no stay
     """

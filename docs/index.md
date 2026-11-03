@@ -3,11 +3,7 @@ hide:
   - navigation
 ---
 
-{%
-   include-markdown "../README.md"
-   heading-offset=0
-   end="<!-- cards-anchor -->"
-%}
+--8<-- "README.md:intro"
 
 <div class="grid cards" markdown>
 
@@ -18,7 +14,7 @@ hide:
     Pull raw parquet/csv tables into one denormalized MEDS-like frame, plus
     train / tuning / held-out splits, chronological or random.
 
-    [:octicons-arrow-right-24: Collation](#1-collation)
+    [:octicons-arrow-right-24: Collation](guide/collation.md)
 
 -   :material-tag-multiple:{ .lg .middle } __Tokenize__
 
@@ -27,7 +23,7 @@ hide:
     Convert events into integer token sequences with a vocabulary and quantile
     bins learned on training data, then frozen.
 
-    [:octicons-arrow-right-24: Tokenization](#2-tokenization)
+    [:octicons-arrow-right-24: Tokenization](guide/tokenization.md)
 
 -   :material-filter-variant:{ .lg .middle } __Winnow__
 
@@ -36,7 +32,7 @@ hide:
     Split held-out timelines into past / future at a threshold and flag outcome
     tokens for evaluation.
 
-    [:octicons-arrow-right-24: Winnowing](#3-winnowing)
+    [:octicons-arrow-right-24: Winnowing](guide/winnowing.md)
 
 -   :material-book-open-variant:{ .lg .middle } __Recipes__
 
@@ -49,8 +45,6 @@ hide:
 
 </div>
 
-{%
-   include-markdown "../README.md"
-   heading-offset=0
-   start="<!-- cards-anchor -->"
-%}
+--8<-- "README.md:install"
+
+--8<-- "README.md:references"

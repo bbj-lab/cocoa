@@ -535,7 +535,7 @@ def test_group_id_may_name_a_column_of_an_augmentation_table(runner):
 
 def test_a_null_group_id_does_not_switch_grouping_off(runner):
     """
-    group_id is read by its presence, not its value, as the README warns of
+    group_id is read by its presence, not its value, as the docs warn of
     such keys: `group_id: null` (what yaml makes of `group_id:` once its value
     is commented out), or the override `group_id=null`, leaves grouping on with
     no column to group by, and the split fails; deleting the key, as

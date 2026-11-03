@@ -67,7 +67,7 @@ these steps:
     do, with an arrival in the emergency department, is cut that much earlier in
     its stay by `duration_s`; `after_start_time_s` cuts every stay at the same
     point, such as 24 hours after admission. See
-    [`duration_s` vs. `after_start_time_s`](../index.md#duration_s-vs-after_start_time_s).
+    [`duration_s` vs. `after_start_time_s`](../guide/winnowing.md#duration_s-vs-after_start_time_s).
 <!-- prettier-ignore-end -->
 
 <!-- prettier-ignore-start -->

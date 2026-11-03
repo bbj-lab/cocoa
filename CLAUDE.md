@@ -154,11 +154,12 @@ or `PY_COLORS`, so substring checks on the raw text pass locally but fail in CI.
 
 Most modules also keep an `if __name__ == "__main__"` block that self-tests
 against a local processed dataset (e.g. `./processed/mimic/`, for which
-[recipes/mimic-iv-demo.md](recipes/mimic-iv-demo.md) builds a public stand-in,
-`./processed/demo/`); run a module directly (`python -m cocoa.tokenizer`) to
-exercise it against real data — the tokenizer block also asserts round-trip
-save/load equality, and the visualizer block asserts its pages reference no
-external URLs. When you change behavior, add/update a pytest case first.
+[docs/recipes/mimic-iv-demo.md](docs/recipes/mimic-iv-demo.md) builds a public
+stand-in, `./processed/demo/`); run a module directly
+(`python -m cocoa.tokenizer`) to exercise it against real data — the tokenizer
+block also asserts round-trip save/load equality, and the visualizer block
+asserts its pages reference no external URLs. When you change behavior,
+add/update a pytest case first.
 
 ## Architecture notes
 
@@ -231,7 +232,7 @@ external URLs. When you change behavior, add/update a pytest case first.
 - **Vocabulary/bins are frozen after training.** `UNK` is always token `0`. Reuse
   a learned tokenizer across datasets with
   `cocoa tokenize --tokenizer-home <path>/tokenizer.yaml` (see
-  [recipes/tokenizer-transfer.md](recipes/tokenizer-transfer.md)).
+  [docs/recipes/tokenizer-transfer.md](docs/recipes/tokenizer-transfer.md)).
 - **`min_training_ct` prunes the vocabulary's long tail.** Words seen fewer than
   that many times in the training split get no token and fall through to `UNK`;
   `BOS`/`EOS`/`CLCK//`/`TIME//` are exempt so structure survives on small data.
@@ -421,21 +422,31 @@ external URLs. When you change behavior, add/update a pytest case first.
   so before building it drops every extra holding one (cocoa has none; cotorra's
   `gen` does). Don't build and upload by hand, which skips the checks and the
   attestations.
-- Keep [README.md](README.md), the [recipes/](recipes/) (mirrored into
-  [docs/recipes/](docs/recipes/)), the per-module pages in
-  [docs/api/](docs/api/), and the shipped default configs in sync when behavior
-  changes. The README is the PyPI long description, and the recipes are the
-  primary user-facing docs. [recipes/mimic-iv-demo.md](recipes/mimic-iv-demo.md)
-  runs the shipped defaults end to end on the MIMIC-IV demo, as `cocoa get-demo`
-  writes it from clifpy, and quotes what they make of it (event and split counts,
-  vocabulary size, timeline lengths, the first held-out hospitalization). The
-  other docs take their examples from the same run: the README's output tables
-  and bin edges, the docs' paths (`data-raw/demo`, `processed/demo`), and the
-  counts quoted by the other recipes, which run variants of it (split by
-  `anchor_year_group`, or collated in `America/New_York`). So rerun it, and
-  refresh those, after changing a shipped config, binning, splitting, or what
-  `cocoa get-demo` derives, and when raising the clifpy floor: the recipe names
-  the clifpy release its numbers come from, and another may ship other tables.
+- Keep the user guide in [docs/guide/](docs/guide/) (a page per stage, plus
+  combining datasets and configuration; it documents every config key), the
+  recipes in [docs/recipes/](docs/recipes/), the per-module pages in
+  [docs/api/](docs/api/) (where [cli.md](docs/api/cli.md) holds each command's
+  pasted `COLUMNS=75 cocoa <command> --help`), [README.md](README.md), and the
+  shipped default configs in sync when behavior changes. The README is the PyPI
+  long description and the landing page: its links into the docs are absolute
+  (`https://cocoa-tokenizer.readthedocs.io/latest/…`), since GitHub and PyPI
+  render it, and `docs/index.md` includes its `intro`, `install` and `references`
+  sections, each between `<!-- --8<-- [start:<name>] -->` and `[end:<name>]`
+  comments, so editing those changes the docs home page (snippets' `check_paths`
+  fails the build if a marker goes missing). The recipes, a page each with its
+  `nav` entry (top-level `recipes/` holds only forwarding notes for links to the
+  old paths), are the primary user-facing docs.
+  [docs/recipes/mimic-iv-demo.md](docs/recipes/mimic-iv-demo.md) runs the shipped
+  defaults end to end on the MIMIC-IV demo, as `cocoa get-demo` writes it from
+  clifpy, and quotes what they make of it (event and split counts, vocabulary
+  size, timeline lengths, the first held-out hospitalization). The other docs
+  take their examples from the same run: the guide's output tables and bin edges,
+  the docs' paths (`data-raw/demo`, `processed/demo`), and the counts quoted by
+  the other recipes, which run variants of it (split by `anchor_year_group`, or
+  collated in `America/New_York`). So rerun it, and refresh those, after changing
+  a shipped config, binning, splitting, or what `cocoa get-demo` derives, and
+  when raising the clifpy floor: the recipe names the clifpy release its numbers
+  come from, and another may ship other tables.
 
 ## Gotchas
 

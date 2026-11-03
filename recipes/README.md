@@ -1,6 +1,5 @@
-You want to:
+# Recipes
 
-- [run the whole pipeline end to end on public data (the MIMIC-IV demo)](mimic-iv-demo.md)
-- [learn a tokenizer on one dataset and apply it to a second dataset](tokenizer-transfer.md)
-- [prep data for inference at each timeline's first midnight](date-based-generative-inference.md)
-- [configure a new event token](configure-new-token.md)
+The recipes have moved to [docs/recipes/](../docs/recipes/) and are published
+with the rest of the documentation at
+<https://cocoa-tokenizer.readthedocs.io/latest/recipes/>.

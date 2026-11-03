@@ -9,9 +9,9 @@ software, and we want everyone to feel welcome.
 
 Start with the [README](README.md) and the
 [documentation](https://cocoa-tokenizer.readthedocs.io). The
-[MIMIC-IV demo](recipes/mimic-iv-demo.md) runs the whole pipeline on public data
-and is the quickest way to see what each stage does. [CLAUDE.md](CLAUDE.md) maps
-the codebase and its conventions, for human contributors as well as coding
+[MIMIC-IV demo](docs/recipes/mimic-iv-demo.md) runs the whole pipeline on public
+data and is the quickest way to see what each stage does. [CLAUDE.md](CLAUDE.md)
+maps the codebase and its conventions, for human contributors as well as coding
 agents. New to pull requests? See
 [GitHub flow](https://docs.github.com/en/get-started/using-github/github-flow).
 
@@ -72,11 +72,12 @@ As you work:
   output as before. Read a new key with `cfg.get(key, fallback)`, where the
   fallback reproduces the old behavior, and add a test showing it does. The
   Conventions section of [CLAUDE.md](CLAUDE.md) spells out the full rule.
-- Update the [README](README.md), the [recipes](recipes/), the
-  [API docs](docs/api/), and the shipped configs to match. The docs site
-  includes each recipe from [recipes/](recipes/), so edit it there; a new recipe
-  also needs a stub in [docs/recipes/](docs/recipes/) and a `nav` entry in
-  [mkdocs.yml](mkdocs.yml).
+- Update the [user guide](docs/guide/) (which documents every config key), the
+  [CLI reference](docs/api/cli.md) (every flag: paste a changed command's
+  `COLUMNS=75 cocoa <command> --help` into its block), the
+  [recipes](docs/recipes/), the [API docs](docs/api/), the [README](README.md),
+  and the shipped configs to match. A new recipe or page of the guide also needs
+  a `nav` entry in [mkdocs.yml](mkdocs.yml).
 - Match the surrounding style. Ruff formats and lints the Python (line length 88,
   double quotes), and Prettier wraps the Markdown, following
   [.prettierrc.toml](.prettierrc.toml).

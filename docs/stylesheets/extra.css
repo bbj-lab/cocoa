@@ -77,3 +77,10 @@ h1 {
 .md-typeset h1 {
   font-weight: 700;
 }
+
+/* A table's first column holds names (a field, a key, a command). Material lets
+   inline code break anywhere, so a long description column squeezes the names
+   into fragments; keeping them on one line sizes the column to the longest. */
+.md-typeset table:not([class]) td:first-child {
+  white-space: nowrap;
+}

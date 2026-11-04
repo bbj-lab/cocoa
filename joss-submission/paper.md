@@ -149,7 +149,11 @@ Collation takes a collection of raw parquet or csv files and produces:
 It starts by forming a reference table containing one row for each subject, along
 with configurable demographic information. It then pulls events from both the
 reference table and the collection of parquet / csv files into the `meds.parquet`
-table entirely according to its yaml configuration.
+table entirely according to its yaml configuration. This table has the same
+columns as defined in the MEDS schema [@McD26]; however, in our case,
+`subject_id` has type `str` and `time` adopts a configurable timezone.
+
+<!-- thanks, @vaishvikc -->
 
 ## 2. Tokenization
 

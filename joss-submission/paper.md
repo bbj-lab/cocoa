@@ -118,7 +118,7 @@ can be configurated to process these types of data just as readily.
 Many of the released tools in this area start with data in a standardized
 format---such as OMOP [@Ove12], MEDS [@McD26], or CLIF [@Roj25]---and focus on
 tokenization and model training. Code released with MOTOR [@Ste24] and CEHR-XGPT
-[@Pan25b] used OMOP data, while @Mon25 and ETHOS-ARES [@Ren25] used MEDS. The
+[@Pan25] used OMOP data, while @Mon25 and ETHOS-ARES [@Ren25] used MEDS. The
 original ETHOS paper [@Ren24] is a notable exception; it developed a complete
 tokenization pipeline hardcoded for MIMIC data [@Joh23]. McDermott et al.'s MEDS
 ecosystem [@McD26] provides the closest functional overlap with the `cocoa`

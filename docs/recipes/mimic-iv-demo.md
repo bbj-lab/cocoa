@@ -224,6 +224,9 @@ Lanes can be displayed interactively:
 - [Tokenizer transfer](tokenizer-transfer.md) splits the demo in two, by when its
   patients were treated, and applies a vocabulary learned on the earlier patients
   to the later ones.
+- [Inference at several decision times](several-decision-times.md) winnows the
+  demo a day, three days, and a week after admission, each into a directory of
+  its own, to evaluate a model as the stays go on.
 - To train a model on the timelines, see
   [🦜 cotorra](https://pypi.org/project/cotorra/).
 

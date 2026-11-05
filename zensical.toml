@@ -30,6 +30,7 @@
             { "MIMIC-IV Demo" = "recipes/mimic-iv-demo.md" },
             { "Configure New Token" = "recipes/configure-new-token.md" },
             { "Date-Based Generative Inference" = "recipes/date-based-generative-inference.md" },
+            { "Several Decision Times" = "recipes/several-decision-times.md" },
             { "Tokenizer Transfer" = "recipes/tokenizer-transfer.md" },
         ] },
     ]

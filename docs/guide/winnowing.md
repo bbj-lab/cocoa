@@ -35,8 +35,12 @@ that specifies:
     Set only one of them: given several, the winnower uses the first in this
     list.
 
-- `horizon_after_threshold_s` is an optional parameter that allows you to set a
-  prediction window (in seconds) after the threshold is triggered
+- `horizon_after_threshold_s` is an optional parameter that sets a prediction
+  window (in seconds): the future keeps only the events within that long of the
+  last event of the past, which under `first_occurrence` is the triggering token.
+  Under `duration_s` and `after_start_time_s`, that event can come well before
+  the cut, and the window closes as much earlier (see
+  [within a horizon](../recipes/several-decision-times.md#within-a-horizon)).
 - `splits` — an optional list selecting which splits to prepare (defaults to
   `held_out`). Rep-based inference also requires the `train` and `tuning` splits.
 
@@ -120,4 +124,6 @@ cocoa winnow -p processed/demo -o processed/demo/winnowed-icu \
 On the demo, the first keeps 57 of the 63 held-out hospitalizations, those whose
 timelines run past 24 hours; the second 55 of those, the ones that also run past
 24 hours after admission, cutting 25 of them later than the first; and the third
-26, those with a transfer to the ICU.
+26, those with a transfer to the ICU. To winnow at several times into each stay,
+for a model that predicts again and again as a stay goes on, see
+[inference at several decision times](../recipes/several-decision-times.md).

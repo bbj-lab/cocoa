@@ -443,11 +443,12 @@ add/update a pytest case first.
   size, timeline lengths, the first held-out hospitalization). The other docs
   take their examples from the same run: the guide's output tables and bin edges,
   the docs' paths (`data-raw/demo`, `processed/demo`), and the counts quoted by
-  the other recipes, which run variants of it (split by `anchor_year_group`, or
-  collated in `America/New_York`). So rerun it, and refresh those, after changing
-  a shipped config, binning, splitting, or what `cocoa get-demo` derives, and
-  when raising the clifpy floor: the recipe names the clifpy release its numbers
-  come from, and another may ship other tables.
+  the other recipes, which run variants of it (split by `anchor_year_group`,
+  collated in `America/New_York`, or winnowed at several times after admission).
+  So rerun it, and refresh those, after changing a shipped config, binning,
+  splitting, or what `cocoa get-demo` derives, and when raising the clifpy floor:
+  the recipe names the clifpy release its numbers come from, and another may ship
+  other tables.
 
 ## Gotchas
 

@@ -42,6 +42,10 @@ cocoa --help
 cocoa tokenize --help
 ```
 
+`cocoa --version` prints the versions of cocoa, its dependencies, and Python,
+which a [bug report](https://github.com/bbj-lab/cocoa/issues/new/choose) asks
+for.
+
 ## Typical usage
 
 The examples here use the paths of the

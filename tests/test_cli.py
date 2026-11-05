@@ -6,6 +6,7 @@ import collections
 import errno
 import importlib.metadata
 import pathlib
+import platform
 import re
 import shutil
 import socket
@@ -189,6 +190,21 @@ def test_cli_version_matches_installed_package_metadata():
     assert re.fullmatch(r"\d{2}\.\d{1,2}\.\d+", cocoa.cli.__version__)
 
 
+def test_version_flag_prints_what_a_bug_report_needs_and_exits():
+    """cocoa's version first, then python's and each required dependency's, but
+    none from the extras; the flag runs no command"""
+    result = run("--version")
+    assert result.exit_code == 0
+    lines = plain(result.output).splitlines()
+    assert lines[0].split() == ["cocoa", cocoa.cli.__version__]
+    found = dict(line.split(maxsplit=1) for line in lines)
+    assert found["python"] == platform.python_version()
+    assert found["platform"] == platform.platform()
+    assert found["polars"] == importlib.metadata.version("polars")
+    assert "not installed" not in found.values()
+    assert "pytest" not in found  # an optional dependency, of the test extra
+
+
 def test_cli_declares_its_options_without_deprecated_typer_arguments():
     """typer 0.27 deprecates `is_flag`, which a bool option named without a `/`
     never needed; reloading reruns only the cli's own declarations"""
@@ -206,6 +222,7 @@ def test_top_level_help_lists_every_command_and_the_version(flag):
     for command in COMMANDS:
         assert command in out
     assert f"v{cocoa.cli.__version__}" in out
+    assert "--version" in out
 
 
 HELP_TEXT = {

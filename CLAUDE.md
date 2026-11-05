@@ -96,9 +96,9 @@ ruff check . --fix
 pytest
 pytest --cov                       # with line and branch coverage, as CI measures it
 
-# Docs (mkdocs-material, published to readthedocs)
-mkdocs build
-mkdocs serve --dev-addr 127.0.0.1:8001
+# Docs (zensical, reading mkdocs.yml; published to readthedocs)
+zensical build [--strict]          # --strict fails on a broken link or anchor
+zensical serve --dev-addr 127.0.0.1:8001
 
 # Release: bump pyproject.toml `version`, commit, then push a signed tag for it
 git tag -s vYY.M.patch -m "message"
@@ -465,3 +465,13 @@ add/update a pytest case first.
   `default_time_unit` mismatch escapes that config diff and instead surfaces as a
   polars `SchemaError` on the datetime columns — which the legacy-schema fallback
   does not repair, since it only recasts token columns.
+- The docs build with [Zensical](https://zensical.org), which reads
+  [mkdocs.yml](mkdocs.yml) as written (there is no `zensical.toml`) under
+  `theme.variant: classic`, Material for MkDocs' look, which
+  [extra.css](docs/stylesheets/extra.css) styles. It runs its own versions of the
+  plugins listed there and silently skips any it lacks: so far just
+  `git-revision-date-localized`, so the footer's "Last updated" line
+  ([copyright.html](overrides/partials/copyright.html)) stays empty until
+  Zensical ships it. It caches builds in `.cache/` and doesn't notice when the
+  docs dependencies change, so run `zensical build --clean` after upgrading them;
+  a stale cache once passed a build that a clean one failed.

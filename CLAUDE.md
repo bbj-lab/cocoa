@@ -473,10 +473,18 @@ add/update a pytest case first.
   [extra.css](docs/stylesheets/extra.css) paints them maroon itself, by
   redefining the page's colors inside them. It also swaps the theme's greys for
   UChicago's neutrals (black, the three greystones, white), taking light
-  greystone at half strength, `#ececec`, for the larger surfaces. Zensical runs
-  its own versions of the plugins listed there and silently skips any it lacks:
-  so far just `git-revision-date-localized`, so the footer's "Last updated" line
-  ([copyright.html](overrides/partials/copyright.html)) stays empty until
-  Zensical ships it. It caches builds in `.cache/` and doesn't notice when the
-  docs dependencies change, so run `zensical build --clean` after upgrading them;
-  a stale cache once passed a build that a clean one failed.
+  greystone at half strength, `#ececec`, for the larger surfaces. Admonitions
+  take the visualizer's UChicago colors, a link turns dark brick under the
+  pointer, and a card on the home page has a maroon icon, and a maroon border
+  under the pointer. [docs/index.md](docs/index.md) wraps the README's `intro` in
+  a `.hero` block, and the stylesheet centers its title, the paragraph right
+  after it (the badges), and its blockquote (the tagline), so keep them in that
+  order. The `glightbox` plugin zooms an image on click; the README's hero opts
+  out with `class="off-glb"`. cotorra's docs share the stylesheet, overrides, and
+  theme settings, so a change to how one site looks goes to the other too.
+  Zensical runs its own versions of the plugins listed there and silently skips
+  any it lacks: so far just `git-revision-date-localized`, so the footer's "Last
+  updated" line ([copyright.html](overrides/partials/copyright.html)) stays empty
+  until Zensical ships it. It caches builds in `.cache/` and doesn't notice when
+  the docs dependencies change, so run `zensical build --clean` after upgrading
+  them; a stale cache once passed a build that a clean one failed.

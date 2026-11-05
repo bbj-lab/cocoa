@@ -341,7 +341,7 @@ requires-dist = [
     { name = "rich", specifier = ">=13.8" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.9" },
     { name = "typer", specifier = ">=0.26" },
-    { name = "zensical", marker = "extra == 'docs'", specifier = ">=0.0.74" },
+    { name = "zensical", marker = "extra == 'docs'", specifier = ">=0.1.0" },
 ]
 provides-extras = ["all", "demo", "dev", "docs", "test"]
 

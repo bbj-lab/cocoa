@@ -9,7 +9,7 @@ build:
     python: "3.12"
   jobs:
     # git-revision-date-localized needs full history; RTD clones shallow by default
-    # (zensical doesn't run that plugin yet; see mkdocs.yml)
+    # (zensical doesn't run that plugin yet; see zensical.toml)
     post_checkout:
       - git fetch --unshallow || true
     build:

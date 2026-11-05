@@ -96,7 +96,7 @@ ruff check . --fix
 pytest
 pytest --cov                       # with line and branch coverage, as CI measures it
 
-# Docs (zensical, reading mkdocs.yml; published to readthedocs)
+# Docs (zensical, configured in zensical.toml; published to readthedocs)
 zensical build [--strict]          # --strict fails on a broken link or anchor
 zensical serve --dev-addr 127.0.0.1:8001
 
@@ -465,12 +465,17 @@ add/update a pytest case first.
   `default_time_unit` mismatch escapes that config diff and instead surfaces as a
   polars `SchemaError` on the datetime columns — which the legacy-schema fallback
   does not repair, since it only recasts token columns.
-- The docs build with [Zensical](https://zensical.org), which reads
-  [mkdocs.yml](mkdocs.yml) as written (there is no `zensical.toml`) under
-  `theme.variant: classic`, Material for MkDocs' look, which
-  [extra.css](docs/stylesheets/extra.css) styles. It runs its own versions of the
-  plugins listed there and silently skips any it lacks: so far just
-  `git-revision-date-localized`, so the footer's "Last updated" line
+- The docs build with [Zensical](https://zensical.org) from
+  [zensical.toml](zensical.toml), formatted like `pyproject.toml` (taplo, with
+  4-space indents). Taplo sorts the keys between blank lines and comments, so a
+  comment on a key goes inline or above its table. The theme is the `modern`
+  variant, which draws the header and tabs in the page's colors, so
+  [extra.css](docs/stylesheets/extra.css) paints them maroon itself, by
+  redefining the page's colors inside them. It also swaps the theme's greys for
+  UChicago's neutrals (black, the three greystones, white), taking light
+  greystone at half strength, `#ececec`, for the larger surfaces. Zensical runs
+  its own versions of the plugins listed there and silently skips any it lacks:
+  so far just `git-revision-date-localized`, so the footer's "Last updated" line
   ([copyright.html](overrides/partials/copyright.html)) stays empty until
   Zensical ships it. It caches builds in `.cache/` and doesn't notice when the
   docs dependencies change, so run `zensical build --clean` after upgrading them;

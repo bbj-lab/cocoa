@@ -1,7 +1,7 @@
 <!-- --8<-- [start:intro] -->
 
 <p align="center">
-<img src="https://raw.githubusercontent.com/burkh4rt/cocoa/master/img/cocoa-bean.png" alt="cocoa bean" width="400"/>
+<img src="https://raw.githubusercontent.com/burkh4rt/cocoa/master/img/cocoa-bean.png" alt="cocoa bean" width="400" class="off-glb"/>
 </p>
 
 # Cocoa: a configurable collator

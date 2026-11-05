@@ -6,9 +6,11 @@ CLI for cocoa - configurable collation and tokenization
 
 import errno
 import pathlib
+import platform
+import re
 import time
 import webbrowser
-from importlib.metadata import version
+from importlib.metadata import PackageNotFoundError, requires, version
 from typing import Annotated, Optional
 
 import typer
@@ -95,6 +97,48 @@ def serve(page: str, host: str, port: int, open_browser: bool) -> None:
     finally:
         server.server_close()
     print("  Stopped serving.")
+
+
+def show_versions(show: bool) -> None:
+    """
+    print the versions of cocoa, python, and each dependency cocoa requires, and
+    exit; for `--version`, so a bug report can paste them
+    """
+    if not show:
+        return
+    found = {
+        "cocoa": __version__,
+        "python": platform.python_version(),
+        "platform": platform.platform(),
+    }
+    for requirement in requires("cocoa-tokenizer") or ():
+        spec, _, marker = requirement.partition(";")
+        if "extra" in marker:  # an optional dependency, of one of the extras
+            continue
+        name = re.match(r"[\w.-]+", spec.strip())[0]
+        try:
+            found[name] = version(name)
+        except PackageNotFoundError:
+            found[name] = "not installed"
+    width = max(map(len, found))
+    for name, v in found.items():
+        typer.echo(f"{name:<{width}}  {v}")
+    raise typer.Exit()
+
+
+@app.callback()
+def options(
+    show_version: Annotated[
+        bool,
+        typer.Option(
+            "--version",
+            callback=show_versions,
+            is_eager=True,
+            help="Show the versions of cocoa, its dependencies, and Python, and exit.",
+        ),
+    ] = False,
+) -> None:
+    """the options `cocoa` takes before a command"""
 
 
 @app.command()

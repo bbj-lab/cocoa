@@ -81,6 +81,7 @@ cocoa <stage> ... n_bins=5 '~key'  # trailing overrides edit single keys of it
 cocoa pipeline ... tokenization.n_bins=5  # in pipeline, each key names its stage
 cocoa winnow -p <processed-data-home> -o <dir>  # winnowed files go to <dir>
 cocoa <stage> -h                   # help; --verbose prints summary stats
+cocoa --version                    # versions of cocoa, its dependencies, and python
 cocoa combine-datasets <dir> <dir> ... -o <output-dir>
 
 # View one subject's timeline (serves on 127.0.0.1:8765 until Ctrl-C)
@@ -473,10 +474,18 @@ add/update a pytest case first.
   [extra.css](docs/stylesheets/extra.css) paints them maroon itself, by
   redefining the page's colors inside them. It also swaps the theme's greys for
   UChicago's neutrals (black, the three greystones, white), taking light
-  greystone at half strength, `#ececec`, for the larger surfaces. Zensical runs
-  its own versions of the plugins listed there and silently skips any it lacks:
-  so far just `git-revision-date-localized`, so the footer's "Last updated" line
-  ([copyright.html](overrides/partials/copyright.html)) stays empty until
-  Zensical ships it. It caches builds in `.cache/` and doesn't notice when the
-  docs dependencies change, so run `zensical build --clean` after upgrading them;
-  a stale cache once passed a build that a clean one failed.
+  greystone at half strength, `#ececec`, for the larger surfaces. Admonitions
+  take the visualizer's UChicago colors, a link turns dark brick under the
+  pointer, and a card on the home page has a maroon icon, and a maroon border
+  under the pointer. [docs/index.md](docs/index.md) wraps the README's `intro` in
+  a `.hero` block, and the stylesheet centers its title, the paragraph right
+  after it (the badges), and its blockquote (the tagline), so keep them in that
+  order. The `glightbox` plugin zooms an image on click; the README's hero opts
+  out with `class="off-glb"`. cotorra's docs share the stylesheet, overrides, and
+  theme settings, so a change to how one site looks goes to the other too.
+  Zensical runs its own versions of the plugins listed there and silently skips
+  any it lacks: so far just `git-revision-date-localized`, so the footer's "Last
+  updated" line ([copyright.html](overrides/partials/copyright.html)) stays empty
+  until Zensical ships it. It caches builds in `.cache/` and doesn't notice when
+  the docs dependencies change, so run `zensical build --clean` after upgrading
+  them; a stale cache once passed a build that a clean one failed.

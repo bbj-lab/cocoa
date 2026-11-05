@@ -1,0 +1,59 @@
+name: Bug report
+description: Report something that went wrong.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug! Please [search the existing issues](https://github.com/bbj-lab/cocoa/issues?q=is%3Aissue) first, in case it has been reported already.
+
+        **Please don't include private data** anywhere in this report, including tracebacks and screenshots. To reproduce a problem, use the synthetic data from [tests/synth.py](https://github.com/bbj-lab/cocoa/blob/master/tests/synth.py) or the public [MIMIC-IV demo](https://cocoa-tokenizer.readthedocs.io/latest/recipes/mimic-iv-demo/).
+  - type: textarea
+    id: problem
+    attributes:
+      label: What went wrong?
+      description: A clear and concise description of the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Minimal reproducible example
+      description: >-
+        The smallest example that shows the problem: the commands you ran, the
+        config you passed with `-c` and any overrides, and the data they ran on.
+        If it only happens on data you can't share, describe its columns and
+        their types, with a few made-up rows that trigger it.
+      placeholder: |
+        cocoa get-demo -r data-raw/demo
+        cocoa pipeline -r data-raw/demo -p processed/demo tokenization.n_bins=5
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: traceback
+    attributes:
+      label: Traceback or error output
+      description: The full traceback or error message, if there is one.
+      render: shell
+  - type: textarea
+    id: versions
+    attributes:
+      label: Versions
+      description: >-
+        Paste the output of `cocoa --version`. If you aren't on the [latest
+        release](https://pypi.org/project/cocoa-tokenizer/), please check whether
+        the problem still happens there.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Anything else?
+      description: Links, screenshots, or anything else that might help.

@@ -19,8 +19,7 @@ default config in [src/cocoa/config/](src/cocoa/config/):
    [MEDS](https://github.com/Medical-Event-Data-Standard/meds)-like frame of
    `(subject_id, time, code, numeric_value, text_value)` events, plus
    train/tuning/held_out subject splits, chronological or random (see
-   `subject_splits.how` below). → `meds.parquet`,
-   `subject_splits.parquet`
+   `subject_splits.how` below). → `meds.parquet`, `subject_splits.parquet`
 2. **Tokenize** ([tokenizer.py](src/cocoa/tokenizer.py)) — convert events to
    integer token sequences. Learns a vocabulary (`lookup`) and quantile `bins`
    **on training data only**, then freezes them. Adds BOS/EOS, optional
@@ -51,8 +50,8 @@ learned vocabulary as a second page (`cocoa visualize` without a subject id,
 `Visualizer.render_vocabulary`): each binned code's training values against its
 cut points, every word with its training count, the prefixes, and the timelines
 by split, as `tokenize --verbose` summarizes them. It serves or saves that page
-the same ways, as a pdf too (`render_vocabulary_pdf`). Each page's template and js
-live in [src/cocoa/assets/](src/cocoa/assets/) (`timeline.*`, `vocabulary.*`),
+the same ways, as a pdf too (`render_vocabulary_pdf`). Each page's template and
+js live in [src/cocoa/assets/](src/cocoa/assets/) (`timeline.*`, `vocabulary.*`),
 with the icon and fonts; `timeline.css` holds the tokens and parts both pages
 use, and `vocabulary.css` only what the vocabulary page adds.
 
@@ -127,28 +126,27 @@ pyarrow, which clifpy imports, needs numpy 2 without declaring it, and fails to
 import at cocoa's numpy floor. The `demo` extra also caps duckdb below 2, which
 clifpy doesn't: clifpy 2.1.0's dose conversion calls a relation's `fetchone()`,
 which duckdb 2.0 removed, so lift the cap only once a clifpy release stops doing
-so. [tests/test_demo.py](tests/test_demo.py) runs
-`cocoa get-demo` on clifpy's real tables where clifpy is installed, skips those
-tests where it isn't, and fails them where it won't import; its other tests use a
-stand-in `clifpy` package and run everywhere. [tests/synth.py](tests/synth.py)
-generates synthetic CLIF-like raw data, and
-[tests/conftest.py](tests/conftest.py) turns it into shared fixtures: a
-session-scoped `pipeline` (collate → tokenize → winnow once with shipped
-defaults) and a per-test `runner` for re-running individual stages with
-overridden configs in an isolated tmp dir — no real patient data needed. Test
-files mostly mirror `src/cocoa` modules, except tokenizer coverage is split into
-core behavior (`test_tokenizer.py`), serialization/transfer
+so. [tests/test_demo.py](tests/test_demo.py) runs `cocoa get-demo` on clifpy's
+real tables where clifpy is installed, skips those tests where it isn't, and
+fails them where it won't import; its other tests use a stand-in `clifpy` package
+and run everywhere. [tests/synth.py](tests/synth.py) generates synthetic
+CLIF-like raw data, and [tests/conftest.py](tests/conftest.py) turns it into
+shared fixtures: a session-scoped `pipeline` (collate → tokenize → winnow once
+with shipped defaults) and a per-test `runner` for re-running individual stages
+with overridden configs in an isolated tmp dir — no real patient data needed.
+Test files mostly mirror `src/cocoa` modules, except tokenizer coverage is split
+into core behavior (`test_tokenizer.py`), serialization/transfer
 (`test_tokenizer_io.py`), and configurable options (`test_tokenizer_options.py`),
 and the visualizer's into its timeline (`test_visualizer.py`) and its vocabulary
 page (`test_visualizer_vocabulary.py`), plus cross-cutting suites for subject
 splits, timezones, and full pipeline integration. Helpers that more than one test
 file needs, such as `copy_of` and `as_written_by_26_6`, live in
 [tests/conftest.py](tests/conftest.py) too. Beyond the fixtures running the
-shipped defaults, no test should
-depend on a shipped config carrying dataset-specific items (a lane, a prefix
-name, a code description); a test that needs them writes its own config, as
-`VIZ_CFG` in [tests/test_visualizer.py](tests/test_visualizer.py) does. A test
-that reads console output passes it through `plain()` from
+shipped defaults, no test should depend on a shipped config carrying
+dataset-specific items (a lane, a prefix name, a code description); a test that
+needs them writes its own config, as `VIZ_CFG` in
+[tests/test_visualizer.py](tests/test_visualizer.py) does. A test that reads
+console output passes it through `plain()` from
 [tests/conftest.py](tests/conftest.py) first: typer styles its help and errors
 whenever `GITHUB_ACTIONS` is set, and rich styles everything under `FORCE_COLOR`
 or `PY_COLORS`, so substring checks on the raw text pass locally but fail in CI.
@@ -288,18 +286,17 @@ add/update a pytest case first.
   `get_histograms` re-bins the training split's values from `meds.parquet` the
   same way, in polars, to count each bin; a test checks those counts against the
   fused words' training counts. It spots a fused bin as an uppercase `_Q<n>`,
-  which only works because code values are lowercased. So a change to binning,
-  to which values bins are learned on, or to code normalization needs a matching
+  which only works because code values are lowercased. So a change to binning, to
+  which values bins are learned on, or to code normalization needs a matching
   change in `Visualizer.get_values` / `get_histograms` / `FUSED_BIN`. Its
   histograms take each code's mean over its values sorted, and the timelines'
   summaries over rows sorted by `subject_id`, so that sums don't depend on the
-  order rows arrive in and a rerun renders the same page, `generated` aside.
-  A page has to stay self-contained:
-  fonts and icon are inlined as base64, with no external URLs, so an exported
-  file can be sent to someone without cocoa or the data. Its static
-  `#cocoa-fallback` note tells a viewer that doesn't run scripts (an email or
-  file preview) to open it in a browser; the script removes the note once the
-  page is drawn. The pdf is drawn in Python from the same payload, by a
+  order rows arrive in and a rerun renders the same page, `generated` aside. A
+  page has to stay self-contained: fonts and icon are inlined as base64, with no
+  external URLs, so an exported file can be sent to someone without cocoa or the
+  data. Its static `#cocoa-fallback` note tells a viewer that doesn't run scripts
+  (an email or file preview) to open it in a browser; the script removes the note
+  once the page is drawn. The pdf is drawn in Python from the same payload, by a
   dependency-free writer that embeds the packaged Gotham whole (as Type0 fonts
   addressed by glyph id, with a ToUnicode map so text copies out) and sets codes
   and tokens in standard Courier (WinAnsi text); a character a font lacks prints
@@ -478,14 +475,18 @@ add/update a pytest case first.
   greystone at half strength, `#ececec`, for the larger surfaces. Admonitions
   take the visualizer's UChicago colors, a link turns dark brick under the
   pointer, and a card on the home page has a maroon icon, and a maroon border
-  under the pointer. [docs/index.md](docs/index.md) wraps the README's `intro` in
-  a `.hero` block, and the stylesheet centers its title, the paragraph right
-  after it (the badges), and its blockquote (the tagline), so keep them in that
-  order. The `glightbox` plugin zooms an image on click; the README's hero opts
-  out with `class="off-glb"`. cotorra's docs share the stylesheet, overrides, and
-  theme settings, so a change to how one site looks goes to the other too.
-  Zensical runs its own versions of the plugins listed there and silently skips
-  any it lacks: so far just `git-revision-date-localized`, so the footer's "Last
+  under the pointer. It hides every page's table of contents, both the sidebar on
+  the right and the button that stands in for it on a narrow screen (the modern
+  variant never repeats it in the navigation), so a page's text takes the width;
+  the home page's `hide: toc` front matter predates that rule.
+  [docs/index.md](docs/index.md) wraps the README's `intro` in a `.hero` block,
+  and the stylesheet centers its title, the paragraph right after it (the
+  badges), and its blockquote (the tagline), so keep them in that order. The
+  `glightbox` plugin zooms an image on click; the README's hero opts out with
+  `class="off-glb"`. cotorra's docs share the stylesheet, overrides, and theme
+  settings, so a change to how one site looks goes to the other too. Zensical
+  runs its own versions of the plugins listed there and silently skips any it
+  lacks: so far just `git-revision-date-localized`, so the footer's "Last
   updated" line ([copyright.html](overrides/partials/copyright.html)) stays empty
   until Zensical ships it. It caches builds in `.cache/` and doesn't notice when
   the docs dependencies change, so run `zensical build --clean` after upgrading

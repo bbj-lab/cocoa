@@ -81,6 +81,7 @@ cocoa <stage> ... n_bins=5 '~key'  # trailing overrides edit single keys of it
 cocoa pipeline ... tokenization.n_bins=5  # in pipeline, each key names its stage
 cocoa winnow -p <processed-data-home> -o <dir>  # winnowed files go to <dir>
 cocoa <stage> -h                   # help; --verbose prints summary stats
+cocoa --version                    # versions of cocoa, its dependencies, and python
 cocoa combine-datasets <dir> <dir> ... -o <output-dir>
 
 # View one subject's timeline (serves on 127.0.0.1:8765 until Ctrl-C)

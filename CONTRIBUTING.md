@@ -44,8 +44,8 @@ public MIMIC-IV demo.
 [Search the existing issues](https://github.com/bbj-lab/cocoa/issues) before you
 open a new one. For a bug, please include:
 
-- your Cocoa version (`pip show cocoa-tokenizer`), Python version, and polars
-  version
+- the output of `cocoa --version`, which lists the versions of Cocoa, its
+  dependencies, and Python
 - the command you ran, and the config you passed with `-c`, if any
 - the full traceback, and what you expected to happen
 

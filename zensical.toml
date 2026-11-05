@@ -1,0 +1,91 @@
+# the docs' config, for zensical (https://zensical.org/docs/setup/basics/)
+
+[project]
+    extra_css        = [ "stylesheets/extra.css" ]
+    repo_name        = "bbj-lab/cocoa"
+    repo_url         = "https://github.com/bbj-lab/cocoa"
+    site_description = "Configurable collator and tokenizer"
+    site_name        = "Cocoa"
+    site_url         = "https://cocoa-tokenizer.readthedocs.io/"
+
+    nav = [
+        { "Home" = "index.md" },
+        { "User Guide" = [
+            { "Collation" = "guide/collation.md" },
+            { "Tokenization" = "guide/tokenization.md" },
+            { "Winnowing" = "guide/winnowing.md" },
+            { "Visualization" = "guide/visualization.md" },
+            { "Combining Datasets" = "guide/combining-datasets.md" },
+            { "Configuration" = "guide/configuration.md" },
+        ] },
+        { "API Reference" = [
+            { "CLI" = "api/cli.md" },
+            { "Collator" = "api/collator.md" },
+            { "Tokenizer" = "api/tokenizer.md" },
+            { "Winnower" = "api/winnower.md" },
+            { "Visualizer" = "api/visualizer.md" },
+        ] },
+        { "Recipes" = [
+            { "Overview" = "recipes/index.md" },
+            { "MIMIC-IV Demo" = "recipes/mimic-iv-demo.md" },
+            { "Configure New Token" = "recipes/configure-new-token.md" },
+            { "Date-Based Generative Inference" = "recipes/date-based-generative-inference.md" },
+            { "Tokenizer Transfer" = "recipes/tokenizer-transfer.md" },
+        ] },
+    ]
+
+    [project.theme]
+        custom_dir = "overrides"
+        favicon = "svg/emoji_u2615.svg"
+        features = [
+            "navigation.instant",
+            "navigation.tracking",
+            "navigation.tabs",
+            "navigation.top",
+            "navigation.footer",
+            "content.code.copy",
+            "content.code.annotate",
+            "toc.follow",
+            "search.highlight",
+        ]
+        font = false # gotham, which extra.css self-hosts
+        logo = "svg/emoji_u2615.svg"
+        variant = "modern"
+
+        # extra.css defines the custom colors
+        [project.theme.palette]
+            accent  = "custom"
+            primary = "custom"
+            scheme  = "default"
+
+    # under check_paths, a missing section of README.md, which the docs pull in,
+    # fails the build
+    [project.markdown_extensions]
+        admonition                         = {}
+        attr_list                          = {}
+        footnotes                          = {}
+        md_in_html                         = {}
+        pymdownx.emoji.emoji_generator     = "zensical.extensions.emoji.to_svg"
+        pymdownx.emoji.emoji_index         = "zensical.extensions.emoji.twemoji"
+        pymdownx.highlight.anchor_linenums = true
+        pymdownx.snippets.base_path        = [ "." ]
+        pymdownx.snippets.check_paths      = true
+        pymdownx.superfences               = {}
+        toc.permalink                      = true
+
+    [project.plugins.callouts]
+
+    # zensical doesn't implement this plugin yet (it's on its roadmap) and skips it
+    # until it does, so pages carry no "Last updated" line for now
+    [project.plugins.git-revision-date-localized]
+        fallback_to_build_date = true
+
+    [project.plugins.mkdocstrings.handlers.python]
+        paths = [ "src" ]
+
+        [project.plugins.mkdocstrings.handlers.python.options]
+            heading_level       = 3
+            show_bases          = true
+            show_root_heading   = false
+            show_root_toc_entry = false
+            show_source         = true

@@ -40,13 +40,13 @@
         # the mimic-iv demo, as clif tables, for `cocoa get-demo`; clifpy 2.1.0 calls
         # a relation's fetchone(), which duckdb 2.0 removed, and doesn't cap duckdb
         demo = [ "clifpy>=2.1", "duckdb<2" ]
-        dev = [ "pip>=21.3", "ruff>=0.9" ]
+        dev  = [ "pip>=21.3", "ruff>=0.9" ]
+        # zensical builds the api pages through mkdocstrings, whose releases before
+        # 1.0.7 fail on the pymdown-extensions that zensical installs
         docs = [
-            "mkdocs>=1.6,<2",
-            "mkdocs-material>=9.4",
-            "mkdocstrings[python]>=0.27",
-            "mkdocs-callouts>=1.10",
-            "mkdocs-git-revision-date-localized-plugin>=0.5",
+            "zensical>=0.1.0",
+            "mkdocstrings>=1.0.7",
+            "mkdocstrings-python>=2",
         ]
         test = [ "pytest>=7.0", "pytest-cov>=6" ]
 

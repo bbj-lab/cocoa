@@ -77,7 +77,7 @@ As you work:
   `COLUMNS=75 cocoa <command> --help` into its block), the
   [recipes](docs/recipes/), the [API docs](docs/api/), the [README](README.md),
   and the shipped configs to match. A new recipe or page of the guide also needs
-  a `nav` entry in [mkdocs.yml](mkdocs.yml).
+  a `nav` entry in [zensical.toml](zensical.toml).
 - Match the surrounding style. Ruff formats and lints the Python (line length 88,
   double quotes), and Prettier wraps the Markdown, following
   [.prettierrc.toml](.prettierrc.toml).

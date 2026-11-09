@@ -348,38 +348,60 @@ def test_reference_row_order_does_not_change_the_assignment(runner):
 
 def test_patient_and_subject_counts_are_the_expected_block_sizes(pipeline):
     patients = _patient_counts(pipeline.splits, pipeline.manifest)
-    assert patients == {"train": 28, "tuning": 3, "held_out": 9}  # 40 patients
+    assert patients == {"train": 28, "tuning": 4, "held_out": 8}  # 40 patients
     subjects = _subject_counts(pipeline.splits)
-    assert subjects == {"train": 33, "tuning": 4, "held_out": 11}  # 48 stays
+    assert subjects == {"train": 33, "tuning": 5, "held_out": 10}  # 48 stays
 
 
 def test_assignment_of_every_subject_matches_the_chronological_blocks(pipeline):
     """
-    the first 28 patients by first admission train, the next 3 tune, the last 9
-    are held out (see test_default_fractions_truncate_the_tuning_block for the
-    28 / 31 bounds), and every stay inherits its patient's label
+    the first 28 patients by first admission train, the next 4 tune, the last 8
+    are held out (see test_default_fractions_cut_where_exact_arithmetic_does for
+    the 28 / 32 bounds), and every stay inherits its patient's label
     """
     manifest = pipeline.manifest
     first = _first_admission(manifest)
-    by_patient = _blocks(sorted(first, key=first.get), 28, 31)
+    by_patient = _blocks(sorted(first, key=first.get), 28, 32)
     assert collections.Counter(by_patient.values()) == {
         "train": 28,
-        "tuning": 3,
-        "held_out": 9,
+        "tuning": 4,
+        "held_out": 8,
     }
     assigned = _map(pipeline.splits)
     assert len(assigned) == len(manifest.subject_ids) == 48
     assert assigned == {h: by_patient[p] for h, p in manifest.patient_of.items()}
 
 
-def test_default_fractions_truncate_the_tuning_block(pipeline):
+def test_default_fractions_cut_where_exact_arithmetic_does(pipeline):
     """
-    0.1 * 40 patients is 4, but cumsum([0.7, 0.1]) * 40 lands just under 32 in
-    binary floating point and is truncated, so tuning gets 3 -- current behavior
+    0.1 * 40 patients is 4, though in floating point 0.7 + 0.1 is
+    0.7999999999999999, whose product with 40 lands just under 32
     """
     counts = _patient_counts(pipeline.splits, pipeline.manifest)
-    assert counts["tuning"] == 3
-    assert counts["train"] + counts["tuning"] == 31
+    assert counts["tuning"] == 4
+    assert counts["train"] + counts["tuning"] == 32
+
+
+@pytest.mark.parametrize(
+    "n,expected",
+    [
+        (5, {"train": 3, "tuning": 1, "held_out": 1}),
+        (10, {"train": 7, "tuning": 1, "held_out": 2}),
+        (20, {"train": 14, "tuning": 2, "held_out": 4}),
+        (30, {"train": 21, "tuning": 3, "held_out": 6}),
+    ],
+)
+def test_no_split_loses_a_subject_to_floating_point(runner, n, expected):
+    """
+    at each of these sizes, floating point cut one block a subject short, as
+    10 subjects at 0.7 and 0.1 once split 7 / 0 / 3
+    """
+    spec = tuple((f"H{i:02d}", f"P{i:02d}", 10 * i, 10 * i + 1) for i in range(n))
+    cfg = synth.minimal_collation_cfg(
+        subject_splits=default_cfg("collation")["subject_splits"]
+    )
+    df = _splits_of(runner.collate(cfg=cfg, raw=_spec_raw(runner, spec)))
+    assert _subject_counts(df) == expected
 
 
 @pytest.mark.parametrize(
@@ -592,7 +614,7 @@ def test_uniformly_random_keeps_the_block_sizes_and_the_groups(runner):
     cfg["subject_splits"]["how"] = "uniformly_random"
     df = _splits_of(runner.collate(cfg=cfg))
     assert sorted(df["subject_id"]) == sorted(manifest.subject_ids)
-    assert _patient_counts(df, manifest) == {"train": 28, "tuning": 3, "held_out": 9}
+    assert _patient_counts(df, manifest) == {"train": 28, "tuning": 4, "held_out": 8}
     assigned = _map(df)
     for pid, hids in manifest.subjects_of.items():
         assert len({assigned[h] for h in hids}) == 1, pid

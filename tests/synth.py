@@ -6,9 +6,9 @@ generates synthetic clif-like raw tables for end-to-end pipeline tests
 
 import dataclasses
 import datetime
+import fractions
 import pathlib
 
-import numpy as np
 import polars as pl
 
 BASE = datetime.datetime(2024, 1, 1, 8, 0, 0)
@@ -147,6 +147,17 @@ def _spread(idx: int, lo: float, hi: float) -> float:
     return round(lo + ((idx * 37 + 11) % 97) / 96 * (hi - lo), 3)
 
 
+def split_bounds(n: int, train_frac: float, tuning_frac: float) -> tuple[int, int]:
+    """
+    (train, tuning) upper bounds on the index of `n` ordered groups, as
+    Collator.get_subject_splits cuts them: by exact arithmetic on the fractions
+    as written, so 40 at 0.7 and 0.1 cut at 28 and 32, where floating point,
+    in which 0.7 + 0.1 is 0.7999999999999999, would cut at 28 and 31
+    """
+    train, tuning = (fractions.Fraction(str(f)) for f in (train_frac, tuning_frac))
+    return int(n * train), int(n * (train + tuning))
+
+
 @dataclasses.dataclass(frozen=True)
 class Manifest:
     """records what was planted in a generated dataset, for use in assertions"""
@@ -181,16 +192,8 @@ class Manifest:
 
     @property
     def split_bounds(self) -> tuple:
-        """
-        (train, tuning) upper bounds on the chronological patient index;
-        mirrors Collator.get_subject_splits, including its float arithmetic --
-        np.cumsum([0.7, 0.1]) lands on exactly 0.8 where 0.7 + 0.1 does not
-        """
-        return tuple(
-            (self.n_patients * np.cumsum([self.train_frac, self.tuning_frac])).astype(
-                int
-            )
-        )
+        """(train, tuning) upper bounds on the chronological patient index"""
+        return split_bounds(self.n_patients, self.train_frac, self.tuning_frac)
 
     def split_of_patient(self, patient_id: str) -> str:
         i = self.patient_ids.index(patient_id)
@@ -252,7 +255,7 @@ def write_raw_dataset(
         nan_resp,
         inf_resp,
     ) = (set(), set(), set(), set(), set(), set(), set(), set(), set(), set(), set())
-    lo_idx, hi_idx = (n_patients * np.cumsum([train_frac, tuning_frac])).astype(int)
+    lo_idx, hi_idx = split_bounds(n_patients, train_frac, tuning_frac)
 
     for i in range(n_patients):
         pid = f"P{i:04d}"

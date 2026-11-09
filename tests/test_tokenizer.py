@@ -496,12 +496,23 @@ def test_admission_tokens_are_ordered_by_prefix(timelines):
         "MED-CTS",
         "MED-INT",
         "LAB-ORD",
-        "CODE",
         "VTL",
         "ASMT",
         "RESP",
         "SOFA",
         "LABEL",
+    ]
+
+
+def test_tokens_an_hour_in_are_ordered_by_prefix(timelines):
+    """the first lab results, the code status, and a prone position"""
+    words, times = timelines["H00000"]
+    hour_in = times[0] + datetime.timedelta(hours=1)
+    at_hour_in = [w for w, t in zip(words, times) if t == hour_in]
+    assert [p for p, _ in itertools.groupby(map(prefix_of, at_hour_in))] == [
+        "LAB-RES",
+        "CODE",
+        "POSN",
     ]
 
 

@@ -18,7 +18,8 @@ default config in [src/cocoa/config/](src/cocoa/config/):
    tables into one denormalized
    [MEDS](https://github.com/Medical-Event-Data-Standard/meds)-like frame of
    `(subject_id, time, code, numeric_value, text_value)` events, plus
-   chronological train/tuning/held_out subject splits. → `meds.parquet`,
+   train/tuning/held_out subject splits, chronological or random (see
+   `subject_splits.how` below). → `meds.parquet`,
    `subject_splits.parquet`
 2. **Tokenize** ([tokenizer.py](src/cocoa/tokenizer.py)) — convert events to
    integer token sequences. Learns a vocabulary (`lookup`) and quantile `bins`
@@ -45,9 +46,15 @@ interactive html page, either served on localhost or written to a file with
 `--export-html`, and as a static pdf with `--export-pdf` (drawn by
 [pdf.py](src/cocoa/pdf.py)). It is a `Configurable` too (default
 [visualization.yaml](src/cocoa/config/visualization.yaml): lanes, palette, prefix
-names, code descriptions), but it only reads the stages' outputs. Its page
-template, css, js, icon, and fonts live in
-[src/cocoa/assets/](src/cocoa/assets/).
+names, code descriptions), but it only reads the stages' outputs. It draws the
+learned vocabulary as a second page (`cocoa visualize` without a subject id,
+`Visualizer.render_vocabulary`): each binned code's training values against its
+cut points, every word with its training count, the prefixes, and the timelines
+by split, as `tokenize --verbose` summarizes them. It serves or saves that page
+the same ways, as a pdf too (`render_vocabulary_pdf`). Each page's template and js
+live in [src/cocoa/assets/](src/cocoa/assets/) (`timeline.*`, `vocabulary.*`),
+with the icon and fonts; `timeline.css` holds the tokens and parts both pages
+use, and `vocabulary.css` only what the vocabulary page adds.
 
 Ahead of the stages, **`cocoa get-demo`** ([demo.py](src/cocoa/demo.py)) writes
 the public data the docs run on: the MIMIC-IV demo's CLIF tables, which
@@ -74,10 +81,13 @@ cocoa <stage> ... n_bins=5 '~key'  # trailing overrides edit single keys of it
 cocoa pipeline ... tokenization.n_bins=5  # in pipeline, each key names its stage
 cocoa winnow -p <processed-data-home> -o <dir>  # winnowed files go to <dir>
 cocoa <stage> -h                   # help; --verbose prints summary stats
+cocoa --version                    # versions of cocoa, its dependencies, and python
 cocoa combine-datasets <dir> <dir> ... -o <output-dir>
 
 # View one subject's timeline (serves on 127.0.0.1:8765 until Ctrl-C)
 cocoa visualize <subject-id> -p <processed-data-home> [--open | -e out.html]
+# ...or, given no subject id, the vocabulary and its bins over the training data
+cocoa visualize -p <processed-data-home> [--open | -e out.html]
 
 # Format + lint (run before committing)
 ruff format .
@@ -87,12 +97,16 @@ ruff check . --fix
 pytest
 pytest --cov                       # with line and branch coverage, as CI measures it
 
-# Docs (mkdocs-material, published to readthedocs)
-mkdocs build
-mkdocs serve --dev-addr 127.0.0.1:8001
+# Docs (zensical, configured in zensical.toml; published to readthedocs)
+zensical build [--strict]          # --strict fails on a broken link or anchor
+zensical serve --dev-addr 127.0.0.1:8001
 
 # JOSS paper draft → joss-submission/paper.pdf (CI: .github/workflows/draft-pdf.yml)
 (cd joss-submission && docker run --rm --volume $PWD:/data --user $(id -u):$(id -g) --env JOURNAL=joss openjournals/inara)
+
+# Release: bump pyproject.toml `version`, commit, then push a signed tag for it
+git tag -s vYY.M.patch -m "message"
+git push origin vYY.M.patch
 ```
 
 There's a pytest suite in [tests/](tests/) — run it with `pytest`. CI
@@ -101,7 +115,8 @@ push and pull request that touches more than the paper in
 [joss-submission/](joss-submission/), and weekly, on Python 3.11 through 3.15,
 and once more on 3.11 with each dependency at the lowest version
 [pyproject.toml](pyproject.toml) allows; it doesn't run ruff, so format and lint
-locally before pushing. Keep the matrix in step with `requires-python`, and raise a floor in `pyproject.toml` when
+locally before pushing. Keep the matrix in step with `requires-python`,
+and raise a floor in `pyproject.toml` when
 code starts needing a newer dependency, or the lowest job fails. Each matrix job
 also uploads its coverage to [Codecov](https://app.codecov.io/gh/bbj-lab/cocoa)
 by OIDC, so no token secret is needed (fork PRs upload tokenless). Coverage is
@@ -129,8 +144,12 @@ overridden configs in an isolated tmp dir — no real patient data needed. Test
 files mostly mirror `src/cocoa` modules, except tokenizer coverage is split into
 core behavior (`test_tokenizer.py`), serialization/transfer
 (`test_tokenizer_io.py`), and configurable options (`test_tokenizer_options.py`),
-plus cross-cutting suites for subject splits, timezones, and full pipeline
-integration. Beyond the fixtures running the shipped defaults, no test should
+and the visualizer's into its timeline (`test_visualizer.py`) and its vocabulary
+page (`test_visualizer_vocabulary.py`), plus cross-cutting suites for subject
+splits, timezones, and full pipeline integration. Helpers that more than one test
+file needs, such as `copy_of` and `as_written_by_26_6`, live in
+[tests/conftest.py](tests/conftest.py) too. Beyond the fixtures running the
+shipped defaults, no test should
 depend on a shipped config carrying dataset-specific items (a lane, a prefix
 name, a code description); a test that needs them writes its own config, as
 `VIZ_CFG` in [tests/test_visualizer.py](tests/test_visualizer.py) does. A test
@@ -141,11 +160,12 @@ or `PY_COLORS`, so substring checks on the raw text pass locally but fail in CI.
 
 Most modules also keep an `if __name__ == "__main__"` block that self-tests
 against a local processed dataset (e.g. `./processed/mimic/`, for which
-[recipes/mimic-iv-demo.md](recipes/mimic-iv-demo.md) builds a public stand-in,
-`./processed/demo/`); run a module directly (`python -m cocoa.tokenizer`) to
-exercise it against real data — the tokenizer block also asserts round-trip
-save/load equality, and the visualizer block asserts the page references no
-external URLs. When you change behavior, add/update a pytest case first.
+[docs/recipes/mimic-iv-demo.md](docs/recipes/mimic-iv-demo.md) builds a public
+stand-in, `./processed/demo/`); run a module directly
+(`python -m cocoa.tokenizer`) to exercise it against real data — the tokenizer
+block also asserts round-trip save/load equality, and the visualizer block
+asserts its pages reference no external URLs. When you change behavior,
+add/update a pytest case first.
 
 ## Architecture notes
 
@@ -176,7 +196,8 @@ external URLs. When you change behavior, add/update a pytest case first.
 - **Reruns write the same files.** polars' `sort` is unstable and `group_by`
   returns groups in no set order, so a sort that decides an output's order needs
   keys that leave ties only between rows identical in every column written.
-  `get_subject_splits` sorts groups on `(first_time, id)`; `tokenize_data` on
+  `get_subject_splits` sorts groups on `(first_time, id)`, or on `(digest, id)`
+  under `uniformly_random`; `tokenize_data` on
   `(time, priority, to_tokenize, numeric_value, subject_id)`, which also orders
   the rows of `tokens_times.parquet` (by first token, then `subject_id`); and
   `get_bins` on `code`, so `created_dttm` is the only line of `tokenizer.yaml`
@@ -185,6 +206,16 @@ external URLs. When you change behavior, add/update a pytest case first.
   `shuffle_rows` (off by default) then reorders the rows of
   `tokens_times.parquet` with `Tokenizer.shuffle_rows`, a lazy sort on a hash of
   the row index with a fixed seed, so reruns stay identical.
+- **`subject_splits.how` picks the order the split fractions cut.** `time_based`
+  (the default, and the fallback for a config without it) orders groups by
+  `first_time`; `uniformly_random` by the sha256 hex digest of each group id cast
+  to a string, which is as good as a uniform shuffle and the same on every run,
+  machine, and polars version. Don't swap in `pl.Expr.hash`, as `shuffle_rows`
+  uses: its values may change with polars' version, which would move subjects
+  across splits for anyone re-collating;
+  `test_uniformly_random_ranks_by_the_digest_of_each_id` pins the order.
+  `Collator.__init__` validates `how`, so a typo fails before `meds.parquet` is
+  written.
 - **Config-embedded expressions**: `filter_expr` / `with_col_expr` / `agg_expr`
   in a collation config are Polars expression _strings_ `eval`'d via
   `Collator.slightly_safer_eval`. This is intentionally powerful and **not a
@@ -207,7 +238,7 @@ external URLs. When you change behavior, add/update a pytest case first.
 - **Vocabulary/bins are frozen after training.** `UNK` is always token `0`. Reuse
   a learned tokenizer across datasets with
   `cocoa tokenize --tokenizer-home <path>/tokenizer.yaml` (see
-  [recipes/tokenizer-transfer.md](recipes/tokenizer-transfer.md)).
+  [docs/recipes/tokenizer-transfer.md](docs/recipes/tokenizer-transfer.md)).
 - **`min_training_ct` prunes the vocabulary's long tail.** Words seen fewer than
   that many times in the training split get no token and fall through to `UNK`;
   `BOS`/`EOS`/`CLCK//`/`TIME//` are exempt so structure survives on small data.
@@ -258,10 +289,17 @@ external URLs. When you change behavior, add/update a pytest case first.
   which `get_timeline` localizes; a test rewrites today's output into that format
   (`as_written_by_26_6`) and checks it draws the same. When tokens were written
   without `include_numeric_values`, it recovers values from `meds.parquet` by
-  re-binning them the way `Tokenizer.bin_data` does. It spots a fused bin as an
-  uppercase `_Q<n>`, which only works because code values are lowercased. So a
-  change to binning or to code normalization needs a matching change in
-  `Visualizer.get_values` / `FUSED_BIN`. The page has to stay self-contained:
+  re-binning them the way `Tokenizer.bin_data` does, and the vocabulary page's
+  `get_histograms` re-bins the training split's values from `meds.parquet` the
+  same way, in polars, to count each bin; a test checks those counts against the
+  fused words' training counts. It spots a fused bin as an uppercase `_Q<n>`,
+  which only works because code values are lowercased. So a change to binning,
+  to which values bins are learned on, or to code normalization needs a matching
+  change in `Visualizer.get_values` / `get_histograms` / `FUSED_BIN`. Its
+  histograms take each code's mean over its values sorted, and the timelines'
+  summaries over rows sorted by `subject_id`, so that sums don't depend on the
+  order rows arrive in and a rerun renders the same page, `generated` aside.
+  A page has to stay self-contained:
   fonts and icon are inlined as base64, with no external URLs, so an exported
   file can be sent to someone without cocoa or the data. Its static
   `#cocoa-fallback` note tells a viewer that doesn't run scripts (an email or
@@ -271,9 +309,12 @@ external URLs. When you change behavior, add/update a pytest case first.
   addressed by glyph id, with a ToUnicode map so text copies out) and sets codes
   and tokens in standard Courier (WinAnsi text); a character a font lacks prints
   as `?`. A missing font file falls back to Helvetica, as the page falls back to
-  system fonts. It ports the page's lanes, axis ticks, and binned rows from
-  `timeline.js`, so a change to the payload or to how the page draws it needs a
-  matching change in `TimelinePdf`.
+  system fonts. `TimelinePdf` ports the page's lanes, axis ticks, and binned rows
+  from `timeline.js`, and `VocabularyPdf` ports `vocabulary.js`'s histograms,
+  tables, and number formats (`fmtPct`, `niceTicks`, and the like, rounding
+  halves up as javascript does), so a change to a payload or to how its page
+  draws it needs a matching change in the pdf that ports it. Both lay out through
+  `Flow`, which holds the paging, headings, and tables they share.
 - **Times** are normalized on load to the collation config's `default_timezone`
   (`Collator.to_default_tz`; `UTC` if unset) and stay **tz-aware** for the rest
   of the pipeline: tz-aware columns are instant-preserved, tz-naive columns are
@@ -340,8 +381,8 @@ external URLs. When you change behavior, add/update a pytest case first.
       the previous behavior, whatever the shipped default sets. Never use
       `cfg.key` / `cfg["key"]`, which raise on a missing key.
       `drop_duplicate_events`, `default_time_unit`, `min_training_ct`,
-      `include_hours_to_end_time`, `shuffle_rows`, and `max_lookback_days` /
-      `max_lookahead_days` all follow this pattern.
+      `include_hours_to_end_time`, `shuffle_rows`, `max_lookback_days` /
+      `max_lookahead_days`, and `subject_splits.how` all follow this pattern.
     - don't rename a key, repurpose it, or change what an existing value means.
       If a key has to change, keep accepting the old spelling.
     - the `cfg` block saved in `tokenizer.yaml` is a config too, and copies
@@ -367,22 +408,52 @@ external URLs. When you change behavior, add/update a pytest case first.
 - **Versioning is CalVer** `YY.M.patch` (e.g. `26.6.1`); releases are signed git
   tags `vYY.M.patch`, published to PyPI. Not every tag was published: 26.6.0 was
   the first PyPI release, and `v26.4.0` and `v26.6.3` never shipped.
-  `__version__` comes from installed package metadata, not a literal.
-- Keep [README.md](README.md), the [recipes/](recipes/) (mirrored into
-  [docs/recipes/](docs/recipes/)), the per-module pages in
-  [docs/api/](docs/api/), and the shipped default configs in sync when behavior
-  changes. The README is the PyPI long description, and the recipes are the
-  primary user-facing docs. [recipes/mimic-iv-demo.md](recipes/mimic-iv-demo.md)
-  runs the shipped defaults end to end on the MIMIC-IV demo, as `cocoa get-demo`
-  writes it from clifpy, and quotes what they make of it (event and split counts,
-  vocabulary size, timeline lengths, the first held-out hospitalization). The
-  other docs take their examples from the same run: the README's output tables
-  and bin edges, the docs' paths (`data-raw/demo`, `processed/demo`), and the
-  counts quoted by the other recipes, which run variants of it (split by
-  `anchor_year_group`, or collated in `America/New_York`). So rerun it, and
-  refresh those, after changing a shipped config, binning, splitting, or what
-  `cocoa get-demo` derives, and when raising the clifpy floor: the recipe names
-  the clifpy release its numbers come from, and another may ship other tables.
+  `__version__` comes from installed package metadata, not a literal. Now pushing
+  a `v*` tag to `bbj-lab/cocoa` publishes it: it runs
+  [publish.yml](.github/workflows/publish.yml) (cotorra's, but for the names),
+  which builds the sdist and wheel and uploads them to PyPI and TestPyPI by
+  trusted publishing (OIDC, as for Codecov, so no token secret), in parallel jobs
+  through the `pypi` and `testpypi` environments, so neither index's failure
+  blocks the other; TestPyPI skips a version it already has. It fails unless the
+  tag is `v` + `version`, points to the commit built, and is signed
+  (`git tag -s`, not a lightweight tag) with burkh4rt's release key: it imports
+  the public keys GitHub serves for that account and accepts only the one whose
+  fingerprint it pins (`RELEASE_KEY`), so letting anyone else release means
+  changing that. Each file gets two Sigstore-signed attestations, both keyless
+  (signed for the workflow's OIDC identity): SLSA build provenance from the build
+  job, kept by GitHub (`gh attestation verify <file> --repo bbj-lab/cocoa`), and
+  the publish action's PEP 740 attestations, uploaded beside it to each index
+  (`pypi-attestations verify pypi --repository https://github.com/bbj-lab/cocoa pypi:<file>`).
+  PyPI refuses any requirement that's a direct URL reference, even in an extra,
+  so before building it drops every extra holding one (cocoa has none; cotorra's
+  `gen` does). Don't build and upload by hand, which skips the checks and the
+  attestations.
+- Keep the user guide in [docs/guide/](docs/guide/) (a page per stage, plus
+  combining datasets and configuration; it documents every config key), the
+  recipes in [docs/recipes/](docs/recipes/), the per-module pages in
+  [docs/api/](docs/api/) (where [cli.md](docs/api/cli.md) holds each command's
+  pasted `COLUMNS=75 cocoa <command> --help`), [README.md](README.md), and the
+  shipped default configs in sync when behavior changes. The README is the PyPI
+  long description and the landing page: its links into the docs are absolute
+  (`https://cocoa-tokenizer.readthedocs.io/latest/…`), since GitHub and PyPI
+  render it, and `docs/index.md` includes its `intro`, `install` and `references`
+  sections, each between `<!-- --8<-- [start:<name>] -->` and `[end:<name>]`
+  comments, so editing those changes the docs home page (snippets' `check_paths`
+  fails the build if a marker goes missing). The recipes, a page each with its
+  `nav` entry (top-level `recipes/` holds only forwarding notes for links to the
+  old paths), are the primary user-facing docs.
+  [docs/recipes/mimic-iv-demo.md](docs/recipes/mimic-iv-demo.md) runs the shipped
+  defaults end to end on the MIMIC-IV demo, as `cocoa get-demo` writes it from
+  clifpy, and quotes what they make of it (event and split counts, vocabulary
+  size, timeline lengths, the first held-out hospitalization). The other docs
+  take their examples from the same run: the guide's output tables and bin edges,
+  the docs' paths (`data-raw/demo`, `processed/demo`), and the counts quoted by
+  the other recipes, which run variants of it (split by `anchor_year_group`,
+  collated in `America/New_York`, or winnowed at several times after admission).
+  So rerun it, and refresh those, after changing a shipped config, binning,
+  splitting, or what `cocoa get-demo` derives, and when raising the clifpy floor:
+  the recipe names the clifpy release its numbers come from, and another may ship
+  other tables.
 
 ## Gotchas
 
@@ -401,3 +472,26 @@ external URLs. When you change behavior, add/update a pytest case first.
   `default_time_unit` mismatch escapes that config diff and instead surfaces as a
   polars `SchemaError` on the datetime columns — which the legacy-schema fallback
   does not repair, since it only recasts token columns.
+- The docs build with [Zensical](https://zensical.org) from
+  [zensical.toml](zensical.toml), formatted like `pyproject.toml` (taplo, with
+  4-space indents). Taplo sorts the keys between blank lines and comments, so a
+  comment on a key goes inline or above its table. The theme is the `modern`
+  variant, which draws the header and tabs in the page's colors, so
+  [extra.css](docs/stylesheets/extra.css) paints them maroon itself, by
+  redefining the page's colors inside them. It also swaps the theme's greys for
+  UChicago's neutrals (black, the three greystones, white), taking light
+  greystone at half strength, `#ececec`, for the larger surfaces. Admonitions
+  take the visualizer's UChicago colors, a link turns dark brick under the
+  pointer, and a card on the home page has a maroon icon, and a maroon border
+  under the pointer. [docs/index.md](docs/index.md) wraps the README's `intro` in
+  a `.hero` block, and the stylesheet centers its title, the paragraph right
+  after it (the badges), and its blockquote (the tagline), so keep them in that
+  order. The `glightbox` plugin zooms an image on click; the README's hero opts
+  out with `class="off-glb"`. cotorra's docs share the stylesheet, overrides, and
+  theme settings, so a change to how one site looks goes to the other too.
+  Zensical runs its own versions of the plugins listed there and silently skips
+  any it lacks: so far just `git-revision-date-localized`, so the footer's "Last
+  updated" line ([copyright.html](overrides/partials/copyright.html)) stays empty
+  until Zensical ships it. It caches builds in `.cache/` and doesn't notice when
+  the docs dependencies change, so run `zensical build --clean` after upgrading
+  them; a stale cache once passed a build that a clean one failed.

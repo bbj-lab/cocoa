@@ -9,6 +9,7 @@ max_lookback_days: null # drop events more than this many days before start_time
 max_lookahead_days: null # drop events more than this many days after end_time
 
 subject_splits:
+  how: time_based # by first start time, or uniformly_random
   train_frac: !!float 0.7
   tuning_frac: !!float 0.1
   # remainder is held_out
@@ -76,7 +77,7 @@ entries:
   - table: clif_code_status
     prefix: CODE
     code: code_status_category
-    time: admission_dttm
+    time: start_dttm # changed from admission_dttm
     reference_key: patient_id
 
   - table: clif_crrt_therapy

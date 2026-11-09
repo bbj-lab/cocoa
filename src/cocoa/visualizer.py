@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 
 """
-renders a subject's tokenized timeline as a self-contained html page
+renders a subject's tokenized timeline, or the learned vocabulary with its bins
+over the training data, as a self-contained html page
 """
 
 import base64
@@ -23,7 +24,7 @@ import polars as pl
 import yaml
 
 from cocoa.configurable import Configurable
-from cocoa.pdf import timeline_pdf
+from cocoa.pdf import timeline_pdf, vocabulary_pdf
 
 # a quantile bin fused onto a code, e.g. the Q3 of VTL//heart_rate_Q3; codes are
 # lowercased after their prefix, so an uppercase Q can only have come from binning
@@ -32,6 +33,16 @@ BIN_WORD = re.compile(r"^Q\d+$")
 KINDS = {"BOS": "bos", "EOS": "eos", "TIME": "spacer", "CLCK": "clock", "UNK": "unk"}
 FONTS = (("Gotham-Book.otf", "300 400"), ("Gotham-Medium.otf", "500 700"))
 MARKER = re.compile(r"__COCOA_(TITLE|STYLE|SCRIPT|DATA|ICON)__")
+
+# the vocabulary page counts a binned code with at most EXACT distinct training
+# values value by value, and one with more in about BUCKETS buckets of a round
+# width. these span its cut points and all but the TAIL of its values at either
+# end, out to its extreme value where that's within REACH of the span; EPS of a
+# width lands a value read from float32, as 1.4 is 1.39999998, in the bucket its
+# decimal reading starts
+EXACT, BUCKETS, TAIL, REACH, EPS = 50, 50, 0.005, 0.25, 1e-3
+PER_DECADE = 8  # buckets per power of ten, for the timelines' lengths and durations
+SPLITS = ("train", "tuning", "held_out")
 
 
 class SubjectNotFoundError(LookupError):
@@ -42,7 +53,10 @@ class Visualizer(Configurable):
     """
     gathers one subject's timeline, vocabulary, and pass-through columns
     from a processed data directory and renders them as html or pdf;
-    `save` and `save_pdf` write them to files
+    `save` and `save_pdf` write them to files. `render_vocabulary` and
+    `render_vocabulary_pdf` draw the vocabulary instead, and
+    `save_vocabulary` and `save_vocabulary_pdf` write it: its words, each
+    binned code's training values against its bins, and the timelines by split
     """
 
     default_file = "visualization.yaml"
@@ -375,9 +389,7 @@ class Visualizer(Configurable):
         return {
             "meta": {
                 "cocoa_version": meta.version("cocoa-tokenizer"),
-                "generated": datetime.datetime.now(zoneinfo.ZoneInfo("America/Chicago"))
-                .replace(microsecond=0)
-                .isoformat(),
+                "generated": now(),
                 "tokenizer_created": self.tkzr.get("created_dttm"),
                 "processed_data_home": str(self.processed_data_home),
                 "timezone": tz,
@@ -423,20 +435,9 @@ class Visualizer(Configurable):
 
     def render(self, subject_id: str) -> str:
         """the subject's timeline as one self-contained html document"""
-        payload = self.get_payload(subject_id)
-        assets = resources.files("cocoa.assets")
-        fill = {
-            "TITLE": html.escape(f"Subject {subject_id} · cocoa"),
-            "STYLE": font_faces()
-            + (assets / "timeline.css").read_text(encoding="utf-8"),
-            "SCRIPT": (assets / "timeline.js").read_text(encoding="utf-8"),
-            "DATA": to_script_json(payload),
-            "ICON": "data:image/svg+xml;base64,"
-            + base64.b64encode((assets / "cocoa.svg").read_bytes()).decode(),
-        }
-        template = (assets / "timeline.html").read_text(encoding="utf-8")
-        # one pass, so nothing substituted in is itself scanned for markers
-        return MARKER.sub(lambda m: fill[m.group(1)], template)
+        return render_page(
+            "timeline", f"Subject {subject_id} · cocoa", self.get_payload(subject_id)
+        )
 
     def save(self, subject_id: str, path: pathlib.Path | str) -> pathlib.Path:
         """write the rendered page to `path`"""
@@ -456,10 +457,422 @@ class Visualizer(Configurable):
         to_file.write_bytes(self.render_pdf(subject_id))
         return to_file
 
+    def get_training_values(self) -> pl.LazyFrame | None:
+        """
+        the finite numeric values of the training split's events, by code, as the
+        tokenizer learned its bins on and bins them; None without meds.parquet or
+        subject_splits.parquet
+        """
+        meds = self.processed_data_home / "meds.parquet"
+        splits = self.processed_data_home / "subject_splits.parquet"
+        if not (meds.exists() and splits.exists()):
+            return None
+        train = pl.scan_parquet(splits).filter(pl.col("split") == "train")
+        return (
+            pl.scan_parquet(meds)
+            .join(train.select("subject_id"), on="subject_id", how="semi")
+            .select("code", value=pl.col("numeric_value").cast(pl.Float64))
+            .filter(pl.col("value").is_finite())
+        )
+
+    def get_histograms(self) -> dict[str, dict[str, Any]]:
+        """
+        each binned code's training values: how many, how many distinct, their
+        range, a histogram of them, and how many fall in each of its bins
+        """
+        values = self.get_training_values()
+        if values is None or not self.bins:
+            return {}
+        values = values.filter(pl.col("code").is_in(list(self.bins)))
+        v = pl.col("value")
+        stats = values.group_by("code").agg(
+            n=pl.len(),
+            distinct=v.n_unique(),
+            whole=(v == v.round()).all(),
+            min=v.min(),
+            max=v.max(),
+            mean=v.sort().mean(),  # summed in one order, whatever order they come in
+            median=v.median(),
+            lo=v.quantile(TAIL, "linear"),
+            hi=v.quantile(1 - TAIL, "linear"),
+        )
+        stats = stats.collect(engine="streaming")
+        exact, spans = [], []
+        for s in stats.iter_rows(named=True):
+            if s["distinct"] <= EXACT:
+                exact.append(s["code"])
+                continue
+            cuts = [b for b in map(finite, self.bins[s["code"]]) if b is not None]
+            lo, hi = min([s["lo"], *cuts]), max([s["hi"], *cuts])
+            if hi <= lo:  # nearly every value is the same, so span them all
+                lo, hi = min([s["min"], *cuts]), max([s["max"], *cuts])
+            reach = REACH * (hi - lo)
+            lo = min(lo, s["min"]) if lo - s["min"] <= reach else lo
+            hi = max(hi, s["max"]) if s["max"] - hi <= reach else hi
+            w = round_width((hi - lo) / BUCKETS, whole=s["whole"])
+            lo = math.floor(lo / w) * w
+            spans.append((s["code"], lo, w, math.floor((hi - lo) / w + EPS) + 1))
+
+        n_cuts = max(map(len, self.bins.values()))
+        cut_points = pl.LazyFrame(
+            [
+                [k, *(None if x is None else float(x) for x in b)]
+                + [None] * (n_cuts - len(b))
+                for k, b in self.bins.items()
+            ],
+            schema={
+                "code": pl.String,
+                **{f"break_{i}": pl.Float64 for i in range(1, n_cuts + 1)},
+            },
+            orient="row",
+        )
+        # as the tokenizer's bin_data bins: the number of breaks at or below a value
+        binned = pl.sum_horizontal(
+            pl.lit(0, pl.UInt32),
+            *(pl.col(f"break_{i}") <= v for i in range(1, n_cuts + 1)),
+        )
+        spec = pl.LazyFrame(
+            spans,
+            schema={
+                "code": pl.String,
+                "lo": pl.Float64,
+                "w": pl.Float64,
+                "nb": pl.Int64,
+            },
+            orient="row",
+        )
+        # -1 for a value below the histogram's span, and nb for one above it
+        bucket = (
+            ((v - pl.col("lo")) / pl.col("w") + EPS)
+            .clip(-1, pl.col("nb"))
+            .floor()
+            .cast(pl.Int64)
+        )
+        by_bin, by_value, by_bucket = pl.collect_all(
+            [
+                values.join(cut_points, on="code").group_by("code", bin=binned).len(),
+                values.filter(pl.col("code").is_in(exact))
+                .group_by("code", "value")
+                .len()
+                .sort("code", "value"),
+                values.join(spec, on="code").group_by("code", bucket=bucket).len(),
+            ],
+            engine="streaming",
+        )
+
+        found = {
+            s["code"]: {
+                "n": s["n"],
+                "distinct": s["distinct"],
+                **{k: finite(s[k]) for k in ("min", "median", "mean", "max")},
+                "bins": [0] * (len(self.bins[s["code"]]) + 1),
+            }
+            for s in stats.iter_rows(named=True)
+        }
+        for code, b, n in by_bin.iter_rows():
+            found[code]["bins"][b] = n
+        for code, x, n in by_value.iter_rows():
+            hist = found[code].setdefault("hist", {"x": [], "n": []})
+            hist["x"].append(x)
+            hist["n"].append(n)
+        for code, lo, w, nb in spans:
+            found[code]["hist"] = {
+                "lo": lo,
+                "w": w,
+                "n": [0] * nb,
+                "under": 0,
+                "over": 0,
+            }
+        for code, i, n in by_bucket.iter_rows():
+            hist = found[code]["hist"]
+            if i < 0:
+                hist["under"] = n
+            elif i >= len(hist["n"]):
+                hist["over"] = n
+            else:
+                hist["n"][i] = n
+        return found
+
+    def get_timeline_stats(self) -> dict[str, Any] | None:
+        """
+        the timelines' lengths, durations, and tokens out of the vocabulary,
+        overall and by split, as `tokenize --verbose` summarizes them; None
+        without tokens_times.parquet, as where a tokenizer.yaml was copied alone
+        """
+        timelines = self.processed_data_home / "tokens_times.parquet"
+        splits = self.processed_data_home / "subject_splits.parquet"
+        if not timelines.exists():
+            return None
+        df = pl.scan_parquet(timelines).select(
+            "subject_id",
+            length=pl.col("tokens").list.len(),
+            unk=pl.col("tokens").list.count_matches(0),
+            start=pl.col("times").list.min(),
+            end=pl.col("times").list.max(),
+        )
+        df = (
+            df.join(
+                pl.scan_parquet(splits).select("subject_id", "split"),
+                on="subject_id",
+                how="left",
+            )
+            if splits.exists()
+            else df.with_columns(split=pl.lit(None, pl.String))
+        )
+        # in one order, so that means and deviations sum the same way every run
+        df = (
+            df.with_columns(
+                hours=(pl.col("end") - pl.col("start")).dt.total_microseconds() / 36e8
+            )
+            .collect(engine="streaming")
+            .sort(pl.all())
+            .rechunk()
+        )
+        if df.schema["start"].time_zone is None:  # before 26.9.0, times were naive utc
+            df = df.with_columns(pl.col("start", "end").dt.replace_time_zone("UTC"))
+
+        def buckets(col: str) -> pl.Expr:
+            return (pl.col(col).log10() * PER_DECADE + 1e-6).floor().cast(pl.Int64)
+
+        spans = {
+            col: df.filter(pl.col(col) > 0).select(
+                lo=buckets(col).min(), hi=buckets(col).max()
+            )
+            for col in ("length", "hours")
+        }
+
+        def counts(g: pl.DataFrame, col: str) -> list[int]:
+            lo, hi = spans[col].row(0)
+            found = dict(
+                g.filter(pl.col(col) > 0).group_by(k=buckets(col)).len().iter_rows()
+            )
+            return (
+                [found.get(k, 0) for k in range(lo, hi + 1)] if lo is not None else []
+            )
+
+        def summary(g: pl.DataFrame) -> dict[str, Any]:
+            return {
+                "timelines": g.height,
+                "tokens": int(g["length"].sum()),
+                "unk": int(g["unk"].sum()),
+                "length": describe(g["length"]),
+                "hours": describe(g["hours"]),
+                "instant": int((g["hours"] <= 0).sum()),
+                "first": fmt_time(g["start"].min()),
+                "last": fmt_time(g["end"].max()),
+                "lengths": counts(g, "length"),
+                "durations": counts(g, "hours"),
+            }
+
+        order = {s: i for i, s in enumerate(SPLITS)}
+        splits = sorted(
+            df["split"].unique().to_list(),
+            key=lambda s: (s is None, order.get(s, len(order)), s or ""),
+        )
+        return {
+            "per_decade": PER_DECADE,
+            "length_from": spans["length"].item(0, "lo"),
+            "hours_from": spans["hours"].item(0, "lo"),
+            "timezone": df.schema["start"].time_zone,
+            "all": summary(df),
+            "splits": [
+                {
+                    "split": s,
+                    **summary(
+                        df.filter(
+                            pl.col("split").is_null()
+                            if s is None
+                            else pl.col("split") == s
+                        )
+                    ),
+                }
+                for s in splits
+            ],
+        }
+
+    def get_vocabulary_payload(self) -> dict[str, Any]:
+        """everything the vocabulary page draws, as plain json-able data"""
+        counts = self.tkzr.get("counts") or {}  # before 26.9.1, tokenizer.yaml has none
+        codes: list[dict[str, Any]] = []
+        code_idx: dict[str, int] = {}
+
+        def code_of(parsed: dict[str, Any]) -> int:
+            if (code := parsed["code"]) not in code_idx:
+                code_idx[code] = len(codes)
+                codes.append(
+                    {
+                        "code": code,
+                        "prefix": parsed["prefix"],
+                        "name": parsed["name"].replace("_", " "),
+                        "category": self.prefix_names.get(parsed["prefix"]),
+                        "description": self.describe(code),
+                    }
+                )
+            return code_idx[code]
+
+        columns = ("word", "token", "count", "kind", "code", "bin", "text")
+        words: dict[str, list[Any]] = {k: [] for k in columns}
+        for token, word in sorted(self.decoder.items()):
+            parsed = self.parse(word)
+            if parsed["prefix"]:
+                kind = KINDS.get(parsed["prefix"], "event")
+                code, bin_, text = code_of(parsed), parsed["bin"], parsed["text"]
+            elif BIN_WORD.match(word):  # an unfused bin, which every code shares
+                kind, code, bin_, text = "bin", None, int(word[1:]), None
+            else:  # an unfused text value
+                kind, code, bin_, text = "text", None, None, word
+            for k, x in zip(
+                columns, (word, token, counts.get(word), kind, code, bin_, text)
+            ):
+                words[k].append(x)
+        has_counts = any(c is not None for c in words["count"])
+
+        hists = self.get_histograms()
+        in_words: collections.defaultdict[int, collections.Counter[int]]
+        in_words = collections.defaultdict(collections.Counter)
+        for code, bin_, n in zip(words["code"], words["bin"], words["count"]):
+            if code is not None and bin_ is not None:
+                in_words[code][bin_] += n or 0
+        # without training values, a fused vocabulary still counts each bin's word
+        bins_source = (
+            "meds" if hists else "vocabulary" if self.fused and has_counts else None
+        )
+        binned = []
+        for code, breaks in self.bins.items():
+            c = code_of(self.parse(code))
+            entry = {"code": c, "breaks": [finite(b) for b in breaks], "n": None}
+            if bins_source == "meds":  # a code transferred from elsewhere may have none
+                entry |= hists.get(code) or {"n": 0, "bins": [0] * (len(breaks) + 1)}
+            elif bins_source == "vocabulary":
+                entry["bins"] = [in_words[c][b] for b in range(len(breaks) + 1)]
+            binned.append(entry)
+
+        prefixes = {c["prefix"] for c in codes} | (
+            {""} if None in words["code"] else set()
+        )
+        lanes = self.get_lanes(prefixes)
+        lane_of = {p: j for j, lane in enumerate(lanes) for p in lane["prefixes"]}
+        for c in codes:
+            c["lane"] = lane_of.get(c["prefix"])
+        prefix_of = [codes[c]["prefix"] if c is not None else "" for c in words["code"]]
+        n_words = collections.Counter(prefix_of)
+        n_tokens = collections.Counter()
+        for p, n in zip(prefix_of, words["count"]):
+            n_tokens[p] += n or 0
+        n_codes = collections.Counter(c["prefix"] for c in codes)
+        n_binned = collections.Counter(codes[b["code"]]["prefix"] for b in binned)
+
+        is_training = self.tkzr.get("is_training")
+        return {
+            "meta": {
+                "cocoa_version": meta.version("cocoa-tokenizer"),
+                "generated": now(),
+                "tokenizer_created": fmt_value(self.tkzr.get("created_dttm")),
+                "tokenizer_version": fmt_value(self.tkzr.get("cocoa_version")),
+                "is_training": None if is_training is None else bool(is_training),
+                "processed_data_home": str(self.processed_data_home),
+                "fused": self.fused,
+                "n_bins": self.tkzr_cfg.get("n_bins"),
+                "min_training_ct": self.tkzr_cfg.get("min_training_ct") or 0,
+                "vocab_size": len(self.decoder),
+                "has_counts": has_counts,
+                "value_source": "meds" if hists else None,
+                "bins_source": bins_source,
+            },
+            "config": [[str(k), fmt_setting(x)] for k, x in self.tkzr_cfg.items()],
+            "lanes": lanes,
+            "prefixes": [
+                {
+                    "prefix": p,
+                    "category": self.prefix_names.get(p),
+                    "lane": lane_of.get(p),
+                    "words": n_words[p],
+                    "count": n_tokens[p] if has_counts else None,
+                    "codes": n_codes[p],
+                    "binned": n_binned[p],
+                }
+                for p in sorted(prefixes, key=lambda p: (p == "", self.lane_order(p)))
+            ],
+            "codes": codes,
+            "words": dict(words),
+            "binned": binned,
+            "timelines": self.get_timeline_stats(),
+        }
+
+    def render_vocabulary(self) -> str:
+        """the vocabulary as one self-contained html document"""
+        return render_page(
+            "vocabulary",
+            f"Vocabulary · {self.processed_data_home.name} · cocoa",
+            self.get_vocabulary_payload(),
+        )
+
+    def save_vocabulary(self, path: pathlib.Path | str) -> pathlib.Path:
+        """write the rendered vocabulary page to `path`"""
+        to_file = pathlib.Path(path).expanduser().resolve()
+        to_file.parent.mkdir(parents=True, exist_ok=True)
+        to_file.write_text(self.render_vocabulary(), encoding="utf-8")
+        return to_file
+
+    def render_vocabulary_pdf(self) -> bytes:
+        """the vocabulary as a static, self-contained pdf"""
+        return vocabulary_pdf(self.get_vocabulary_payload())
+
+    def save_vocabulary_pdf(self, path: pathlib.Path | str) -> pathlib.Path:
+        """write the vocabulary to `path` as a pdf"""
+        to_file = pathlib.Path(path).expanduser().resolve()
+        to_file.parent.mkdir(parents=True, exist_ok=True)
+        to_file.write_bytes(self.render_vocabulary_pdf())
+        return to_file
+
 
 def finite(x: float | None) -> float | None:
     """a json-safe float: NaN and infinities become null"""
     return float(x) if x is not None and math.isfinite(x) else None
+
+
+def now() -> str:
+    """the time a page is rendered, to the second, in chicago"""
+    return (
+        datetime.datetime.now(zoneinfo.ZoneInfo("America/Chicago"))
+        .replace(microsecond=0)
+        .isoformat()
+    )
+
+
+def round_width(raw: float, whole: bool = False) -> float:
+    """
+    the least of 1, 2, or 5 times a power of ten that is at least `raw`, and for
+    whole numbers at least 1, so that each bucket holds as many of them
+    """
+    step = 10.0 ** math.floor(math.log10(raw))
+    w = next(m * step for m in (1, 2, 5, 10) if m * step >= raw)
+    return max(w, 1.0) if whole else w
+
+
+def describe(s: pl.Series) -> dict[str, float | None]:
+    """a series' mean, standard deviation, and quartiles, its nulls left out"""
+    s = s.drop_nulls()
+    return {
+        "mean": finite(s.mean()),
+        "std": finite(s.std()),
+        "min": finite(s.min()),
+        "q25": finite(s.quantile(0.25, "linear")),
+        "median": finite(s.median()),
+        "q75": finite(s.quantile(0.75, "linear")),
+        "max": finite(s.max()),
+    }
+
+
+def fmt_setting(v: Any) -> str:
+    """a tokenizer config value as display text, in yaml's spelling"""
+    if isinstance(v, bool) or v is None:
+        return json.dumps(v)
+    if isinstance(v, dict):
+        return ", ".join(f"{k}: {fmt_setting(x)}" for k, x in v.items())
+    if isinstance(v, (list, tuple)):
+        return ", ".join(map(fmt_setting, v))
+    return str(v)
 
 
 def humanize(column: str) -> str:
@@ -503,6 +916,28 @@ def to_script_json(obj: dict[str, Any]) -> str:
         .replace("\u2028", "\\u2028")
         .replace("\u2029", "\\u2029")
     )
+
+
+def render_page(name: str, title: str, payload: dict[str, Any]) -> str:
+    """
+    the page `name` as one self-contained html document: its template, filled
+    with `title`, its script, `payload`, and the styles of timeline.css, whose
+    tokens and components every page shares, then those of its own `name`.css
+    """
+    assets = resources.files("cocoa.assets")
+    styles = dict.fromkeys(("timeline.css", f"{name}.css"))
+    fill = {
+        "TITLE": html.escape(title),
+        "STYLE": font_faces()
+        + "".join((assets / f).read_text(encoding="utf-8") for f in styles),
+        "SCRIPT": (assets / f"{name}.js").read_text(encoding="utf-8"),
+        "DATA": to_script_json(payload),
+        "ICON": "data:image/svg+xml;base64,"
+        + base64.b64encode((assets / "cocoa.svg").read_bytes()).decode(),
+    }
+    template = (assets / f"{name}.html").read_text(encoding="utf-8")
+    # one pass, so nothing substituted in is itself scanned for markers
+    return MARKER.sub(lambda m: fill[m.group(1)], template)
 
 
 def font_faces() -> str:
@@ -559,7 +994,9 @@ if __name__ == "__main__":
     )
     payload = self.get_payload(sid)
     assert len(payload["tokens"]["id"]) == len(payload["tokens"]["event"])
-    page = self.render(sid)
-    assert not re.search(r"(?:src|href)=[\"']?https?:|url\([\"']?https?:", page)
+    for doc in (self.render(sid), self.render_vocabulary()):
+        assert not re.search(r"(?:src|href)=[\"']?https?:|url\([\"']?https?:", doc)
     print(self.save(sid, self.processed_data_home / f"timeline_{sid}.html"))
+    print(self.save_vocabulary(self.processed_data_home / "vocabulary.html"))
+    print(self.save_vocabulary_pdf(self.processed_data_home / "vocabulary.pdf"))
     # breakpoint()

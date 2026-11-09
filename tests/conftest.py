@@ -52,6 +52,40 @@ def write_cfg(path: pathlib.Path, cfg) -> pathlib.Path:
     return path
 
 
+def naive_utc(e: pl.Expr) -> pl.Expr:
+    return e.dt.convert_time_zone("UTC").dt.replace_time_zone(None)
+
+
+def as_written_by_26_6(src: pathlib.Path, dest: pathlib.Path) -> pathlib.Path:
+    """
+    a copy of processed directory `src` as 26.6.x wrote it: times naive utc, no
+    subject start_time or end_time, and a tokenizer.yaml without counts
+    """
+    for f in src.glob("*.parquet"):
+        df = pl.read_parquet(f).drop("start_time", "end_time", strict=False)
+        df.with_columns(
+            naive_utc(pl.col(c))
+            if isinstance(t, pl.Datetime)
+            else pl.col(c).list.eval(naive_utc(pl.element()))
+            for c, t in df.schema.items()
+            if isinstance(t, pl.Datetime)
+            or (isinstance(t, pl.List) and isinstance(t.inner, pl.Datetime))
+        ).write_parquet(dest / f.name)
+    y = OmegaConf.load(src / "tokenizer.yaml")
+    del y.counts
+    (dest / "tokenizer.yaml").write_text(OmegaConf.to_yaml(y))
+    return dest
+
+
+def copy_of(src: pathlib.Path, dest: pathlib.Path, without=()) -> pathlib.Path:
+    """a copy of processed directory `src` in `dest`, less the files `without`"""
+    dest.mkdir(parents=True, exist_ok=True)
+    for f in src.iterdir():
+        if f.is_file() and f.name not in without:
+            shutil.copy(f, dest / f.name)
+    return dest
+
+
 @dataclasses.dataclass
 class Processed:
     """a processed data directory, with its artifacts read on demand"""

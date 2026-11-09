@@ -21,9 +21,12 @@ two files to the processed-data directory:
 
 - `meds.parquet` — the collated events for every subject.
 - `subject_splits.parquet` — a `train` / `tuning` / `held_out` assignment for
-  each subject, made by ordering subjects (or, with `group_id`, groups) by their
-  earliest reference `start_time`, ties broken by id, and cutting that order at
-  the fractions in the config.
+  each subject, made by ordering subjects (or, with `group_id`, groups) and
+  cutting that order at the fractions in the config. Under
+  `subject_splits.how: time_based` (the default) they're ordered by their
+  earliest reference `start_time`, ties broken by id; under `uniformly_random`,
+  by the SHA-256 digest of their id, an order as good as a random shuffle but the
+  same every run.
 
 ## How it works
 

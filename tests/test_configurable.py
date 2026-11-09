@@ -151,6 +151,7 @@ def test_collation_default_matches_the_documented_values(tmp_path, tkzr_home):
     assert cfg.subject_id == "hospitalization_id"
     assert cfg.group_id == "patient_id"
     assert cfg.default_timezone == "UTC"
+    assert cfg.subject_splits.how == "time_based"
     assert cfg.subject_splits.train_frac == pytest.approx(0.7)
     assert cfg.subject_splits.tuning_frac == pytest.approx(0.1)
     assert cfg.reference.table == "clif_hospitalization"
@@ -358,7 +359,7 @@ def test_dict_kwarg_deep_merges_into_a_default_block(tmp_path, tkzr_home):
     ).cfg
     assert cfg.subject_splits.train_frac == pytest.approx(0.5)
     assert cfg.subject_splits.tuning_frac == pytest.approx(0.1)  # kept from default
-    assert set(cfg.subject_splits.keys()) == {"train_frac", "tuning_frac"}
+    assert set(cfg.subject_splits.keys()) == {"how", "train_frac", "tuning_frac"}
 
 
 def test_dict_kwarg_deep_merges_into_the_reference_block(tmp_path, tkzr_home):

@@ -1,11 +1,12 @@
 # Visualizer
 
 The `Visualizer` renders one subject's tokenized timeline as a self-contained,
-interactive html page, so you can see what tokenization made of a timeline. It is
-not a pipeline stage: it only reads what the stages wrote to the processed-data
-directory. Its behavior is driven by a visualization config
-(`visualization.yaml`), which controls how the page looks, not what data it
-shows.
+interactive html page, so you can see what tokenization made of a timeline, and
+renders the learned vocabulary as another (see
+[The vocabulary page](#the-vocabulary-page)). It is not a pipeline stage: it only
+reads what the stages wrote to the processed-data directory. Its behavior is
+driven by a visualization config (`visualization.yaml`), which controls how the
+pages look, not what data they show.
 
 ## What it reads
 
@@ -55,6 +56,54 @@ the height of their quantile, and then list the events, as many as the page's
 table shows at once. It is set in the page's font, Gotham, which it embeds, with
 codes and tokens in Courier, one of pdf's standard fonts; a character the font lacks
 prints as `?`.
+
+## The vocabulary page
+
+[`render_vocabulary`][cocoa.visualizer.Visualizer.render_vocabulary] draws what
+tokenization learned rather than one subject, as one html string, and
+[`save_vocabulary`][cocoa.visualizer.Visualizer.save_vocabulary] writes it to a
+file (`cocoa visualize` without a subject id, which serves it or, with
+`--export-html`, saves it). Like the timeline, it is self-contained, and it
+colors each prefix as its lane in a timeline. Its tabs show:
+
+- each binned code's values in the training split, the values the tokenizer
+  learned its bins on, as a histogram with the cut points drawn across it, and
+  how many of its bins hold values, since cut points that tie leave the bins
+  between them empty. A code with at most 50 distinct values gets a bar per
+  value, and one with more about 50 buckets of a round width; its most extreme
+  values, beyond the bulk of the rest, are counted rather than drawn. Opened, a
+  code lists its bins, with each one's range, training count, and word. The
+  values are binned again as [`bin_data`][cocoa.tokenizer.Tokenizer.bin_data]
+  bins them;
+- every word, with its token, bin, text value, and training count;
+- each prefix, with its words, codes, and share of the training tokens;
+- the timelines by split, as `cocoa tokenize --verbose` summarizes them: their
+  numbers of timelines, tokens, and `UNK` tokens, their lengths and durations,
+  and their first and last events; and
+- the tokenizer's config, as `tokenizer.yaml` saved it.
+
+The values come from `meds.parquet`, and the training split from
+`subject_splits.parquet`. Without either, the page draws each bin's training
+count from the counts of its words, which a fused `tokenizer.yaml` written since
+26.9.1 records, or else just the cut points. A tokenizer applied with
+`cocoa tokenize --tokenizer-home` keeps the training counts of the data it was
+learned on, so the page marks it as transferred and draws the directory's own
+training split against its bins.
+
+[`render_vocabulary_pdf`][cocoa.visualizer.Visualizer.render_vocabulary_pdf]
+draws the same vocabulary as a static pdf, and
+[`save_vocabulary_pdf`][cocoa.visualizer.Visualizer.save_vocabulary_pdf] writes it
+to a file (`cocoa visualize --export-pdf` without a subject id), to send where
+html may not open, as for a timeline. It lays out what the tabs show, one after
+another: first the vocabulary's size, its prefixes, and its timelines by split,
+with the histograms of every split's lengths and durations, where the page draws
+one split at a time; then each binned code's histogram beside a row per bin, as
+the page shows a code opened; then the words and the tokenizer's config. It draws
+the first 500 binned codes and lists the first 2,000 words.
+
+Neither file holds anyone's timeline, but both summarize the training data, down
+to each code's least and greatest value and each split's first and last event, so
+share them as you would such statistics.
 
 ## Configuring the page
 

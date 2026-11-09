@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Documentation
+    url: https://cocoa-tokenizer.readthedocs.io/latest/
+    about: The user guide, recipes, and CLI reference.

@@ -5,11 +5,11 @@ collects and collates different dataframes into a denormalized format
 """
 
 import collections.abc
+import fractions
 import hashlib
 import pathlib
 from typing import Any, Literal
 
-import numpy as np
 import polars as pl
 
 from cocoa.configurable import Configurable
@@ -391,19 +391,19 @@ class Collator(Configurable):
             .sort(order, key)  # id breaks ties, so every run splits alike
             .with_row_index()
         ).collect()
-        split_idx = (
-            (
-                len(partition)
-                * np.cumsum(
-                    [
-                        self.cfg.subject_splits.train_frac,
-                        self.cfg.subject_splits.tuning_frac,
-                    ]
-                )
+        # the fractions as written, exactly: in floating point, 0.7 + 0.1 is
+        # 0.7999999999999999, which would cut 10 subjects at 7 and 7, not 7 and 8
+        train, tuning = (
+            fractions.Fraction(str(f))
+            for f in (
+                self.cfg.subject_splits.train_frac,
+                self.cfg.subject_splits.tuning_frac,
             )
-            .astype(int)
-            .tolist()
         )
+        split_idx = [
+            int(len(partition) * train),
+            int(len(partition) * (train + tuning)),
+        ]
         partition = partition.with_columns(
             split=pl.when(pl.col("index") < split_idx[0])
             .then(pl.lit(self.splits[0]))

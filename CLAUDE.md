@@ -213,7 +213,10 @@ add/update a pytest case first.
   across splits for anyone re-collating;
   `test_uniformly_random_ranks_by_the_digest_of_each_id` pins the order.
   `Collator.__init__` validates `how`, so a typo fails before `meds.parquet` is
-  written.
+  written. The cuts are `int(n * f)` on `fractions.Fraction(str(f))`, exact
+  arithmetic on the fractions as written: in floats, `0.7 + 0.1` is
+  `0.7999999999999999`, which cut 10 subjects 7 / 0 / 3. `synth.split_bounds`
+  mirrors it, and `test_no_split_loses_a_subject_to_floating_point` pins it.
 - **Config-embedded expressions**: `filter_expr` / `with_col_expr` / `agg_expr`
   in a collation config are Polars expression _strings_ `eval`'d via
   `Collator.slightly_safer_eval`. This is intentionally powerful and **not a

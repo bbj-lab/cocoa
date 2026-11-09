@@ -49,13 +49,17 @@ subject_splits:
 hospitalization). `group_id` is an optional higher-level grouping column.
 Subjects are put in order and split into train / tuning / held-out sets according
 to the specified fractions; with `group_id`, groups are ordered instead, keeping
-every group in one split. `how` picks the order. Under `time_based`, the default
-(and what a config without `how` gets), subjects are sorted chronologically and
-groups each by its earliest start time, with ties broken by id. Under
-`uniformly_random`, they're sorted by the SHA-256 digest of their id, an order as
-good as a uniformly random shuffle and unrelated to time. Either way the split is
-the same every run, and a random split depends on nothing but the ids: not on the
-machine, nor on the versions of cocoa's dependencies.
+every group in one split. Of `n` subjects (or groups), the first
+`n * train_frac`, rounded down, train, and the rest up to
+`n * (train_frac + tuning_frac)`, rounded down, tune. This is computed exactly
+from the fractions as written, so 10 subjects at `0.7` and `0.1` split 7 / 1 / 2,
+though `0.7 + 0.1` falls short of `0.8` in floating point. `how` picks the order.
+Under `time_based`, the default (and what a config without `how` gets), subjects
+are sorted chronologically and groups each by its earliest start time, with ties
+broken by id. Under `uniformly_random`, they're sorted by the SHA-256 digest of
+their id, an order as good as a uniformly random shuffle and unrelated to time.
+Either way the split is the same every run, and a random split depends on nothing
+but the ids: not on the machine, nor on the versions of cocoa's dependencies.
 
 All timestamps are stored as timezone-aware datetimes in `default_timezone` (an
 IANA name like `America/Chicago`, defaulting to `UTC` if unset). Columns that

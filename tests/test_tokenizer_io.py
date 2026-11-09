@@ -11,7 +11,7 @@ import shutil
 import polars as pl
 import pytest
 import synth
-from conftest import Processed, default_cfg
+from conftest import Processed, default_cfg, pad_vocabulary
 from omegaconf import OmegaConf
 from omegaconf.errors import ReadonlyConfigError
 
@@ -273,6 +273,14 @@ def test_load_from_disc_round_trips(trained, tmp_path):
     assert back.created_dttm == trained.created_dttm
     assert back.cfg == trained.cfg
     assert back.is_training is False
+
+
+def test_load_reads_a_vocabulary_past_omegaconfs_yaml_node_limit(trained, tmp_path):
+    path = tmp_path / "tokenizer.yaml"
+    trained.save(path)
+    back = Tokenizer(processed_data_home=tmp_path).load(pad_vocabulary(path))
+    assert len(back) == len(trained) + 5_000
+    assert back("PAD//4999") == len(trained) + 4_999
 
 
 def test_save_all_writes_tokenizer_yaml_matching_the_vocabulary(trained, src_yaml):

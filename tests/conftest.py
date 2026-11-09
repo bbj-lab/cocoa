@@ -18,6 +18,7 @@ import shutil
 import polars as pl
 import pytest
 import synth
+import yaml
 from omegaconf import OmegaConf
 
 from cocoa.collator import Collator
@@ -84,6 +85,21 @@ def copy_of(src: pathlib.Path, dest: pathlib.Path, without=()) -> pathlib.Path:
         if f.is_file() and f.name not in without:
             shutil.copy(f, dest / f.name)
     return dest
+
+
+def pad_vocabulary(path: pathlib.Path, n: int = 5_000) -> pathlib.Path:
+    """
+    tokenizer.yaml `path`, rewritten with `n` made-up words in its lookup and
+    counts: four yaml nodes a word, so by default past the 10,000 nodes that
+    omegaconf parses from 2.4 on, unless told otherwise
+    """
+    data = yaml.safe_load(path.read_text())
+    first = max(data["lookup"].values()) + 1
+    for i in range(n):
+        data["lookup"][f"PAD//{i}"] = first + i
+        data["counts"][f"PAD//{i}"] = 1
+    path.write_text(OmegaConf.to_yaml(data))
+    return path
 
 
 @dataclasses.dataclass

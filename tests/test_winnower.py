@@ -13,7 +13,7 @@ import shutil
 import polars as pl
 import pytest
 import synth
-from conftest import Processed, default_cfg, write_cfg
+from conftest import Processed, default_cfg, pad_vocabulary, write_cfg
 from omegaconf.errors import ConfigAttributeError, ConfigKeyError
 
 from cocoa.tokenizer import Tokenizer
@@ -637,6 +637,13 @@ def test_outcome_tokens_has_no_fallback(runner, pipeline):
             winnowing_cfg=runner.cfg_path("winnowing", c),
             processed_data_home=pipeline.path,
         )
+
+
+def test_reads_a_vocabulary_past_omegaconfs_yaml_node_limit(runner, pipeline):
+    dest = seed(runner, pipeline)
+    pad_vocabulary(dest / "tokenizer.yaml")
+    w = Winnower(processed_data_home=dest)
+    assert len(w.tkzr_cfg.lookup) == len(pipeline.vocab) + 5_000
 
 
 @pytest.mark.parametrize("split", SPLITS)

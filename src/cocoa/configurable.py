@@ -6,10 +6,11 @@ configurable class with overridable defaults
 
 import collections.abc
 import importlib.resources as resources
+import inspect
 import pathlib
 from typing import Any
 
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig, ListConfig, OmegaConf
 
 from cocoa.logger import Logger
 
@@ -31,6 +32,27 @@ def apply_overrides(cfg: DictConfig, overrides: collections.abc.Iterable[str]) -
             cfg.merge_with(OmegaConf.from_dotlist([override.lstrip("+")]))
         else:  # which `from_dotlist` would read as `key=null`
             raise ValueError(f"can't read the override {override!r}: no `=`")
+
+
+# from 2.4, omegaconf refuses a yaml document of more than 10,000 nodes unless
+# told otherwise, and a tokenizer.yaml's lookup and counts soon outgrow that; so
+# lift the limit where there is one, since cocoa parses only what it wrote and
+# configs, which are as trusted as python anyway
+UNLIMITED = (
+    {"max_yaml_expanded_nodes": None}
+    if "max_yaml_expanded_nodes" in inspect.signature(OmegaConf.load).parameters
+    else {}
+)
+
+
+def parse_yaml(text: str) -> DictConfig | ListConfig:
+    """yaml `text` as OmegaConf.create reads it, but of any size"""
+    return OmegaConf.create(text, **UNLIMITED)
+
+
+def load_yaml(path: pathlib.Path | str) -> DictConfig | ListConfig:
+    """the yaml file at `path` as OmegaConf.load reads it, but of any size"""
+    return OmegaConf.load(path, **UNLIMITED)
 
 
 class Configurable:

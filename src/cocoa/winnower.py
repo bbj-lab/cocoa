@@ -11,9 +11,8 @@ import shutil
 from typing import Any
 
 import polars as pl
-from omegaconf import OmegaConf
 
-from cocoa.configurable import Configurable
+from cocoa.configurable import Configurable, load_yaml
 
 
 class Winnower(Configurable):
@@ -44,7 +43,7 @@ class Winnower(Configurable):
             if output_home is not None
             else self.processed_data_home
         )
-        self.tkzr_cfg = OmegaConf.load(self.processed_data_home / "tokenizer.yaml")
+        self.tkzr_cfg = load_yaml(self.processed_data_home / "tokenizer.yaml")
         self.grokked_outcome_tokens: list[str] = [
             x
             for x in self.tkzr_cfg.lookup.keys()

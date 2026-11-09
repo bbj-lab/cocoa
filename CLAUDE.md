@@ -237,6 +237,14 @@ add/update a pytest case first.
   a learned tokenizer across datasets with
   `cocoa tokenize --tokenizer-home <path>/tokenizer.yaml` (see
   [docs/recipes/tokenizer-transfer.md](docs/recipes/tokenizer-transfer.md)).
+- **Read `tokenizer.yaml` with `load_yaml` (or `parse_yaml`, for text), never a
+  bare `OmegaConf.load` or `OmegaConf.create`.** From omegaconf 2.4, those refuse
+  a document of more than 10,000 nodes unless told otherwise, and each word takes
+  four (in `lookup` and `counts`), so any real vocabulary breaks them. The
+  helpers in [configurable.py](src/cocoa/configurable.py) lift the limit where
+  the installed omegaconf has one; tests padded by `pad_vocabulary` hold
+  `Tokenizer.load`, the winnower, and `combine-datasets` to it. cotorra reads it
+  the same way.
 - **`min_training_ct` prunes the vocabulary's long tail.** Words seen fewer than
   that many times in the training split get no token and fall through to `UNK`;
   `BOS`/`EOS`/`CLCK//`/`TIME//` are exempt so structure survives on small data.

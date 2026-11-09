@@ -13,7 +13,7 @@ from typing import Any
 import polars as pl
 from omegaconf import OmegaConf
 
-from cocoa.configurable import Configurable
+from cocoa.configurable import Configurable, parse_yaml
 
 
 class Tokenizer(Configurable):
@@ -419,7 +419,7 @@ class Tokenizer(Configurable):
         read-only, and never merged with the shipped default, a passed config,
         overrides, or kwargs; places tokenizer into inference mode by default
         """
-        data = OmegaConf.create(yaml_str)
+        data = parse_yaml(yaml_str)
         cfg = OmegaConf.to_container(data.cfg)
         # to_yaml records `fused`; a yaml without it predates that, when a config
         # omitting it tokenized unfused

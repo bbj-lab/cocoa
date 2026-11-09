@@ -13,6 +13,7 @@ import polars as pl
 from deepdiff import DeepDiff
 from omegaconf import OmegaConf
 
+from cocoa.configurable import load_yaml
 from cocoa.logger import Logger
 
 
@@ -37,11 +38,11 @@ def combine_processed_data(
 
     for f in yamls:
         # configurations of combined data should match
-        cfg0 = OmegaConf.load(input_dirs[0] / f)
+        cfg0 = load_yaml(input_dirs[0] / f)
         if "created_dttm" in cfg0:
             del cfg0.created_dttm
         for d in input_dirs[1:]:
-            cfg = OmegaConf.load(d / f)
+            cfg = load_yaml(d / f)
             if "created_dttm" in cfg:
                 del cfg.created_dttm
             if cfg != cfg0:

@@ -8,7 +8,8 @@ import shutil
 
 import polars as pl
 import pytest
-from conftest import default_cfg, write_cfg
+import yaml
+from conftest import default_cfg, pad_vocabulary, write_cfg
 from omegaconf import OmegaConf
 
 from cocoa.util import combine_processed_data
@@ -153,6 +154,18 @@ def test_tokenizer_yaml_matches_inputs_with_refreshed_created_dttm(inputs, tmp_p
     assert OmegaConf.to_container(got) == OmegaConf.to_container(want)
     # the substantive content really is there to have been compared
     assert len(got.lookup) > 100 and got.cfg.n_bins == 10
+
+
+def test_combines_vocabularies_past_omegaconfs_yaml_node_limit(inputs, tmp_path):
+    dirs = [copy_processed(d, tmp_path / d.name) for d in inputs]
+    for d in dirs:
+        pad_vocabulary(d / "tokenizer.yaml")
+    out = pathlib.Path(combine_processed_data(dirs, tmp_path / "out"))
+    want, got = (
+        yaml.safe_load((d / "tokenizer.yaml").read_text())["lookup"]
+        for d in (dirs[0], out)
+    )
+    assert got == want and "PAD//4999" in got
 
 
 def test_matching_configs_do_not_warn(inputs, tmp_path, capsys):

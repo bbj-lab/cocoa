@@ -2,7 +2,10 @@ name: tests
 
 on:
   push:
+    # a change to the paper alone runs draft-pdf.yml instead
+    paths-ignore: [joss-submission/**]
   pull_request:
+    paths-ignore: [joss-submission/**]
   workflow_dispatch:
   schedule:
     # weekly, to catch breakage from new releases of unpinned dependencies

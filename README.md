@@ -96,6 +96,11 @@ Contributions are welcome, from bug reports and typo fixes to new features. To
 get started, see the
 [contributing guide](https://github.com/bbj-lab/cocoa/blob/master/CONTRIBUTING.md).
 
+## Next steps
+
+For training models and running inference on this data, check out
+[cotorra](https://github.com/bbj-lab/cotorra).
+
 <!-- --8<-- [start:references] -->
 
 [^1]:

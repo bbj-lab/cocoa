@@ -61,14 +61,12 @@ bibliography: paper.bib
 A recent trend in predictive modeling involves (i) representing event stream data
 as sequences of tokens, (ii) learning a distribution on these sequences with
 generative models, and then (iii) forecasting downstream events for novel
-sequences. Hospital medicine provides a motivating example [@Guo26b]. Electronic
+sequences. Hospital medicine provides a motivating example [@Guo26]. Electronic
 health records (EHRs) document a variety of data collection events, including
 vitals measurements, medication administration, patient assessments, and lab test
 results. Events from such records are commonly stored across a variety of
-specialized tables, each with their own schema. Prior to model training, relevant
+specialized tables, each with its own schema. Prior to model training, relevant
 events must be extracted from each table and chronologically sorted.
-
-<!-- GW: Could we expand this sentence or add a sentence explaining why storage across specialized tables is a challenge? So that the transition into what cocoa is/how it addresses the problem feels smoother. Maybe something like "These events are commonly stored across a variety of specialized tables, each with their own notations, X, Y, Z. Before a model can be trained, the events should be extracted from each table, aligned, etc. -->
 
 The `cocoa` library provides a _configurable_ framework for:
 
@@ -79,8 +77,8 @@ The `cocoa` library provides a _configurable_ framework for:
 3. _winnowing_, preparing data sequences for downstream inference tasks, and
 4. _visualization_, creating interactive graphics of tokenized timelines.
 
-Many of the commonly considered tokenization choices [@Lee26; @Att25; @Guo26] are
-fully supported through yaml configuration. This library started with code
+Many of the commonly considered tokenization choices [@Lee26; @Att25; @Guo26b]
+are fully supported through yaml configuration. This library started with code
 originally developed in 2025 [@Bur25; @Bur26] and has been subsequently extended
 to support work in generative inference [@Sol26], establishing best practices for
 tokenization [@Lee26], and federated learning [@Bur26b].
@@ -90,7 +88,7 @@ tokenization [@Lee26], and federated learning [@Bur26b].
 Successful interdisciplinary research requires close collaboration between those
 with domain expertise and those with technical backgrounds. Healthcare is a prime
 example; complex codebases make it difficult for clinicians to audit data
-processing pipelines. This can cause data leakage in a number of ways: for
+processing pipelines. This can result in data leakage in a number of ways: for
 example, billing codes that only become available after discharge are sometimes
 inserted at admission time [@Ram25], dates may be cast to times causing key
 events to be inserted up to 24 hours prior to their occurrence, and lab results
@@ -99,19 +97,15 @@ become available. Spotting these errors is often easy for someone with a clinica
 background, but requires the data and its generating process to be in an
 accessible format.
 
-<!-- GW: I think there should be another sentence to transition? Maybe something like "These errors are often easy to spot for someone with clinical knowledge, but requires that person to be able to inspect the data directly. -->
-
 The `cocoa` library is designed to make this feasible. Our collation process is
 fully configurable in yaml, and our downstream visualizer makes it easy to
 produce interactive example timelines that can be reviewed without touching code.
 This makes it more accessible for domain experts with limited coding experience
 to directly inspect the data. Though healthcare is our motivating use case, event
 stream models have also found applications in recommendation systems [@Zha24;
-@Li26] where events correspond to online platform interactions and personal
-finance [@Dou26] where events correspond to customer transactions. Our library
-can be configurated to process these types of data just as readily.
-
-<!-- GW: might want to rephrase but something like this to emphasize the point -->
+@Li26] where events correspond to online platform interactions and finance
+[@Dou26] where events correspond to customer transactions. Our library can be
+configured to process these types of data just as readily.
 
 # State of the field
 
@@ -120,11 +114,11 @@ format---such as OMOP [@Ove12], MEDS [@McD26], or CLIF [@Roj25]---and focus on
 tokenization and model training. Code released with MOTOR [@Ste24] and CEHR-XGPT
 [@Pan25] used OMOP data, while @Mon25 and ETHOS-ARES [@Ren25] used MEDS. The
 original ETHOS paper [@Ren24] is a notable exception; it developed a complete
-tokenization pipeline hardcoded for MIMIC data [@Joh23]. McDermott et al.'s MEDS
-ecosystem [@McD26] provides the closest functional overlap with the `cocoa`
-library. It contains packages that support the conversion process to MEDS with a
-MESSY ("MEDS-Extract Specification Syntax YAML") configuration, has functionality
-for tokenizing MEDS data, and includes some visualization capabilities.
+tokenization pipeline hardcoded for MIMIC data [@Joh23]. The MEDS ecosystem
+[@McD26] provides the closest functional overlap with the `cocoa` library. It
+contains packages that support the conversion process to MEDS with a MESSY
+("MEDS-Extract Specification Syntax YAML") configuration, has functionality for
+tokenizing MEDS data, and includes some visualization capabilities.
 
 # Software design
 
@@ -143,7 +137,7 @@ Collation takes a collection of raw parquet or csv files and produces:
 - `meds.parquet`, a single denormalized dataframe containing a record of each
   configured event, with columns `subject_id`, `time`, `code`, `numeric_value`,
   and `text_value`, and
-- `subject_splits.parquet`, a dataframe that partitions each subject into the
+- `subject_splits.parquet`, a dataframe that assigns each subject into one the
   `train`, `tuning`, or `held_out` subsets.
 
 It starts by forming a reference table containing one row for each subject, along
@@ -168,7 +162,7 @@ associated discretized values into single tokens. The insertion of time-spacing
 tokens [@Pan21] and clock tokens is also supported. This process produces:
 
 - `tokens_times.parquet` containing the subject-level timelines, with columns
-  `subject_id`, `tokens` (an ordered list of all the subjects's tokens), `times`
+  `subject_id`, `tokens` (an ordered list of all the subject's tokens), `times`
   (a list of the same length containing clock times corresponding to the tokens),
   and potentially additional columns depending on configuration, and
 - `tokenizer.yaml` containing everything necessary to recreate the tokenizer
@@ -178,7 +172,7 @@ tokens [@Pan21] and clock tokens is also supported. This process produces:
 
 Winnowing prepares timelines for downstream inference by thresholding them at a
 decision point and creating boolean flags for classification problems.
-Configuration makes it very easy to predict a wide variety of outcomes, providing
+Configuration makes it very easy to define a wide variety of outcomes, providing
 a potential way to avoid fragmented model deployment and some of its associated
 drawbacks [@Ram26]. We support multiple types of thresholding including
 `duration_s`, the number of seconds that have passed since the start of the
@@ -186,7 +180,7 @@ timeline, `after_start_time_s`, the number of seconds that have passed since the
 subject's configured start time, and `first_occurrence`, the first occurrence of
 a particular token of interest (for example, a token representing admission to
 the ICU). This produces `{split}_for_inference.parquet` containing winnowed
-timelines where split is one of `train`, `tuning`, or `held_out`.
+timelines where `{split}` is one of `train`, `tuning`, or `held_out`.
 
 ## 4. Visualization
 
@@ -217,7 +211,7 @@ generative inference [@Sol26], establishing best practices for tokenization
 
 This library was built on top of a previous
 [human-engineered library](https://github.com/bbj-lab/fms-ehrs/tree/main) with
-the extensive use of Claude Code, OpenAI Codex, and Github Copilot. Design
+the extensive use of Claude Code, OpenAI Codex, and GitHub Copilot. Design
 choices were made specifically to allow these tools to perform their best. Early
 experimentation led to prioritizing a more modular codebase, frequent commits,
 and the adoption of a test suite. Humans reviewed, modified, and validated all

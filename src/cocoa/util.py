@@ -32,9 +32,11 @@ def combine_processed_data(
 
     input_dirs = [pathlib.Path(p).expanduser().resolve() for p in processed_data_homes]
     parquets = [
-        f.name for f in input_dirs[0].glob("*.parquet") if "_tokens_times" not in f.name
+        f.name
+        for f in sorted(input_dirs[0].glob("*.parquet"))  # same order on any disk
+        if "_tokens_times" not in f.name
     ]  # "{split}_tokens_times.parquet" files are recreated as needed
-    yamls = [f.name for f in input_dirs[0].glob("*.yaml")]
+    yamls = [f.name for f in sorted(input_dirs[0].glob("*.yaml"))]
 
     for f in yamls:
         # configurations of combined data should match

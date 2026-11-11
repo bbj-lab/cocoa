@@ -380,8 +380,9 @@ def test_timezone_mismatch_escapes_config_diff_and_raises(runner, tmp_path, caps
     dest = tmp_path / "out"
     capsys.readouterr()
     with pytest.raises(
-        pl.exceptions.SchemaError, match="data type mismatch for column time"
-    ):
+        pl.exceptions.SchemaError,
+        match=r"data type mismatch for column \w+: incoming: .*America/Chicago",
+    ):  # on whichever datetime column polars checks first
         combine_processed_data([utc.path, chi.path], dest)
     assert "Configuration mismatch" not in capsys.readouterr().out
     assert (dest / "tokenizer.yaml").exists()  # partial output is left behind

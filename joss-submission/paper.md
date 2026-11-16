@@ -46,7 +46,7 @@ authors:
       orcid: 0000-0002-6700-1468
       affiliation: 1
 affiliations:
-    - name: University of Chicago, Chicago, IL, U.S.A. # curiously enough, comp sci venues typically drop dept names
+    - name: University of Chicago, Chicago, IL, U.S.A. # comp sci venues typically drop dept names
       index: 1
       ror: 024mw5h28
     - name: Rush University, Chicago, IL, U.S.A. # to match
@@ -75,13 +75,14 @@ The `cocoa` library provides a _configurable_ framework for:
 2. _tokenization_, converting event records including floating-point values into
    discrete sequences of integers,
 3. _winnowing_, preparing data sequences for downstream inference tasks, and
-4. _visualization_, creating interactive graphics of tokenized timelines.
+4. _visualization_, creating interactive graphics of the tokenized timelines and
+   the tokenization process.
 
 Many of the commonly considered tokenization choices [@Lee26; @Att25; @Guo26b]
 are fully supported through yaml configuration. This library started with code
 originally developed in 2025 [@Bur25; @Bur26] and has been subsequently extended
-to support work in generative inference [@Sol26], establishing best practices for
-tokenization [@Lee26], and federated learning [@Bur26b].
+to support work in generative inference [@Sol26], tokenization best practices
+[@Lee26], and federated learning [@Bur26b].
 
 # Statement of need
 
@@ -94,18 +95,19 @@ inserted at admission time [@Ram25], dates may be cast to times causing key
 events to be inserted up to 24 hours prior to their occurrence, and lab results
 may be inserted at the time samples are collected as opposed to when the results
 become available. Spotting these errors is often easy for someone with a clinical
-background, but requires the data and its generating process to be in an
+background but requires the data and its generating process to be in an
 accessible format.
 
 The `cocoa` library is designed to make this feasible. Our collation process is
-fully configurable in yaml, and our downstream visualizer makes it easy to
-produce interactive example timelines that can be reviewed without touching code.
-This makes it more accessible for domain experts with limited coding experience
-to directly inspect the data. Though healthcare is our motivating use case, event
-stream models have also found applications in recommendation systems [@Zha24;
+fully configurable in yaml, and our visualizer makes it easy to produce
+interactive example timelines that can be reviewed without touching code. This
+makes it easier for domain experts with limited coding experience to directly
+inspect the data. Though healthcare is our motivating use case, event stream
+models have also found applications in recommendation systems [@Zha24; @Khr26;
 @Li26] where events correspond to online platform interactions and finance
-[@Dou26] where events correspond to customer transactions. Our library can be
-configured to process these types of data just as readily.
+[@Dou26; @Rus26] where events correspond to customer transactions, along with
+more niche applications in economics [@Vaf24] and soccer [@Men24]. Our library
+can be configured to process these other types of data just as readily.
 
 # State of the field
 
@@ -126,7 +128,7 @@ An emphasis on configurability and usability has driven the development process.
 Each of the four main commands exposed by the library's CLI---(1) `collate`, (2)
 `tokenize`, (3) `winnow`, and (4) `visualize`---has a corresponding yaml
 configuration file that allows for extensive customization without the need to
-modify python code. Individual configuration overrides can also be passed as
+modify Python code. Individual configuration overrides can also be passed as
 command line options, to avoid the need to maintain multiple copies of a
 configuration file with slight modifications.
 
@@ -147,8 +149,6 @@ table entirely according to its yaml configuration. This table has the same
 columns as defined in the MEDS schema [@McD26]; however, in our case,
 `subject_id` has type `str` and `time` adopts a configurable timezone.
 
-<!-- thanks, @vaishvikc -->
-
 ## 2. Tokenization
 
 Tokenization takes the collated data and produces chronologically ordered,
@@ -158,8 +158,10 @@ spaced tabular data to a stream of tokens akin to natural language [@Ste21 ;
 into tokens. This is commonly done by aggregating at the category level and
 forming quantile-based bins using all available training data for that category.
 The library supports token fusion that concatenates categories and their
-associated discretized values into single tokens. The insertion of time-spacing
-tokens [@Pan21] and clock tokens is also supported. This process produces:
+associated discretized values into single tokens (for example, converting
+[`MED-INT//acetaminophen`, `Q0`] into `MED-INT//acetaminophen_Q0`). The insertion
+of time-spacing tokens [@Pan21] and clock tokens is also supported. This process
+produces:
 
 - `tokens_times.parquet` containing the subject-level timelines, with columns
   `subject_id`, `tokens` (an ordered list of all the subject's tokens), `times`

@@ -54,8 +54,9 @@ that specifies:
   Under `duration_s` and `after_start_time_s`, that event can come well before
   the cut, and the window closes as much earlier (see
   [within a horizon](../recipes/several-decision-times.md#within-a-horizon)).
-- `splits` — an optional list selecting which splits to prepare (defaults to
-  `held_out`). Rep-based inference also requires the `train` and `tuning` splits.
+- `splits` — which splits to prepare. The shipped config prepares all three; a
+  config without `splits` prepares `held_out` alone. Rep-based inference also
+  needs `train` and `tuning`.
 
 **Example configuration:**
 
@@ -111,11 +112,23 @@ past always holds `BOS`.
 
 ## Outputs
 
-- `held_out_for_inference.parquet` has columns for each outcome token (e.g.,
-  `XFR-IN//icu_past`, `XFR-IN//icu_future`) indicating whether that outcome
-  occurred in the respective time period.
-- `train_for_inference.parquet` and `tuning_for_inference.parquet` are also
-  provided; these are required to make rep-based predictions
+- `{split}_for_inference.parquet`, for each split in `splits`, has a row for each
+  timeline kept, holding its `subject_id`, `tokens`, and `times`, its subject's
+  `start_time`, `end_time`, and pass-through columns, and:
+    - `tokens_past`, the tokens before the cut, which a model is given as
+      context, and `tokens_future`, those from the cut on (within the horizon, if
+      one is set);
+    - `s_elapsed_past`, the seconds from the timeline's first token to each token
+      of the past (`s_elapsed` holds every token's, and `s_total_duration` the
+      last's), and `last_valid`, how many tokens the past holds;
+    - for each outcome token, `<TOKEN>_past` and `<TOKEN>_future` (e.g.
+      `XFR-IN//icu_past` and `XFR-IN//icu_future`), whether it occurs in the past
+      and in the future.
+
+    With the tokenizer's `include_hours_to_end_time`, `hours_to_end_time_past`
+    and `hours_to_end_time_future` split that column at the cut too; a
+    `numeric_values` column is kept whole. The `train` and `tuning` files are
+    needed for rep-based predictions.
 
 These files are written to the processed data directory unless `cocoa winnow` is
 given `--output-home` / `-o`, which sends them to another directory (created if

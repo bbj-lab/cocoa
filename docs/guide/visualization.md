@@ -101,7 +101,7 @@ pass-through columns. Below, the timeline draws each event as a mark in its lane
 against an axis in the data's time zone (the collation config's
 `default_timezone`), whatever the viewer's zone:
 
-<img src="https://raw.githubusercontent.com/burkh4rt/cocoa/master/img/vis-screenshot.png" alt="timeline of held-out hospitalization 27708593, with its first tokens listed" width="700"/>
+<img src="https://raw.githubusercontent.com/bbj-lab/cocoa/master/img/vis-screenshot.png" alt="timeline of held-out hospitalization 27708593, with its first tokens listed" width="700"/>
 
 To explore it:
 
@@ -119,7 +119,7 @@ To explore it:
 - Click a mark, token, or table row, then step through the events with the arrow
   keys; while searching, only through the highlighted ones.
 
-<img src="https://raw.githubusercontent.com/burkh4rt/cocoa/master/img/vis-screenshot-2.png" alt="timeline of held-out hospitalization 27708593, with the vitals lane opened" width="700"/>
+<img src="https://raw.githubusercontent.com/bbj-lab/cocoa/master/img/vis-screenshot-2.png" alt="timeline of held-out hospitalization 27708593, with the vitals lane opened" width="700"/>
 
 Below the timeline, two tabs list what's in view: Tokens, the tokens grouped by
 time, and Table, one row per event with its lane, code, bin, value, text value,

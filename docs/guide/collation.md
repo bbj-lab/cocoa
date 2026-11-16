@@ -27,19 +27,17 @@ that specifies:
 - A list of **entries**, each mapping a source table (or the reference frame
   itself via `table: REFERENCE`) to the output schema. Each entry declares which
   column provides the `code`, `time`, and optionally `numeric_value`, and
-  `text_value`. Codes can be given a prefix `prefix`. Some preprocessing can be
-  done with optional entries for `filter_expr`, `with_col_expr`, `agg_expr`, and
-  `key`. These take the form of polars expressions that are evaluated and applied
-  to the dataframe during loading. _Mild checks are performed when evaluating
-  these expressions, but in general, the yaml config is just as powerful as the
-  python. Check all yaml files prior to use._
+  `text_value`. An entry can prefix its codes with `prefix`. Some preprocessing
+  can be done with the optional fields `filter_expr`, `with_col_expr`,
+  `agg_expr`, and `key`. These take the form of polars expressions that are
+  evaluated and applied to the dataframe during loading. _Mild checks are
+  performed when evaluating these expressions, but in general, the yaml config is
+  just as powerful as the python. Check all yaml files prior to use._
 - **Subject splits** (`how`, `train_frac` / `tuning_frac`) that partition
   subjects into train, tuning, and held-out sets, chronologically or at random.
 
-A collation config has three top-level sections: identifiers, subject splits, and
-the reference + entries that define which events to extract.
-
-## Identifiers and splits
+Besides the reference table and the entries, a config sets these top-level keys,
+shown with their shipped values and explained below:
 
 ```yaml
 subject_id: hospitalization_id # the atomic unit of interest
@@ -57,6 +55,8 @@ subject_splits:
     # the remainder is held out
 ```
 
+## Identifiers and splits
+
 `subject_id` is the column that uniquely identifies each subject (e.g. a
 hospitalization). `group_id` is an optional higher-level grouping column.
 Subjects are put in order and split into train / tuning / held-out sets according
@@ -72,6 +72,8 @@ broken by id. Under `uniformly_random`, they're sorted by the SHA-256 digest of
 their id, an order as good as a uniformly random shuffle and unrelated to time.
 Either way the split is the same every run, and a random split depends on nothing
 but the ids: not on the machine, nor on the versions of cocoa's dependencies.
+
+## Time zone and precision
 
 All timestamps are stored as timezone-aware datetimes in `default_timezone` (an
 IANA name like `America/Chicago`, defaulting to `UTC` if unset). Columns that
@@ -100,12 +102,16 @@ timezone, the unit is part of the stored dtype and travels with the data, so
 Durations are derived from the stored instants, so the choice changes no token or
 label — but note that `ns` cannot represent times outside 1677–2262.
 
+## Duplicate events
+
 `drop_duplicate_events` collapses duplicate events as each entry is collated. Raw
 tables can carry the same event more than once — a result posted by two systems,
 a vital charted twice, a row multiplied by a join — and each copy would otherwise
 become another token at the same timestamp. Rows are compared on the whole
 collated event, so two copies are dropped to one only when their `subject_id`,
 `time`, `code`, `numeric_value`, and `text_value` all agree.
+
+## Lookback and lookahead limits
 
 `max_lookback_days` and `max_lookahead_days` bound how far a subject's events may
 reach outside its reference window, from `start_time` to `end_time` (see
@@ -139,11 +145,17 @@ reference:
 
 - `table` — the name of the parquet (or csv) file in `--raw-data-home` (without
   the extension).
-- `start_time` / `end_time` — columns that define the subject's time window; used
-  to filter events from other tables when `reference_key` is set (see below).
+- `start_time` / `end_time` — columns that define the subject's time window, by
+  which `reference_key` (see below) and the
+  [lookback and lookahead limits](#lookback-and-lookahead-limits) filter events.
+  `subject_splits.parquet` records both, for winnowing's `after_start_time_s` and
+  tokenization's `include_hours_to_end_time`.
 - `augmentation_tables` — optional list of tables to join onto the reference
   frame. Each needs a `key` to join on and a `validation` mode (e.g. `"m:1"`).
-  You can also add computed columns via `with_col_expr`.
+  You can also add computed columns via `with_col_expr`: the example adds `AGE`,
+  a column holding the word `age`, which the shipped config's `REFERENCE` entry
+  with `prefix: AGE` takes as its code, for tokens such as `AGE//age_Q0` that bin
+  `age_at_admission`.
 
 ## Pass-through columns
 

@@ -145,9 +145,9 @@ cocoa visualize -p processed/demo --open
 
 giving, for example:
 
-<img src="https://raw.githubusercontent.com/burkh4rt/cocoa/master/img/vis-screenshot-3.png" alt="visualization of the learned tokenizer" width="700"/>
+<img src="https://raw.githubusercontent.com/bbj-lab/cocoa/master/img/vis-screenshot-3.png" alt="visualization of the learned tokenizer" width="700"/>
 
-<img src="https://raw.githubusercontent.com/burkh4rt/cocoa/master/img/vis-screenshot-4.png" alt="summary statistics on the data splits" width="700"/>
+<img src="https://raw.githubusercontent.com/bbj-lab/cocoa/master/img/vis-screenshot-4.png" alt="summary statistics on the data splits" width="700"/>
 
 The page draws a histogram of each of the 138 binned codes' training values
 against its cut points. Cut points often tie on data like these: 90 of the codes
@@ -198,11 +198,11 @@ Hospitalization 27708593 is the earliest admission in the held-out split, a
 week-long elective neurosurgical stay with 17 hours in the surgical ICU. The page
 draws its events in lanes by kind:
 
-<img src="https://raw.githubusercontent.com/burkh4rt/cocoa/master/img/vis-screenshot.png" alt="timeline of held-out hospitalization 27708593, with its first tokens listed" width="700"/>
+<img src="https://raw.githubusercontent.com/bbj-lab/cocoa/master/img/vis-screenshot.png" alt="timeline of held-out hospitalization 27708593, with its first tokens listed" width="700"/>
 
 Lanes can be displayed interactively:
 
-<img src="https://raw.githubusercontent.com/burkh4rt/cocoa/master/img/vis-screenshot-2.png" alt="timeline of held-out hospitalization 27708593, with the vitals lane opened" width="700"/>
+<img src="https://raw.githubusercontent.com/bbj-lab/cocoa/master/img/vis-screenshot-2.png" alt="timeline of held-out hospitalization 27708593, with the vitals lane opened" width="700"/>
 
 ## Next steps
 

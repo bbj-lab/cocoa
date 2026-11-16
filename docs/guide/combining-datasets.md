@@ -1,14 +1,22 @@
 # Combining datasets
 
-`cocoa combine-datasets` merges processed directories into one, such as the
-timelines of two hospitals, or of the two periods that the
-[tokenizer transfer recipe](../recipes/tokenizer-transfer.md) splits the demo
-into:
+<!-- prettier-ignore-start -->
+> [!EXAMPLE] `cocoa combine-datasets`
+>
+> Reads the processed data directories it's given and writes them, combined, to
+> the directory `-o` (see the
+> [CLI reference](../api/cli.md#cocoa-combine-datasets) for every option):
+>
+> ```sh
+> cocoa combine-datasets processed/demo-2011-2013 processed/demo-2014-2016 \
+>     -o processed/demo-combined
+> ```
+<!-- prettier-ignore-end -->
 
-```sh
-cocoa combine-datasets processed/demo-2011-2013 processed/demo-2014-2016 \
-    -o processed/demo-combined
-```
+`cocoa combine-datasets` merges processed directories into one, such as the
+timelines of two hospitals, or, as above, of the two periods that the
+[tokenizer transfer recipe](../recipes/tokenizer-transfer.md) splits the demo
+into.
 
 Each parquet file of the first directory (`meds.parquet`,
 `subject_splits.parquet`, `tokens_times.parquet`, and any

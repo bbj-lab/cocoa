@@ -1,5 +1,16 @@
 # Configuration
 
+<!-- prettier-ignore-start -->
+> [!EXAMPLE] `-c` and overrides
+>
+> Give a stage's command a config file of your own with `-c`, in place of the
+> shipped default, and change single keys by listing them after its options:
+>
+> ```sh
+> cocoa tokenize -p processed/demo -c tokenization.yaml n_bins=5
+> ```
+<!-- prettier-ignore-end -->
+
 Each stage (collation, tokenization, winnowing, and visualization) is driven by a
 YAML config. The package ships a default for each under
 [`src/cocoa/config/`](https://github.com/bbj-lab/cocoa/tree/master/src/cocoa/config).

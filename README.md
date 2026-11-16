@@ -47,9 +47,7 @@ pip install 'cocoa-tokenizer[demo]'
 
 The extra brings [clifpy](https://pypi.org/project/clifpy/), the CLIF
 consortium's Python package, which ships the demo as CLIF tables, and
-`cocoa get-demo` writes them out. The examples below come from that demo and use
-its paths: it reads CLIF tables from `data-raw/demo` and writes processed data to
-`processed/demo`.
+`cocoa get-demo` writes them out.
 
 <!-- --8<-- [end:install] -->
 

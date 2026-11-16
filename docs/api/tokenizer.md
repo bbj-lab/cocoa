@@ -1,5 +1,22 @@
 # Tokenizer
 
+<!-- prettier-ignore-start -->
+!!! example "`cocoa tokenize`"
+
+    Runs the tokenizer from the command line, reading `meds.parquet` and
+    `subject_splits.parquet` in the processed data directory `-p` and writing
+    `tokens_times.parquet` and `tokenizer.yaml` there (see the
+    [CLI reference](cli.md#cocoa-tokenize) for every option):
+
+    ```sh
+    cocoa tokenize -p processed/demo
+    ```
+
+    With `--tokenizer-home` (`-t`) pointing at a `tokenizer.yaml`, it applies
+    that tokenizer instead of learning one (see
+    [Reusing a trained tokenizer](#reusing-a-trained-tokenizer)).
+<!-- prettier-ignore-end -->
+
 The `Tokenizer` is the second stage of the pipeline. It takes the collated events
 and turns them into per-subject **integer sequences** ("timelines"), learning a
 vocabulary and numeric-binning scheme along the way. Its behavior is driven by a

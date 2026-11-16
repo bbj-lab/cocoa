@@ -1,5 +1,17 @@
 # Collation
 
+<!-- prettier-ignore-start -->
+> [!EXAMPLE] `cocoa collate`
+>
+> Reads the tables in the raw data directory `-r` and writes `meds.parquet` and
+> `subject_splits.parquet` to the processed data directory `-p` (see the
+> [CLI reference](../api/cli.md#cocoa-collate) for every option):
+>
+> ```sh
+> cocoa collate -r data-raw/demo -p processed/demo
+> ```
+<!-- prettier-ignore-end -->
+
 The collator pulls from raw data tables (parquet or csv) and combines them into a
 single denormalized dataframe in a
 [MEDS](https://github.com/Medical-Event-Data-Standard/meds)-like format. Each row

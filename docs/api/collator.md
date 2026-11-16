@@ -1,5 +1,18 @@
 # Collator
 
+<!-- prettier-ignore-start -->
+!!! example "`cocoa collate`"
+
+    Runs the collator from the command line, reading the tables in the raw data
+    directory `-r` and writing `meds.parquet` and `subject_splits.parquet` to
+    the processed data directory `-p` (see the
+    [CLI reference](cli.md#cocoa-collate) for every option):
+
+    ```sh
+    cocoa collate -r data-raw/demo -p processed/demo
+    ```
+<!-- prettier-ignore-end -->
+
 The `Collator` is the first stage of the pipeline. It collects the many raw
 tables that make up a dataset (parquet or csv) and **collates** them into a
 single, denormalized event stream in a MEDS-like format: one row per event, with

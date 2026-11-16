@@ -1,5 +1,18 @@
 # Winnowing
 
+<!-- prettier-ignore-start -->
+> [!EXAMPLE] `cocoa winnow`
+>
+> Reads the timelines in the processed data directory `-p` and writes a
+> `{split}_for_inference.parquet` for each split it prepares there, or to the
+> directory `-o` if given (see the [CLI reference](../api/cli.md#cocoa-winnow)
+> for every option):
+>
+> ```sh
+> cocoa winnow -p processed/demo
+> ```
+<!-- prettier-ignore-end -->
+
 The winnower prepares timelines for evaluation by splitting each at a threshold
 and flagging the outcome tokens on either side. It:
 

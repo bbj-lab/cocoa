@@ -1,5 +1,21 @@
 # Tokenization
 
+<!-- prettier-ignore-start -->
+> [!EXAMPLE] `cocoa tokenize`
+>
+> Reads `meds.parquet` and `subject_splits.parquet` in the processed data
+> directory `-p` and writes `tokens_times.parquet` and `tokenizer.yaml` there
+> (see the [CLI reference](../api/cli.md#cocoa-tokenize) for every option):
+>
+> ```sh
+> cocoa tokenize -p processed/demo
+> ```
+>
+> With `--tokenizer-home` (`-t`) pointing at a `tokenizer.yaml`, it applies that
+> tokenizer instead of learning one, as in the
+> [tokenizer transfer recipe](../recipes/tokenizer-transfer.md).
+<!-- prettier-ignore-end -->
+
 The tokenizer consumes the collated parquet output and converts events into
 integer token sequences suitable for sequence models. It:
 

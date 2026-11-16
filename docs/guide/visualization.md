@@ -1,5 +1,19 @@
 # Visualization
 
+<!-- prettier-ignore-start -->
+> [!EXAMPLE] `cocoa visualize`
+>
+> Reads the processed data directory `-p` and draws a subject's timeline, or,
+> given no subject id, the vocabulary, then serves the page on localhost or saves
+> it with `--export-html` (`-e`) or `--export-pdf` (see the
+> [CLI reference](../api/cli.md#cocoa-visualize) for every option):
+>
+> ```sh
+> cocoa visualize 27708593 -p processed/demo --open
+> cocoa visualize -p processed/demo -e vocabulary.html
+> ```
+<!-- prettier-ignore-end -->
+
 The visualizer draws one subject's tokenized timeline as an interactive html
 page, so you can see what collation and tokenization made of it, and draws the
 learned vocabulary as another (see [The vocabulary page](#the-vocabulary-page)).

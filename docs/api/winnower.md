@@ -1,5 +1,18 @@
 # Winnower
 
+<!-- prettier-ignore-start -->
+!!! example "`cocoa winnow`"
+
+    Runs the winnower from the command line, reading the timelines in the
+    processed data directory `-p` and writing a `{split}_for_inference.parquet`
+    for each split it prepares there, or to the directory `-o` if given (see the
+    [CLI reference](cli.md#cocoa-winnow) for every option):
+
+    ```sh
+    cocoa winnow -p processed/demo
+    ```
+<!-- prettier-ignore-end -->
+
 The `Winnower` is the final stage of the pipeline. It prepares timelines for
 evaluation: it splits each timeline at a configurable cut-point into a **past**
 portion (the context a model is given) and a **future** portion (what the model

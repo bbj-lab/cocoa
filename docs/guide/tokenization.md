@@ -61,7 +61,10 @@ that specifies:
   (`false` by default). Each marks the gap between two consecutive instants and
   opens the later one, ahead of the events there.
 - `spacers` — mapping of time intervals (e.g., `5m-15m`, `1h-2h`) to their lower
-  bounds in minutes, used for time spacing tokens.
+  bounds in minutes, used for time spacing tokens. List them in ascending order
+  of their bounds: a gap takes the label listed in its bucket's place, so the
+  tokenizer refuses bounds out of order. A tokenizer saved by an earlier release,
+  which took them, labels gaps by its spacers as listed when reused.
 - `insert_clocks` — whether to insert clock tokens at the hours in `clocks`
   (`false` by default).
 - `clocks` — list of hour strings (e.g., `00`, `04`, ...) at which to insert

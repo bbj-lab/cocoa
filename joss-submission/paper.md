@@ -79,7 +79,7 @@ The `cocoa` library provides a _configurable_ framework for:
    the tokenization process.
 
 Many of the commonly considered tokenization choices [@Lee26; @Att25; @Guo26b]
-are fully supported through yaml configuration. This library started with code
+are fully supported through YAML configuration. This library started with code
 originally developed in 2025 [@Bur25; @Bur26] and has been subsequently extended
 to support work in generative inference [@Sol26], tokenization best practices
 [@Lee26], and federated learning [@Bur26b].
@@ -99,7 +99,7 @@ background but requires the data and its generating process to be in an
 accessible format.
 
 The `cocoa` library is designed to make this feasible. Our collation process is
-fully configurable in yaml, and our visualizer makes it easy to produce
+fully configurable in YAML, and our visualizer makes it easy to produce
 interactive example timelines that can be reviewed without touching code. This
 makes it easier for domain experts with limited coding experience to directly
 inspect the data. Though healthcare is our motivating use case, event stream
@@ -126,7 +126,7 @@ tokenizing MEDS data, and includes some visualization capabilities.
 
 An emphasis on configurability and usability has driven the development process.
 Each of the four main commands exposed by the library's CLI---(1) `collate`, (2)
-`tokenize`, (3) `winnow`, and (4) `visualize`---has a corresponding yaml
+`tokenize`, (3) `winnow`, and (4) `visualize`---has a corresponding YAML
 configuration file that allows for extensive customization without the need to
 modify Python code. Individual configuration overrides can also be passed as
 command line options, to avoid the need to maintain multiple copies of a
@@ -139,13 +139,13 @@ Collation takes a collection of raw parquet or csv files and produces:
 - `meds.parquet`, a single denormalized dataframe containing a record of each
   configured event, with columns `subject_id`, `time`, `code`, `numeric_value`,
   and `text_value`, and
-- `subject_splits.parquet`, a dataframe that assigns each subject into one the
+- `subject_splits.parquet`, a dataframe that assigns each subject into one of the
   `train`, `tuning`, or `held_out` subsets.
 
 It starts by forming a reference table containing one row for each subject, along
 with configurable demographic information. It then pulls events from both the
 reference table and the collection of parquet / csv files into the `meds.parquet`
-table entirely according to its yaml configuration. This table has the same
+table entirely according to its YAML configuration. This table has the same
 columns as defined in the MEDS schema [@McD26]; however, in our case,
 `subject_id` has type `str` and `time` adopts a configurable timezone.
 

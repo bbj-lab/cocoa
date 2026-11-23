@@ -172,6 +172,13 @@ class Tokenizer(Configurable):
             breaks = list(spcrs.values())[1:]
             if len(set(breaks)) < len(breaks):
                 raise ValueError(f"spacer boundaries must be distinct: {spcrs}")
+            # a gap takes the label listed in its bucket's place, so boundaries out
+            # of ascending order would mislabel gaps; a frozen tokenizer goes on
+            # labeling them as listed, as the releases that saved it unchecked did
+            if self.is_training and list(spcrs.values()) != sorted(spcrs.values()):
+                raise ValueError(
+                    f"spacer boundaries must be in ascending order: {spcrs}"
+                )
             return pl.concat(
                 [
                     df,

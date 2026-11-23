@@ -411,7 +411,9 @@ class Collator(Configurable):
             .then(pl.lit(self.splits[1]))
             .otherwise(pl.lit(self.splits[2]))
         )
-        ref = self.get_reference_frame().collect()
+        # a reference table may carry a split of its own, as a site's tables might;
+        # dropped, or joining it to the groups' splits would keep it in their place
+        ref = self.get_reference_frame().collect().drop("split", strict=False)
         return (
             partition.join(ref, on=self.cfg["subject_id"], validate="1:1")
             if "group_id" not in self.cfg

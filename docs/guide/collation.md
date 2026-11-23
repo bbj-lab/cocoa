@@ -71,7 +71,8 @@ are sorted chronologically and groups each by its earliest start time, with ties
 broken by id. Under `uniformly_random`, they're sorted by the SHA-256 digest of
 their id, an order as good as a uniformly random shuffle and unrelated to time.
 Either way the split is the same every run, and a random split depends on nothing
-but the ids: not on the machine, nor on the versions of cocoa's dependencies.
+but the ids: not on the machine, nor on the versions of cocoa's dependencies. A
+column of the reference table named `split` gives way to the split assigned here.
 
 ## Time zone and precision
 

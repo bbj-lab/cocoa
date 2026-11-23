@@ -524,6 +524,32 @@ def test_no_group_id_splits_one_patients_stays_apart(runner):
     assert _map(df) == {"H0": "train", "H1": "train", "H2": "tuning", "H3": "tuning"}
 
 
+@pytest.mark.parametrize(
+    "group_id, expected",
+    [
+        (None, {"H0": "train", "H1": "train", "H2": "tuning", "H3": "tuning"}),
+        ("patient_id", {"H0": "train", "H3": "train", "H1": "tuning", "H2": "tuning"}),
+    ],
+    ids=("by-subject", "by-group"),
+)
+def test_a_split_column_of_the_reference_table_gives_way(runner, group_id, expected):
+    """
+    a reference table may carry a split of its own, as a site's tables might;
+    the split assigned here replaces it, with group_id as without, where joining
+    the reference to the groups' splits once kept its own in their place
+    """
+    raw = _stays_raw(runner)
+    hosp = raw / "clif_hospitalization.parquet"
+    pl.read_parquet(hosp).with_columns(split=pl.lit("held_out")).write_parquet(hosp)
+    cfg = synth.minimal_collation_cfg(
+        subject_splits={"train_frac": 0.5, "tuning_frac": 0.5}
+    )
+    if group_id is not None:
+        cfg["group_id"] = group_id
+    # the splits of the two tests above, which split the same stays without it
+    assert _map(_splits_of(runner.collate(cfg=cfg, raw=raw))) == expected
+
+
 def test_group_id_may_name_a_column_of_an_augmentation_table(runner):
     """
     the groups are drawn from the augmented reference frame, so a key that

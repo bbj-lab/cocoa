@@ -13,6 +13,7 @@ import polars as pl
 from deepdiff import DeepDiff
 from omegaconf import OmegaConf
 
+from cocoa.configurable import load_yaml
 from cocoa.logger import Logger
 
 
@@ -31,17 +32,19 @@ def combine_processed_data(
 
     input_dirs = [pathlib.Path(p).expanduser().resolve() for p in processed_data_homes]
     parquets = [
-        f.name for f in input_dirs[0].glob("*.parquet") if "_tokens_times" not in f.name
+        f.name
+        for f in sorted(input_dirs[0].glob("*.parquet"))  # same order on any disk
+        if "_tokens_times" not in f.name
     ]  # "{split}_tokens_times.parquet" files are recreated as needed
-    yamls = [f.name for f in input_dirs[0].glob("*.yaml")]
+    yamls = [f.name for f in sorted(input_dirs[0].glob("*.yaml"))]
 
     for f in yamls:
         # configurations of combined data should match
-        cfg0 = OmegaConf.load(input_dirs[0] / f)
+        cfg0 = load_yaml(input_dirs[0] / f)
         if "created_dttm" in cfg0:
             del cfg0.created_dttm
         for d in input_dirs[1:]:
-            cfg = OmegaConf.load(d / f)
+            cfg = load_yaml(d / f)
             if "created_dttm" in cfg:
                 del cfg.created_dttm
             if cfg != cfg0:

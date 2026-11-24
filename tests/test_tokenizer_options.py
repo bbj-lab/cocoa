@@ -11,7 +11,10 @@ import re
 import polars as pl
 import pytest
 import synth
-from conftest import Processed, default_cfg
+from conftest import Processed, copy_of, default_cfg
+from omegaconf import OmegaConf
+
+from cocoa.configurable import load_yaml
 
 UTC = datetime.timezone.utc
 JAN1 = datetime.datetime(2024, 1, 1)
@@ -102,10 +105,13 @@ MEDS_SCHEMA = {
 
 
 def tokenize_meds(runner, events: list, **overrides) -> Processed:
-    """tokenize (subject_id, time, code) rows written to meds.parquet in order"""
+    """
+    tokenize (subject_id, time, code) rows, each optionally with a numeric value,
+    written to meds.parquet in order
+    """
     dest = runner.dir()
     pl.DataFrame(
-        [(*e, None, None) for e in events], schema=MEDS_SCHEMA, orient="row"
+        [(*e, *[None] * (5 - len(e))) for e in events], schema=MEDS_SCHEMA, orient="row"
     ).write_parquet(dest / "meds.parquet")
     pl.DataFrame(
         {"subject_id": sorted({e[0] for e in events}), "split": "train"}
@@ -624,20 +630,46 @@ def test_a_one_entry_spacers_mapping_labels_every_gap_from_its_bound(runner):
     ]
 
 
-def test_spacers_listed_out_of_order_bucket_gaps_as_polars_cut_did(runner):
+SPACER_GAPS = gapped(0, 4, 5, 10, 61, 121)
+OUT_OF_ORDER = {"b": 60, "a": 5, "c": 120}
+
+
+def test_spacers_listed_out_of_order_are_refused(runner):
     """
-    the smallest bound is the floor wherever it is listed, the bounds after the
-    first split the gaps above it, and the labels name those buckets in listed
-    order, as when polars' `cut` did the bucketing; so `b` here labels a gap of
-    5 minutes, below its own bound
+    a gap takes the label listed in its bucket's place, so boundaries out of
+    ascending order would mislabel gaps, as releases that took them did; so a
+    tokenizer learning its vocabulary refuses them, before writing anything
+    """
+    with pytest.raises(ValueError, match="ascending"):
+        tokenize_meds(runner, SPACER_GAPS, insert_spacers=True, spacers=OUT_OF_ORDER)
+    assert not list(runner.root.rglob("tokens_times.parquet"))
+
+
+def test_a_saved_tokenizer_labels_gaps_by_its_spacers_as_listed(runner):
+    """
+    a tokenizer saved by a release that took spacers out of order labels gaps,
+    when reused, as it did then: the smallest bound is the floor wherever it is
+    listed, the bounds after the first split the gaps above it, and the labels
+    name those buckets in listed order, as when polars' `cut` did the bucketing;
+    so `b` here labels a gap of 5 minutes, below its own bound
     """
     p = tokenize_meds(
         runner,
-        gapped(0, 4, 5, 10, 61, 121),
+        # S1's value gives the tokenizer bins, without which it can't be reused
+        [*SPACER_GAPS, ("S1", utc(2024, 1, 1), "NUM//x", 1.0)],
         insert_spacers=True,
-        spacers={"b": 60, "a": 5, "c": 120},
+        spacers={"a": 5, "b": 60, "c": 120},
     )
-    assert p.timeline("S0") == [
+    saved = load_yaml(p.path / "tokenizer.yaml")
+    saved.cfg.spacers = OUT_OF_ORDER  # as such a release saved its config
+    (p.path / "tokenizer.yaml").write_text(OmegaConf.to_yaml(saved))
+    dest = copy_of(
+        p.path, runner.dir(), without=("tokens_times.parquet", "tokenizer.yaml")
+    )
+    runner.tokenize(processed=dest, tokenizer_home=p.path / "tokenizer.yaml")
+    reused = Processed(dest, None)
+    assert list(reused.tokenizer_yaml.cfg.spacers) == list(OUT_OF_ORDER)
+    assert reused.timeline("S0") == [
         "BOS",
         "AAA//e0",
         "AAA//e1",

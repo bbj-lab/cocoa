@@ -1,13 +1,13 @@
 <!-- --8<-- [start:intro] -->
 
 <p align="center">
-<img src="https://raw.githubusercontent.com/burkh4rt/cocoa/master/img/cocoa-bean.png" alt="cocoa bean" width="400" class="off-glb"/>
+<img src="https://raw.githubusercontent.com/bbj-lab/cocoa/master/img/cocoa-bean.png" alt="cocoa bean" width="400" class="off-glb"/>
 </p>
 
 # Cocoa: a configurable collator
 
 [![PyPI Version](https://img.shields.io/pypi/v/cocoa-tokenizer)](https://pypi.org/project/cocoa-tokenizer/)
-[![DOI](https://raw.githubusercontent.com/burkh4rt/cocoa/master/img/1174829117.svg)](https://doi.org/10.5281/zenodo.20413460)
+[![DOI](https://raw.githubusercontent.com/bbj-lab/cocoa/master/img/1174829117.svg)](https://doi.org/10.5281/zenodo.20413460)
 [![SWH](https://archive.softwareheritage.org/badge/origin/https://github.com/bbj-lab/cocoa/)](https://archive.softwareheritage.org/browse/origin/?origin_url=https://github.com/bbj-lab/cocoa)
 [![tests](https://github.com/bbj-lab/cocoa/actions/workflows/tests.yml/badge.svg)](https://github.com/bbj-lab/cocoa/actions/workflows/tests.yml)
 [![codecov](https://codecov.io/gh/bbj-lab/cocoa/graph/badge.svg?token=6QXX2PE38Q)](https://codecov.io/gh/bbj-lab/cocoa)
@@ -47,9 +47,7 @@ pip install 'cocoa-tokenizer[demo]'
 
 The extra brings [clifpy](https://pypi.org/project/clifpy/), the CLIF
 consortium's Python package, which ships the demo as CLIF tables, and
-`cocoa get-demo` writes them out. The examples below come from that demo and use
-its paths: it reads CLIF tables from `data-raw/demo` and writes processed data to
-`processed/demo`.
+`cocoa get-demo` writes them out.
 
 <!-- --8<-- [end:install] -->
 
@@ -65,23 +63,21 @@ collate  →  tokenize  →  winnow
 
 The [documentation](https://cocoa-tokenizer.readthedocs.io/latest/) covers:
 
-- [Collation](https://cocoa-tokenizer.readthedocs.io/latest/guide/collation/):
-  pulling raw tables into a single denormalized,
+- [`cocoa collate`](https://cocoa-tokenizer.readthedocs.io/latest/guide/collation/):
+  pulls raw tables into a single denormalized,
   [MEDS](https://github.com/Medical-Event-Data-Standard/meds)-like table of
-  events, and splitting the subjects into train, tuning, and held-out sets, with
-  `cocoa collate`.
-- [Tokenization](https://cocoa-tokenizer.readthedocs.io/latest/guide/tokenization/):
-  turning each subject's events into a sequence of integer tokens, with a
-  vocabulary and quantile bins learned on the training split, with
-  `cocoa tokenize`.
-- [Winnowing](https://cocoa-tokenizer.readthedocs.io/latest/guide/winnowing/):
-  cutting timelines into a past and a future at a threshold and flagging the
-  outcome tokens on each side, for evaluation, with `cocoa winnow`.
-- [Visualization](https://cocoa-tokenizer.readthedocs.io/latest/guide/visualization/):
-  drawing a subject's tokenized timeline, or the learned vocabulary, as an
-  interactive page, with `cocoa visualize`.
-- [Combining datasets](https://cocoa-tokenizer.readthedocs.io/latest/guide/combining-datasets/):
-  merging processed directories into one with `cocoa combine-datasets`.
+  events, and splits the subjects into train, tuning, and held-out sets.
+- [`cocoa tokenize`](https://cocoa-tokenizer.readthedocs.io/latest/guide/tokenization/):
+  turns each subject's events into a sequence of integer tokens, with a
+  vocabulary and quantile bins learned on the training split.
+- [`cocoa winnow`](https://cocoa-tokenizer.readthedocs.io/latest/guide/winnowing/):
+  cuts timelines into a past and a future at a threshold and flags the outcome
+  tokens on each side, for evaluation.
+- [`cocoa visualize`](https://cocoa-tokenizer.readthedocs.io/latest/guide/visualization/):
+  draws a subject's tokenized timeline, or the learned vocabulary, as an
+  interactive page.
+- [`cocoa combine-datasets`](https://cocoa-tokenizer.readthedocs.io/latest/guide/combining-datasets/):
+  merges processed directories into one.
 - [Configuration](https://cocoa-tokenizer.readthedocs.io/latest/guide/configuration/):
   the YAML config each stage reads, and how to change its keys on the command
   line.
@@ -95,6 +91,11 @@ The [documentation](https://cocoa-tokenizer.readthedocs.io/latest/) covers:
 Contributions are welcome, from bug reports and typo fixes to new features. To
 get started, see the
 [contributing guide](https://github.com/bbj-lab/cocoa/blob/master/CONTRIBUTING.md).
+
+## Next steps
+
+For training models and running inference on this data, check out
+[cotorra](https://github.com/bbj-lab/cotorra).
 
 <!-- --8<-- [start:references] -->
 

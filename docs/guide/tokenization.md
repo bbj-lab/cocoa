@@ -1,5 +1,21 @@
 # Tokenization
 
+<!-- prettier-ignore-start -->
+> [!EXAMPLE] `cocoa tokenize`
+>
+> Reads `meds.parquet` and `subject_splits.parquet` in the processed data
+> directory `-p` and writes `tokens_times.parquet` and `tokenizer.yaml` there
+> (see the [CLI reference](../api/cli.md#cocoa-tokenize) for every option):
+>
+> ```sh
+> cocoa tokenize -p processed/demo
+> ```
+>
+> With `--tokenizer-home` (`-t`) pointing at a `tokenizer.yaml`, it applies that
+> tokenizer instead of learning one, as in the
+> [tokenizer transfer recipe](../recipes/tokenizer-transfer.md).
+<!-- prettier-ignore-end -->
+
 The tokenizer consumes the collated parquet output and converts events into
 integer token sequences suitable for sequence models. It:
 
@@ -18,38 +34,77 @@ Tokenization is driven by its own YAML config (the package ships a default; see
 [`./src/cocoa/config/tokenization.yaml`](https://github.com/bbj-lab/cocoa/blob/master/src/cocoa/config/tokenization.yaml))
 that specifies:
 
-- `n_bins` — number of quantile bins for numeric values.
+- `n_bins` — number of quantile bins for numeric values (`10`, deciles, in the
+  shipped config).
 - `fused` — whether to fuse the code, binned value, and text value into a single
   token (`true`, the default) or keep them as separate tokens (`false`).
 - `include_numeric_values` — whether to include raw numeric values alongside
   tokens in the output (`false` by default).
-- `include_hours_to_end_time` — whether to include, alongside tokens, the
-  fractional hours from each token to its subject's `end_time` as recorded in
-  `subject_splits.parquet` (`false` by default). Values count down toward the end
-  time and go negative for tokens beyond it, which the `EOS` and time spacing
-  tokens of a timeline running past `end_time` can be.
 - `min_training_ct` — minimum number of times a word must occur in the training
   split to earn a place in the vocabulary. `0` (the default) disables the
   threshold and keeps every word seen while training. Raise it to prune the long
   tail of one-off codes. Structural tokens (`BOS`, `EOS`, and any `CLCK//` or
   `TIME//` tokens) are exempt and always learned.
+- `include_hours_to_end_time` — whether to include, alongside tokens, the
+  fractional hours from each token to its subject's `end_time` as recorded in
+  `subject_splits.parquet` (`false` by default). Values count down toward the end
+  time and go negative for tokens beyond it, which the `EOS` and time spacing
+  tokens of a timeline running past `end_time` can be.
 - `shuffle_rows` — whether to shuffle the order of subjects' rows in
   `tokens_times.parquet` (`false` by default). Each subject's row is unchanged;
   only the order of rows changes, the same way on every run.
-- `insert_spacers` — whether to insert time spacing tokens between events. Each
-  marks the gap between two consecutive instants and opens the later one, ahead
-  of the events there.
-- `insert_clocks` — whether to insert clock tokens at specified times.
 - `ordering` — the priority order of code prefixes when sorting events within the
   same timestamp. A prefix missing from it sorts after the listed ones, though
   still before `EOS`, which always ends the timeline. If `TIME` is missing, time
   spacing tokens instead sort first, so they still open their instant.
+- `insert_spacers` — whether to insert time spacing tokens between events
+  (`false` by default). Each marks the gap between two consecutive instants and
+  opens the later one, ahead of the events there.
 - `spacers` — mapping of time intervals (e.g., `5m-15m`, `1h-2h`) to their lower
-  bounds in minutes, used for time spacing tokens.
+  bounds in minutes, used for time spacing tokens. List them in ascending order
+  of their bounds: a gap takes the label listed in its bucket's place, so the
+  tokenizer refuses bounds out of order. A tokenizer saved by an earlier release,
+  which took them, labels gaps by its spacers as listed when reused.
+- `insert_clocks` — whether to insert clock tokens at the hours in `clocks`
+  (`false` by default).
 - `clocks` — list of hour strings (e.g., `00`, `04`, ...) at which to insert
   clock tokens. Hours are read in the collation config's `default_timezone`, so
   across a daylight-saving shift a repeated hour yields two tokens and a skipped
   hour yields none.
+
+**Example configuration** (the shipped one, abridged):
+
+```yaml
+n_bins: !!int 10
+fused: !!bool true
+include_numeric_values: !!bool false
+min_training_ct: !!int 0
+include_hours_to_end_time: !!bool false
+shuffle_rows: !!bool false
+
+ordering: # of prefixes at one time, first to last
+    - BOS
+    - TIME
+    - CLCK
+    - AGE
+    …
+    - DSCG
+    - LABEL
+    - EOS # always last
+
+insert_spacers: !!bool false
+spacers: # lower bound of each gap, in minutes
+    5m-15m: 5 # produces token TIME//5m-15m
+    15m-1h: 15
+    …
+    6mt+: 262980
+
+insert_clocks: !!bool false
+clocks:
+    - !!str 00 # produces token CLCK//00
+    - !!str 04
+    …
+```
 
 ## Outputs
 

@@ -4,44 +4,31 @@ A model put to work in a hospital doesn't predict once per stay, but again and
 again as the stay goes on. To evaluate one that way, at several times into each
 stay (here a day, three days, and a week after admission, on the
 [MIMIC-IV demo](mimic-iv-demo.md), from its working directory), winnow the
-tokenized timelines once for each time, each into a directory of its own:
+tokenized timelines once for each time, each into a directory of its own. The
+shipped winnowing config needs only a new threshold, which each run sets on the
+command line:
 
-1. In your winnowing config (e.g. `winnowing.yaml`, a copy of the shipped one),
-   threshold at a time after each subject's start time, in place of its
-   `duration_s`:
+```sh
+mkdir -p logs
+for h in 24 72 168; do
+    cocoa winnow \
+        --processed-data-home processed/demo \
+        --output-home processed/demo/${h}h \
+        --verbose \
+        '~threshold.duration_s' threshold.after_start_time_s=$((h * 3600)) \
+        2>&1 | tee logs/winnowing-${h}h.log
+done
+```
 
-    ```yaml
-    threshold:
-        after_start_time_s: !!int 86400 # each run below sets its own
-    ```
-
-    Keep it the config's only threshold: given a `duration_s` too, the winnower
-    would cut there and ignore the overrides below (see
-    [winnowing](../guide/winnowing.md)).
-
-2. Winnow once for each time, overriding the threshold on the command line and
-   sending each run's files to an `--output-home` of its own:
-
-    ```sh
-    mkdir -p logs
-    for h in 24 72 168; do
-        cocoa winnow \
-            --processed-data-home processed/demo \
-            --output-home processed/demo/${h}h \
-            --winnowing-config winnowing.yaml \
-            --verbose \
-            threshold.after_start_time_s=$((h * 3600)) \
-            2>&1 | tee logs/winnowing-${h}h.log
-    done
-    ```
-
-    Each run cuts every timeline `h` hours after its subject's start time (the
-    `admission_dttm`, under the shipped collation config) and writes its
-    `*_for_inference.parquet` files to `processed/demo/24h`,
-    `processed/demo/72h`, or `processed/demo/168h`, along with copies of the
-    processed directory's files, so that each is a processed directory of its
-    own. `--verbose` prints how often each outcome falls on each side of the cut,
-    which `tee` keeps in `logs/`.
+`threshold.after_start_time_s` cuts every timeline `h` hours after its subject's
+start time (the `admission_dttm`, under the shipped collation config), and
+`'~threshold.duration_s'` deletes the shipped threshold, 24 hours after each
+timeline's first event, which the winnower would otherwise use instead (see
+[winnowing](../guide/winnowing.md)). Each run writes its
+`*_for_inference.parquet` files to `processed/demo/24h`, `processed/demo/72h`, or
+`processed/demo/168h`, along with copies of the processed directory's files, so
+that each is a processed directory of its own. `--verbose` prints how often each
+outcome falls on each side of the cut, which `tee` keeps in `logs/`.
 
 On the demo, the three runs keep 55, 37, and 10 of the 63 held-out
 hospitalizations (and 184, 144, and 78 of the 208 training, and 34, 25, and 12 of
@@ -79,11 +66,8 @@ stay. Keep in mind:
 ## Within a horizon
 
 To ask whether an outcome comes within a day of each decision time, rather than
-at any later point in the stay, add a horizon to the config:
-
-```yaml
-horizon_after_threshold_s: !!int 86400 # 1 day
-```
+at any later point in the stay, add a horizon to each run's overrides in the loop
+above: `horizon_after_threshold_s=86400`, a day in seconds.
 
 The window counts from the last event before the cut, not from the cut itself, so
 it closes early by the time between them: on the demo, by a median of 2 hours a

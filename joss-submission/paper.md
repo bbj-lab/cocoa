@@ -3,6 +3,7 @@ title: "Cocoa for configurable data collation and tokenization"
 tags:
     - collation
     - electronic health records
+    - event stream data
     - foundation models
     - generative event models
     - healthcare
@@ -46,13 +47,13 @@ authors:
       orcid: 0000-0002-6700-1468
       affiliation: 1
 affiliations:
-    - name: University of Chicago, Chicago, IL, U.S.A. # comp sci venues typically drop dept names
+    - name: University of Chicago, Chicago, U.S.A. # comp sci venues typically drop dept names
       index: 1
       ror: 024mw5h28
-    - name: Rush University, Chicago, IL, U.S.A. # to match
+    - name: Rush University, Chicago, U.S.A. # to match
       index: 2
       ror: 01k9xac83
-date: 23 October 2026
+date: 25 November 2026
 bibliography: paper.bib
 ---
 

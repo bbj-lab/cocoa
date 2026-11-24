@@ -106,7 +106,7 @@ inspect the data. Though healthcare is our motivating use case, event stream
 models have also found applications in recommendation systems [@Zha24; @Khr26;
 @Li26] where events correspond to online platform interactions and finance
 [@Dou26; @Rus26] where events correspond to customer transactions, along with
-more niche applications in economics [@Vaf24] and soccer [@Men24]. Our library
+more niche applications in economics [@Vaf24] and soccer [@Men24]. This library
 can be configured to process these other types of data just as readily.
 
 # State of the field
@@ -176,13 +176,13 @@ Winnowing prepares timelines for downstream inference by thresholding them at a
 decision point and creating boolean flags for classification problems.
 Configuration makes it very easy to define a wide variety of outcomes, providing
 a potential way to avoid fragmented model deployment and some of its associated
-drawbacks [@Ram26]. We support multiple types of thresholding including
-`duration_s`, the number of seconds that have passed since the start of the
-timeline, `after_start_time_s`, the number of seconds that have passed since the
-subject's configured start time, and `first_occurrence`, the first occurrence of
-a particular token of interest (for example, a token representing admission to
-the ICU). This produces `{split}_for_inference.parquet` containing winnowed
-timelines where `{split}` is one of `train`, `tuning`, or `held_out`.
+drawbacks. We support multiple types of thresholding including `duration_s`, the
+number of seconds that have passed since the start of the timeline,
+`after_start_time_s`, the number of seconds that have passed since the subject's
+configured start time, and `first_occurrence`, the first occurrence of a
+particular token of interest (for example, a token representing admission to the
+ICU). This produces `{split}_for_inference.parquet` containing winnowed timelines
+where `{split}` is one of `train`, `tuning`, or `held_out`.
 
 ## 4. Visualization
 

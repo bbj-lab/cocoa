@@ -1,7 +1,7 @@
 ---
 title: "Cocoa for configurable data collation and tokenization"
 tags:
-    - collation
+    - data collation
     - electronic health records
     - event stream data
     - foundation models

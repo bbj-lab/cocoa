@@ -90,24 +90,24 @@ to support work in generative inference [@Sol26], tokenization best practices
 Successful interdisciplinary research requires close collaboration between those
 with domain expertise and those with technical backgrounds. Healthcare is a prime
 example; complex codebases make it difficult for clinicians to audit data
-processing pipelines. This can result in data leakage in a number of ways: for
-example, billing codes that only become available after discharge are sometimes
-inserted at admission time [@Ram25], dates may be cast to times causing key
-events to be inserted up to 24 hours prior to their occurrence, and lab results
-may be inserted at the time samples are collected as opposed to when the results
-become available. Spotting these errors is often easy for someone with a clinical
+processing pipelines. This can result in data leakage in a number of ways:
+billing codes that only become available after discharge are sometimes inserted
+at admission time [@Ram25], dates may be cast to times causing key events to be
+inserted up to 24 hours prior to their occurrence, and lab results may be
+inserted at the time samples are collected as opposed to when the results become
+available. Spotting these errors is often easy for someone with a clinical
 background but requires the data and its generating process to be in an
 accessible format.
 
 The `cocoa` library is designed to make this feasible. Our collation process is
-fully configurable in YAML, and our visualizer makes it easy to produce
+fully configurable in YAML and our visualizer makes it easy to produce
 interactive example timelines that can be reviewed without touching code. This
 makes it easier for domain experts with limited coding experience to directly
 inspect the data. Though healthcare is our motivating use case, event stream
 models have also found applications in recommendation systems [@Zha24; @Khr26;
 @Li26] where events correspond to online platform interactions and finance
 [@Dou26; @Rus26] where events correspond to customer transactions, along with
-more niche applications in economics [@Vaf24] and soccer [@Men24]. This library
+more niche applications in economics [@Vaf24] and sports [@Men24]. This library
 can be configured to process these other types of data just as readily.
 
 # State of the field
@@ -169,7 +169,7 @@ produces:
   (a list of the same length containing clock times corresponding to the tokens),
   and potentially additional columns depending on configuration, and
 - `tokenizer.yaml` containing everything necessary to recreate the tokenizer
-  object, including the dictionary of codes to integer tokens.
+  object, including the dictionary mapping codes to integer tokens.
 
 ## 3. Winnowing
 

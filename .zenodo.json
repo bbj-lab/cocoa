@@ -46,9 +46,19 @@
       "orcid": "0000-0002-6700-1468"
     }
   ],
-  "description": "The `cocoa` library provides a configurable way to (1) collate data from multiple sources into a single denormalized dataframe, (2) tokenize the records into sequences of discrete integers, (3) winnow the records in preparation for downstream inference tasks, and (4) visualize both individual records and the tokenization process.",
-  "title": "Cocoa: a configurable collator",
+  "description": "The `cocoa` library provides a configurable framework for 1. collecting records from various tables into a single denormalized data frame, 2. converting those records, including floating-point values, into discrete sequences of tokens, 3. preparing those sequences for downstream inference tasks, and 4. creating interactive graphics of the tokenized timelines and the tokenization process.",
+  "keywords": [
+    "collation",
+    "electronic health records",
+    "event stream data",
+    "foundation models",
+    "generative event models",
+    "healthcare",
+    "machine learning",
+    "tokenization"
+  ],
+  "language": "eng",
   "license": "mit",
-  "upload_type": "software",
-  "language": "eng"
+  "title": "Cocoa: a configurable collator and tokenizer",
+  "upload_type": "software"
 }

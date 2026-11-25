@@ -18,8 +18,17 @@
         "rich>=13.8",
         "typer>=0.26",
     ]
-    description = "configurable collator and tokenizer"
-    keywords = [ "data collation", "generative event models", "tokenization" ]
+    description = "a configurable collator and tokenizer"
+    keywords = [
+        "collation",
+        "electronic health records",
+        "event stream data",
+        "foundation models",
+        "generative event models",
+        "healthcare",
+        "machine learning",
+        "tokenization",
+    ]
     license = "MIT"
     license-files = [ "LICEN[CS]E.*" ]
     name = "cocoa-tokenizer"

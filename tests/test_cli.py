@@ -205,6 +205,25 @@ def test_version_flag_prints_what_a_bug_report_needs_and_exits():
     assert "pytest" not in found  # an optional dependency, of the test extra
 
 
+def test_version_flag_lists_a_dependency_it_cant_find_as_not_installed(monkeypatch):
+    """a required dependency missing from the environment, as in a broken
+    install, is listed as not installed, and the others as before"""
+    installed = importlib.metadata.version
+
+    def version(name: str) -> str:
+        if name == "polars":
+            raise importlib.metadata.PackageNotFoundError(name)
+        return installed(name)
+
+    monkeypatch.setattr(cocoa.cli, "version", version)
+    result = run("--version")
+    assert result.exit_code == 0
+    found = dict(line.split(maxsplit=1) for line in plain(result.output).splitlines())
+    assert found["polars"] == "not installed"
+    assert found["typer"] == installed("typer")
+    assert found["cocoa"] == cocoa.cli.__version__
+
+
 def test_cli_declares_its_options_without_deprecated_typer_arguments():
     """typer 0.27 deprecates `is_flag`, which a bool option named without a `/`
     never needed; reloading reruns only the cli's own declarations"""
